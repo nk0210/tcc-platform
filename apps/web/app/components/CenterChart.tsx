@@ -1,27 +1,83 @@
+"use client";
+import { useEffect, useRef } from "react";
+import { createChart, ColorType, CandlestickSeries } from "lightweight-charts";
+
 export default function CenterChart() {
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
+
+    const chart = createChart(chartContainerRef.current, {
+      layout: {
+        background: { type: ColorType.Solid, color: "transparent" },
+        textColor: "rgba(255, 255, 255, 0.5)",
+      },
+      grid: {
+        vertLines: { color: "rgba(255, 255, 255, 0.03)" },
+        horzLines: { color: "rgba(255, 255, 255, 0.03)" },
+      },
+      crosshair: {
+        vertLine: { color: "rgba(0, 255, 136, 0.3)" },
+        horzLine: { color: "rgba(0, 255, 136, 0.3)" },
+      },
+      rightPriceScale: {
+        borderColor: "rgba(255, 255, 255, 0.05)",
+      },
+      timeScale: {
+        borderColor: "rgba(255, 255, 255, 0.05)",
+        timeVisible: true,
+      },
+      width: chartContainerRef.current.clientWidth,
+      height: chartContainerRef.current.clientHeight,
+    });
+
+    const candleSeries = chart.addSeries(CandlestickSeries, {
+      upColor: "#00ff88",
+      downColor: "#ff4466",
+      borderUpColor: "#00ff88",
+      borderDownColor: "#ff4466",
+      wickUpColor: "#00ff88",
+      wickDownColor: "#ff4466",
+    });
+
+    const data = generateCandleData();
+    candleSeries.setData(data);
+    chart.timeScale().fitContent();
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (chartContainerRef.current) {
+        chart.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+          height: chartContainerRef.current.clientHeight,
+        });
+      }
+    });
+    resizeObserver.observe(chartContainerRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+      chart.remove();
+    };
+  }, []);
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      
+
       <div className="glass flex items-center gap-4 px-4 py-2 border-b border-white/5">
         <span className="text-white font-semibold">XAUUSD</span>
         <span className="neon-green text-lg font-bold">2,345.50</span>
         <span className="neon-green text-xs">+12.30 (+0.53%)</span>
         <div className="flex gap-2 ml-4">
           {["1M","5M","15M","1H","4H","1D","1W"].map((tf) => (
-            <button key={tf} className="text-xs px-2 py-1 rounded text-white/40 hover:text-green-400 hover:bg-green-400/10 transition">
+            <button key={tf} className={`text-xs px-2 py-1 rounded transition ${tf === "1H" ? "text-green-400 bg-green-400/10" : "text-white/40 hover:text-green-400 hover:bg-green-400/10"}`}>
               {tf}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="flex-1 glass m-2 rounded-lg flex items-center justify-center border border-white/5">
-        <div className="text-center">
-          <div className="text-6xl mb-4">📈</div>
-          <p className="text-white/40 text-sm">Live chart loads here</p>
-          <p className="text-white/20 text-xs mt-1">TradingView integration — Day 2</p>
-        </div>
-      </div>
+      <div ref={chartContainerRef} className="flex-1" />
 
       <div className="glass flex items-center gap-4 px-4 py-3 border-t border-white/5">
         <button className="bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 px-6 py-2 rounded-lg text-sm font-semibold transition">
@@ -50,4 +106,30 @@ export default function CenterChart() {
 
     </div>
   );
+}
+
+function generateCandleData() {
+  const data = [];
+  let time = new Date("2024-01-01").getTime() / 1000;
+  let price = 2000;
+
+  for (let i = 0; i < 200; i++) {
+    const open = price;
+    const change = (Math.random() - 0.48) * 15;
+    const close = open + change;
+    const high = Math.max(open, close) + Math.random() * 8;
+    const low = Math.min(open, close) - Math.random() * 8;
+
+    data.push({
+      time: time as any,
+      open: parseFloat(open.toFixed(2)),
+      high: parseFloat(high.toFixed(2)),
+      low: parseFloat(low.toFixed(2)),
+      close: parseFloat(close.toFixed(2)),
+    });
+
+    price = close;
+    time += 3600;
+  }
+  return data;
 }
