@@ -1,7 +1,25 @@
+"use client";
+import { useAuthStore } from "@/store/authStore";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+
 export default function Topbar() {
+  const { user, logout } = useAuthStore();
+  const router = useRouter();
+
+  useEffect(() => {
+    const token = localStorage.getItem("tcc_token");
+    if (!token) router.push("/login");
+  }, []);
+
+  const handleLogout = () => {
+    logout();
+    router.push("/login");
+  };
+
   return (
     <div className="glass flex items-center justify-between px-6 py-3 border-b border-white/5 z-10">
-      
+
       <div className="flex items-center gap-3">
         <span className="text-xl font-bold neon-green tracking-widest">TCC</span>
         <span className="text-xs text-white/30 tracking-widest uppercase">Trader's Command Center</span>
@@ -31,9 +49,13 @@ export default function Topbar() {
           <span className="text-white/50 text-lg cursor-pointer hover:text-white transition">🔔</span>
           <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full"></span>
         </div>
-        <div className="flex items-center gap-2 cursor-pointer">
-          <div className="w-8 h-8 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center text-green-400 text-sm font-bold">N</div>
-          <span className="text-sm text-white/70">nk0210</span>
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center text-green-400 text-sm font-bold">
+            {user?.handle?.[0]?.toUpperCase() || "?"}
+          </div>
+          <span className="text-sm text-white/70">{user?.handle || "Guest"}</span>
+          <span className="text-xs bg-white/5 text-white/30 px-2 py-0.5 rounded-full">{user?.skillLevel || ""}</span>
+          <button onClick={handleLogout} className="text-xs text-red-400/50 hover:text-red-400 transition ml-2">Logout</button>
         </div>
       </div>
 
