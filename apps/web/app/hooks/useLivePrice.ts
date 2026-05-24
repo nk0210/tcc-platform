@@ -1,15 +1,26 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { usePriceStore } from "@/store/priceStore";
+import { Symbol } from "@/store/symbolStore";
 
-export function useLivePrice(symbol: string = "XAUUSDT") {
+export function useLivePrice(symbol: Symbol) {
   const { setPrice, setCandles } = usePriceStore();
+  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
+    if (!symbol.binanceSymbol) return;
+
+    // Close existing WebSocket
+    if (wsRef.current) wsRef.current.close();
+
+    // Clear candles on symbol switch
+    setCandles([]);
+    setPrice(0, 0, 0);
+
     async function fetchCandles() {
       try {
         const res = await fetch(
-          `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1h&limit=200`
+          `https://api.binance.com/api/v3/klines?symbol=${symbol.binanceSymbol}&interval=1h&limit=200`
         );
         const data = await res.json();
         const candles = data.map((k: any) => ({
@@ -20,7 +31,6 @@ export function useLivePrice(symbol: string = "XAUUSDT") {
           close: parseFloat(k[4]),
         }));
         setCandles(candles);
-
         const last = candles[candles.length - 1];
         const first = candles[0];
         const change = last.close - first.open;
@@ -34,7 +44,7 @@ export function useLivePrice(symbol: string = "XAUUSDT") {
     fetchCandles();
 
     const ws = new WebSocket(
-      `wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_1h`
+      `wss://stream.binance.com:9443/ws/${symbol.binanceSymbol.toLowerCase()}@kline_1h`
     );
 
     ws.onmessage = (event) => {
@@ -55,6 +65,7 @@ export function useLivePrice(symbol: string = "XAUUSDT") {
       );
     };
 
+    wsRef.current = ws;
     return () => ws.close();
-  }, [symbol]);
+  }, [symbol.id]);
 }

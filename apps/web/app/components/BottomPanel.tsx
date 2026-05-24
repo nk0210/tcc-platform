@@ -2,18 +2,17 @@
 import { useState } from "react";
 import { useTradeStore } from "@/store/tradeStore";
 
-const tabs = ["Positions", "History", "Journal", "Replay", "Backtest"];
-
+const tabs = ["Positions", "History", "Replay", "Backtest"];
 function calcEstPnl(direction: "BUY" | "SELL", entryPrice: number, targetPrice: number, lots: number): number {
   if (!targetPrice || !entryPrice) return 0;
   const diff = targetPrice - entryPrice;
-  const pnl = direction === "BUY" ? diff * lots * 100 : -diff * lots * 100;
+  const pnl = direction === "BUY" ? diff * lots : -diff * lots;
   return parseFloat(pnl.toFixed(2));
 }
 
 export default function BottomPanel() {
   const [active, setActive] = useState("Positions");
-  const { positions, closePosition, totalPnl, updateSlTp } = useTradeStore();
+  const { positions, closePosition, totalNetPnl, updateSlTp } = useTradeStore();
   const [editing, setEditing] = useState<{id: string, field: "sl" | "tp", value: string} | null>(null);
 
   const handleNumberInput = (val: string) => {
@@ -65,8 +64,8 @@ export default function BottomPanel() {
             </button>
           )}
           <span className="text-xs text-white/40">Total P&L</span>
-          <span className={`text-sm font-bold ${totalPnl >= 0 ? "text-green-400" : "text-red-400"}`}>
-            {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
+          <span className={`text-sm font-bold ${totalNetPnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+            {totalNetPnl >= 0 ? "+" : ""}${totalNetPnl.toFixed(2)}
           </span>
         </div>
       </div>
@@ -89,7 +88,8 @@ export default function BottomPanel() {
                     <th className="text-left py-1">Current</th>
                     <th className="text-left py-1">SL</th>
                     <th className="text-left py-1">TP</th>
-                    <th className="text-left py-1">P&L</th>
+                    <th className="text-left py-1">R:R</th>
+                    <th className="text-left py-1">Net P&L</th>
                     <th className="text-left py-1">Action</th>
                   </tr>
                 </thead>
@@ -111,14 +111,11 @@ export default function BottomPanel() {
                           {editing?.id === pos.id && editing.field === "sl" ? (
                             <div className="flex flex-col gap-0.5">
                               <div className="flex items-center gap-1">
-                                <input
-                                  autoFocus
-                                  value={editing.value}
+                                <input autoFocus value={editing.value}
                                   onChange={(e) => handleNumberInput(e.target.value)}
                                   onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setEditing(null); }}
                                   className="bg-white/5 border border-red-500/40 rounded px-1 py-0.5 text-red-400 w-20 text-xs"
-                                  placeholder="Price"
-                                />
+                                  placeholder="Price" />
                                 <button onClick={handleSave} className="text-green-400 text-xs">✓</button>
                                 <button onClick={() => setEditing(null)} className="text-white/30 text-xs">✕</button>
                               </div>
@@ -130,15 +127,9 @@ export default function BottomPanel() {
                             </div>
                           ) : (
                             <div className="flex flex-col items-start">
-                              <span className="text-red-400">
-                                {pos.sl > 0 ? `$${pos.sl.toLocaleString(undefined, {maximumFractionDigits: 2})}` : "—"}
-                              </span>
-                              <button
-                                onClick={() => setEditing({id: pos.id, field: "sl", value: pos.sl > 0 ? pos.sl.toString() : ""})}
-                                className="text-white/20 hover:text-amber-400 transition text-xs leading-none mt-0.5"
-                                title="Edit SL">
-                                ✏
-                              </button>
+                              <span className="text-red-400">{pos.sl > 0 ? `$${pos.sl.toLocaleString(undefined, {maximumFractionDigits: 2})}` : "—"}</span>
+                              <button onClick={() => setEditing({id: pos.id, field: "sl", value: pos.sl > 0 ? pos.sl.toString() : ""})}
+                                className="text-white/20 hover:text-amber-400 transition text-xs leading-none mt-0.5" title="Edit SL">✏</button>
                             </div>
                           )}
                         </td>
@@ -148,14 +139,11 @@ export default function BottomPanel() {
                           {editing?.id === pos.id && editing.field === "tp" ? (
                             <div className="flex flex-col gap-0.5">
                               <div className="flex items-center gap-1">
-                                <input
-                                  autoFocus
-                                  value={editing.value}
+                                <input autoFocus value={editing.value}
                                   onChange={(e) => handleNumberInput(e.target.value)}
                                   onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setEditing(null); }}
                                   className="bg-white/5 border border-green-500/40 rounded px-1 py-0.5 text-green-400 w-20 text-xs"
-                                  placeholder="Price"
-                                />
+                                  placeholder="Price" />
                                 <button onClick={handleSave} className="text-green-400 text-xs">✓</button>
                                 <button onClick={() => setEditing(null)} className="text-white/30 text-xs">✕</button>
                               </div>
@@ -167,21 +155,19 @@ export default function BottomPanel() {
                             </div>
                           ) : (
                             <div className="flex flex-col items-start">
-                              <span className="text-green-400">
-                                {pos.tp > 0 ? `$${pos.tp.toLocaleString(undefined, {maximumFractionDigits: 2})}` : "—"}
-                              </span>
-                              <button
-                                onClick={() => setEditing({id: pos.id, field: "tp", value: pos.tp > 0 ? pos.tp.toString() : ""})}
-                                className="text-white/20 hover:text-amber-400 transition text-xs leading-none mt-0.5"
-                                title="Edit TP">
-                                ✏
-                              </button>
+                              <span className="text-green-400">{pos.tp > 0 ? `$${pos.tp.toLocaleString(undefined, {maximumFractionDigits: 2})}` : "—"}</span>
+                              <button onClick={() => setEditing({id: pos.id, field: "tp", value: pos.tp > 0 ? pos.tp.toString() : ""})}
+                                className="text-white/20 hover:text-amber-400 transition text-xs leading-none mt-0.5" title="Edit TP">✏</button>
                             </div>
                           )}
                         </td>
 
-                        <td className={`py-2 font-bold ${pos.pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
-                          {pos.pnl >= 0 ? "+" : ""}${pos.pnl.toFixed(2)}
+                        <td className="py-2 text-white/60">
+                          {pos.rrRatio ? `1:${pos.rrRatio}` : "—"}
+                        </td>
+
+                        <td className={`py-2 font-bold ${pos.netPnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                          {pos.netPnl >= 0 ? "+" : ""}${pos.netPnl.toFixed(2)}
                         </td>
 
                         <td className="py-2">
@@ -197,14 +183,13 @@ export default function BottomPanel() {
               </table>
             )}
           </>
-        )}
-        {active !== "Positions" && (
+        )}      
+        {active !== "Positions" && active !== "Journal" && (
           <div className="flex items-center justify-center h-full">
             <p className="text-white/20 text-xs">{active} panel — coming next</p>
           </div>
-        )}
+      )}
       </div>
-
     </div>
   );
 }

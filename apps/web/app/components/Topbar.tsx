@@ -1,10 +1,12 @@
 "use client";
 import { useAuthStore } from "@/store/authStore";
+import { useTradeStore } from "@/store/tradeStore";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export default function Topbar() {
   const { user, logout } = useAuthStore();
+  const { balance, equity, freeMargin, marginLevel, totalNetPnl, leverage, setLeverage } = useTradeStore();
   const router = useRouter();
 
   useEffect(() => {
@@ -17,6 +19,8 @@ export default function Topbar() {
     router.push("/login");
   };
 
+  const marginColor = marginLevel > 200 ? "text-green-400" : marginLevel > 100 ? "text-amber-400" : "text-red-400";
+
   return (
     <div className="glass flex items-center justify-between px-6 py-3 border-b border-white/5 z-10">
 
@@ -25,18 +29,43 @@ export default function Topbar() {
         <span className="text-xs text-white/30 tracking-widest uppercase">Trader's Command Center</span>
       </div>
 
-      <div className="flex items-center gap-8">
+      <div className="flex items-center gap-6">
+        <div className="flex flex-col items-center">
+          <span className="text-xs text-white/40">Balance</span>
+          <span className="text-sm font-semibold text-white">${balance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+        </div>
         <div className="flex flex-col items-center">
           <span className="text-xs text-white/40">Equity</span>
-          <span className="text-sm font-semibold text-white">$10,000.00</span>
+          <span className={`text-sm font-semibold ${equity >= balance ? "text-green-400" : "text-red-400"}`}>
+            ${equity.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+          </span>
         </div>
         <div className="flex flex-col items-center">
-          <span className="text-xs text-white/40">P&L Today</span>
-          <span className="text-sm font-semibold neon-green">+$240.50</span>
+          <span className="text-xs text-white/40">Free Margin</span>
+          <span className="text-sm font-semibold text-white">${freeMargin.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
         </div>
         <div className="flex flex-col items-center">
-          <span className="text-xs text-white/40">Margin Used</span>
-          <span className="text-sm font-semibold text-amber-400">12.4%</span>
+          <span className="text-xs text-white/40">Margin Level</span>
+          <span className={`text-sm font-semibold ${marginColor}`}>
+            {marginLevel > 0 ? `${marginLevel}%` : "—"}
+          </span>
+        </div>
+        <div className="flex flex-col items-center">
+          <span className="text-xs text-white/40">Floating P&L</span>
+          <span className={`text-sm font-semibold ${totalNetPnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+            {totalNetPnl >= 0 ? "+" : ""}${totalNetPnl.toFixed(2)}
+          </span>
+        </div>
+        <div className="flex flex-col items-center">
+          <span className="text-xs text-white/40">Leverage</span>
+          <select
+            value={leverage}
+            onChange={(e) => setLeverage(Number(e.target.value))}
+            className="bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-xs cursor-pointer">
+            {[1, 2, 5, 10, 20, 50, 100].map(l => (
+              <option key={l} value={l} className="bg-[#0a0a0f]">1:{l}</option>
+            ))}
+          </select>
         </div>
         <div className="flex flex-col items-center">
           <span className="text-xs text-white/40">Mode</span>

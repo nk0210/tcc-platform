@@ -4,6 +4,8 @@ import { createChart, ColorType, CandlestickSeries } from "lightweight-charts";
 import { useLivePrice } from "@/hooks/useLivePrice";
 import { usePriceStore } from "@/store/priceStore";
 import { useTradeStore } from "@/store/tradeStore";
+import { useSymbolStore, SYMBOLS } from "@/store/symbolStore";
+import { useJournalStore, detectSession } from "@/store/journalStore";
 
 export default function CenterChart() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -16,14 +18,16 @@ export default function CenterChart() {
   const [showRiskWarning, setShowRiskWarning] = useState(false);
   const [pendingDirection, setPendingDirection] = useState<"BUY" | "SELL" | null>(null);
 
-  useLivePrice("BTCUSDT");
+  const { activeSymbol, setActiveSymbol } = useSymbolStore();
+  useLivePrice(activeSymbol);
 
   const { currentPrice, change, changePct, candles } = usePriceStore();
   const { openPosition, updatePrices, positions } = useTradeStore();
+  const { addEntry: addJournalEntry } = useJournalStore();
 
   useEffect(() => {
-    if (currentPrice > 0) updatePrices("BTCUSDT", currentPrice);
-  }, [currentPrice]);
+    if (currentPrice > 0) updatePrices(activeSymbol.id, currentPrice);
+  }, [currentPrice, activeSymbol.id]);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -69,16 +73,39 @@ export default function CenterChart() {
     placeTrade(direction);
   };
 
-const placeTrade = (direction: "BUY" | "SELL") => {
+  const placeTrade = (direction: "BUY" | "SELL") => {
     if (!currentPrice) return;
+    const tradeId = Date.now().toString();
     openPosition({
-      symbol: "BTCUSDT",
+      symbol: activeSymbol.id,
       direction,
       lots: parseFloat(lots) || 0.01,
       entryPrice: currentPrice,
-      currentPrice,
       sl: parseFloat(sl) || 0,
       tp: parseFloat(tp) || 0,
+    });
+    addJournalEntry({
+      tradeId,
+      symbol: activeSymbol.id,
+      direction,
+      entryPrice: currentPrice,
+      lots: parseFloat(lots) || 0.01,
+      sl: parseFloat(sl) || 0,
+      tp: parseFloat(tp) || 0,
+      session: detectSession(),
+      timeframe: "1H",
+      emotion: "neutral",
+      confidenceLevel: 5,
+      stressLevel: 3,
+      entryQuality: "good",
+      followedPlan: null,
+      strategy: "other",
+      marketStructure: "bullish",
+      notes: "",
+      whatWentRight: "",
+      whatWentWrong: "",
+      lessonLearned: "",
+      tags: [],
     });
     setSl("");
     setTp("");
@@ -114,14 +141,29 @@ const placeTrade = (direction: "BUY" | "SELL") => {
       )}
 
       <div className="glass flex items-center gap-4 px-4 py-2 border-b border-white/5">
-        <span className="text-white font-semibold">BTC/USDT</span>
+        <div className="flex items-center gap-1 mr-2">
+          {SYMBOLS.map((s: any) => (
+            <button key={s.id} onClick={() => setActiveSymbol(s)}
+              className={`text-xs px-2 py-1 rounded transition font-semibold ${
+                activeSymbol.id === s.id
+                  ? "bg-green-400/20 text-green-400 border border-green-400/30"
+                  : "text-white/30 hover:text-white/60 hover:bg-white/5"
+              }`}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="w-px h-4 bg-white/10" />
+
         <span className={`text-lg font-bold ${priceColor}`}>
           ${currentPrice > 0 ? currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "Loading..."}
         </span>
         <span className={`text-xs ${priceColor}`}>
           {currentPrice > 0 ? `${sign}${change.toFixed(2)} (${sign}${changePct.toFixed(2)}%)` : ""}
         </span>
-        <div className="flex gap-2 ml-4">
+
+        <div className="flex gap-1 ml-2">
           {["1M","5M","15M","1H","4H","1D","1W"].map((tf) => (
             <button key={tf} className={`text-xs px-2 py-1 rounded transition ${tf === "1H" ? "text-green-400 bg-green-400/10" : "text-white/40 hover:text-green-400 hover:bg-green-400/10"}`}>
               {tf}
@@ -143,21 +185,23 @@ const placeTrade = (direction: "BUY" | "SELL") => {
         </button>
         <div className="flex items-center gap-2 ml-4">
           <span className="text-white/40 text-xs">Lot Size</span>
-          <input value={lots} onChange={(e) => setLots(e.target.value)}
+          <input value={lots} onChange={(e) => { if (/^\d*\.?\d*$/.test(e.target.value)) setLots(e.target.value); }}
             className="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm w-20 text-center" />
         </div>
         <div className="flex items-center gap-2">
           <span className="text-white/40 text-xs">SL</span>
-          <input value={sl} onChange={(e) => setSl(e.target.value)} placeholder="Auto"
+          <input value={sl} onChange={(e) => { if (/^\d*\.?\d*$/.test(e.target.value)) setSl(e.target.value); }}
+            placeholder="Optional"
             className="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm w-24 text-center" />
         </div>
         <div className="flex items-center gap-2">
           <span className="text-white/40 text-xs">TP</span>
-          <input value={tp} onChange={(e) => setTp(e.target.value)} placeholder="Auto"
+          <input value={tp} onChange={(e) => { if (/^\d*\.?\d*$/.test(e.target.value)) setTp(e.target.value); }}
+            placeholder="Optional"
             className="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm w-24 text-center" />
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-white/40 text-xs">Open Positions</span>
+          <span className="text-white/40 text-xs">Open</span>
           <span className="text-white text-sm font-semibold">{positions.length}</span>
         </div>
       </div>
