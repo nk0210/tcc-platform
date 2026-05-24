@@ -1,7 +1,8 @@
 "use client";
 import { useJournalStore, Emotion } from "@/store/journalStore";
 import { analyzeTrade, autoTag } from "@/lib/analyzeTrade";
-import { useState } from "react";
+import { useRiskStore, calculateRiskScore } from "@/store/riskStore";
+import { useEffect, useState } from "react";
 
 const emotions: { value: Emotion; emoji: string; label: string }[] = [
   { value: "confident", emoji: "💪", label: "Confident" },
@@ -12,10 +13,31 @@ const emotions: { value: Emotion; emoji: string; label: string }[] = [
   { value: "frustrated", emoji: "😤", label: "Frustrated" },
 ];
 
+const levelColors: Record<string, string> = {
+  LOW: "text-green-400",
+  MODERATE: "text-amber-400",
+  HIGH: "text-orange-400",
+  EXTREME: "text-red-400",
+};
+
+const levelBg: Record<string, string> = {
+  LOW: "from-green-400",
+  MODERATE: "from-green-400 via-amber-400",
+  HIGH: "from-green-400 via-amber-400 to-orange-400",
+  EXTREME: "from-green-400 via-amber-400 to-red-500",
+};
+
 export default function RightPanel() {
   const { entries, updateAiAnalysis, updateEntry } = useJournalStore();
+  const { riskScore, refresh } = useRiskStore();
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const latestEntry = entries[0] || null;
+
+  useEffect(() => {
+    refresh();
+    const interval = setInterval(refresh, 5000);
+    return () => clearInterval(interval);
+  }, [entries]);
 
   const handleAnalyze = async () => {
     if (!latestEntry) return;
@@ -25,6 +47,10 @@ export default function RightPanel() {
       lots: latestEntry.lots,
       pnl: latestEntry.pnl,
       notes: latestEntry.notes,
+      strategy: latestEntry.strategy,
+      entryQuality: latestEntry.entryQuality,
+      followedPlan: latestEntry.followedPlan,
+      session: latestEntry.session,
     });
     updateEntry(latestEntry.id, { tags });
     const analysis = await analyzeTrade({
@@ -34,7 +60,18 @@ export default function RightPanel() {
       lots: latestEntry.lots,
       pnl: latestEntry.pnl,
       emotion: latestEntry.emotion,
+      confidenceLevel: latestEntry.confidenceLevel,
+      stressLevel: latestEntry.stressLevel,
+      entryQuality: latestEntry.entryQuality,
+      followedPlan: latestEntry.followedPlan,
+      strategy: latestEntry.strategy,
+      marketStructure: latestEntry.marketStructure,
+      session: latestEntry.session,
+      timeframe: latestEntry.timeframe,
       notes: latestEntry.notes,
+      whatWentRight: latestEntry.whatWentRight,
+      whatWentWrong: latestEntry.whatWentWrong,
+      lessonLearned: latestEntry.lessonLearned,
       tags,
     });
     updateAiAnalysis(latestEntry.id, analysis);
@@ -48,17 +85,34 @@ export default function RightPanel() {
       <div className="p-4 border-b border-white/5">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">Risk Score</span>
-          <span className="text-xs text-red-400 font-bold">EXTREME</span>
+          <span className={`text-xs font-bold ${levelColors[riskScore.level]}`}>{riskScore.level}</span>
         </div>
         <div className="w-full bg-white/5 rounded-full h-2 mb-2">
-          <div className="bg-gradient-to-r from-green-400 via-amber-400 to-red-500 h-2 rounded-full" style={{width: "82%"}}></div>
+          <div className={`bg-gradient-to-r ${levelBg[riskScore.level]} h-2 rounded-full transition-all duration-500`}
+            style={{width: `${riskScore.total}%`}}></div>
         </div>
-        <div className="flex justify-between">
+        <div className="flex justify-between mb-2">
           <span className="text-white/30 text-xs">0</span>
-          <span className="text-red-400 text-sm font-bold">82/100</span>
+          <span className={`text-sm font-bold ${levelColors[riskScore.level]}`}>{riskScore.total}/100</span>
           <span className="text-white/30 text-xs">100</span>
         </div>
-        <p className="text-white/40 text-xs mt-2">Trading before CPI + 3 correlated positions open</p>
+
+        {riskScore.factors.length > 0 && (
+          <div className="flex flex-col gap-1 mt-2">
+            {riskScore.factors.map((f, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className={`text-xs mt-0.5 ${f.severity === "high" ? "text-red-400" : f.severity === "medium" ? "text-amber-400" : "text-green-400"}`}>
+                  {f.severity === "high" ? "⚠" : f.severity === "medium" ? "•" : "✓"}
+                </span>
+                <p className="text-white/50 text-xs">{f.reason}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <p className={`text-xs mt-3 italic ${levelColors[riskScore.level]}`}>
+          "{riskScore.recommendation}"
+        </p>
       </div>
 
       {/* Sentiment */}
@@ -112,7 +166,9 @@ export default function RightPanel() {
         <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">AI Assistant</span>
         <div className="mt-3 bg-green-400/5 border border-green-400/10 rounded-lg p-3">
           <p className="text-white/70 text-xs leading-relaxed">
-            "Your last 3 losses occurred after 3PM. Current time is 2:45PM — consider waiting for tomorrow's London session."
+            {riskScore.total > 50
+              ? `⚠ Risk is ${riskScore.level}. ${riskScore.recommendation}`
+              : `"Your last 3 losses occurred after 3PM. Current time is 2:45PM — consider waiting for tomorrow's London session."`}
           </p>
         </div>
       </div>
@@ -134,8 +190,7 @@ export default function RightPanel() {
 
             <div>
               <p className="text-white/40 text-xs mb-1">How are you feeling?</p>
-              <select
-                value={latestEntry.emotion}
+              <select value={latestEntry.emotion}
                 onChange={(e) => updateEntry(latestEntry.id, { emotion: e.target.value as Emotion })}
                 className="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs w-full">
                 {emotions.map(em => (
@@ -146,16 +201,12 @@ export default function RightPanel() {
               </select>
             </div>
 
-            <textarea
-              value={latestEntry.notes}
+            <textarea value={latestEntry.notes}
               onChange={(e) => updateEntry(latestEntry.id, { notes: e.target.value })}
               placeholder="Notes... (breakout, news, scalp...)"
-              className="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs resize-none h-16 w-full"
-            />
+              className="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs resize-none h-16 w-full" />
 
-            <button
-              onClick={handleAnalyze}
-              disabled={analyzingId === latestEntry.id}
+            <button onClick={handleAnalyze} disabled={analyzingId === latestEntry.id}
               className="bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-400 border border-indigo-500/30 py-1.5 rounded text-xs font-semibold transition disabled:opacity-50">
               {analyzingId === latestEntry.id ? "Analyzing..." : "🤖 Get AI Analysis"}
             </button>
@@ -163,14 +214,6 @@ export default function RightPanel() {
             {latestEntry.aiAnalysis && (
               <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-lg p-3">
                 <p className="text-white/60 text-xs leading-relaxed">{latestEntry.aiAnalysis}</p>
-              </div>
-            )}
-
-            {latestEntry.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {latestEntry.tags.map(tag => (
-                  <span key={tag} className="text-xs bg-white/5 text-white/40 px-1.5 py-0.5 rounded-full">{tag}</span>
-                ))}
               </div>
             )}
           </div>

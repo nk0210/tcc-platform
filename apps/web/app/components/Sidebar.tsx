@@ -10,7 +10,7 @@ const navItems = [
   { icon: "🏆", label: "Competition", path: "/" },
   { icon: "🎓", label: "Academy", path: "/" },
   { icon: "👥", label: "Community", path: "/" },
-  { icon: "📈", label: "Analytics", path: "/" },
+  { icon: "📈", label: "Analytics", path: "/analytics" },
 ];
 
 export default function Sidebar() {

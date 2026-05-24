@@ -6,6 +6,7 @@ import { usePriceStore } from "@/store/priceStore";
 import { useTradeStore } from "@/store/tradeStore";
 import { useSymbolStore, SYMBOLS } from "@/store/symbolStore";
 import { useJournalStore, detectSession } from "@/store/journalStore";
+import { useRiskStore, calculateRiskScore } from "@/store/riskStore";
 
 export default function CenterChart() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -65,16 +66,19 @@ export default function CenterChart() {
   }, [candles]);
 
   const handleTrade = (direction: "BUY" | "SELL") => {
-    if (positions.length >= 3) {
+    const score = calculateRiskScore();
+    if (score.level === "EXTREME" || score.level === "HIGH" || positions.length >= 3) {
       setPendingDirection(direction);
       setShowRiskWarning(true);
       return;
     }
     placeTrade(direction);
-  };
+};
 
   const placeTrade = (direction: "BUY" | "SELL") => {
     if (!currentPrice) return;
+    const { refresh } = useRiskStore.getState();
+    refresh();
     const tradeId = Date.now().toString();
     openPosition({
       symbol: activeSymbol.id,
