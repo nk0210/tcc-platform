@@ -9,7 +9,7 @@ const navItems = [
   { icon: "🎯", label: "Playbook", path: "/" },
   { icon: "🏆", label: "Competition", path: "/" },
   { icon: "🎓", label: "Academy", path: "/" },
-  { icon: "👥", label: "Community", path: "/" },
+  { icon: "👥", label: "Community", path: "/community" },
   { icon: "📈", label: "Analytics", path: "/analytics" },
 ];
 
