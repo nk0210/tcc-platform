@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useJournalStore } from "./journalStore";
 
 export interface Position {
   id: string;
@@ -139,6 +140,16 @@ export const useTradeStore = create<TradeStore>((set, get) => ({
     const newBalance = parseFloat((balance + pos.netPnl).toFixed(2));
     const account = recalcAccount(updated, newBalance);
     set({ positions: updated, balance: newBalance, ...account });
+
+    // Update journal entry with final P&L
+    const { entries, updateEntry } = useJournalStore.getState();
+    const journalEntry = entries.find(e => e.symbol === pos.symbol && !e.pnl);
+    if (journalEntry) {
+      updateEntry(journalEntry.id, {
+        exitPrice: pos.currentPrice,
+        pnl: pos.netPnl,
+      });
+    }
   },
 
   updatePrices: (symbol, price) => {
