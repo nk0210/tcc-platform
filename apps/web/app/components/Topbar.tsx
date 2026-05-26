@@ -78,13 +78,13 @@ export default function Topbar() {
           <span className="text-white/50 text-lg cursor-pointer hover:text-white transition">🔔</span>
           <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full"></span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 cursor-pointer" onClick={() => router.push("/profile")}>
           <div className="w-8 h-8 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center text-green-400 text-sm font-bold">
             {user?.handle?.[0]?.toUpperCase() || "?"}
           </div>
           <span className="text-sm text-white/70">{user?.handle || "Guest"}</span>
           <span className="text-xs bg-white/5 text-white/30 px-2 py-0.5 rounded-full">{user?.skillLevel || ""}</span>
-          <button onClick={handleLogout} className="text-xs text-red-400/50 hover:text-red-400 transition ml-2">Logout</button>
+          <button onClick={(e) => { e.stopPropagation(); handleLogout(); }} className="text-xs text-red-400/50 hover:text-red-400 transition ml-2">Logout</button>
         </div>
       </div>
 
