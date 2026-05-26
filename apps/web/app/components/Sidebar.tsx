@@ -7,7 +7,7 @@ const navItems = [
   { icon: "👁", label: "Watchlist", path: "/" },
   { icon: "📓", label: "Journal", path: "/journal" },
   { icon: "🎯", label: "Playbook", path: "/" },
-  { icon: "🏆", label: "Competition", path: "/" },
+  { icon: "🏆", label: "Competition", path: "/competition" },
   { icon: "🎓", label: "Academy", path: "/" },
   { icon: "👥", label: "Community", path: "/community" },
   { icon: "📈", label: "Analytics", path: "/analytics" },
