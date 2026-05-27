@@ -5,6 +5,7 @@ interface User {
   email: string;
   handle: string;
   skillLevel: string;
+  tccId?: string;
 }
 
 interface AuthStore {
