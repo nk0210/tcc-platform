@@ -1,126 +1,56 @@
-import { create } from "zustand";
-import { useTradeStore } from "./tradeStore";
-import { useJournalStore } from "./journalStore";
+import { useTradeStore } from "@/store/tradeStore";
 
-export interface RiskFactor {
-  label: string;
-  score: number;
-  reason: string;
-  severity: "low" | "medium" | "high";
-}
+export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "EXTREME";
 
 export interface RiskScore {
   total: number;
-  level: "LOW" | "MODERATE" | "HIGH" | "EXTREME";
-  factors: RiskFactor[];
+  level: RiskLevel;
+  factors: { name: string; score: number; description: string }[];
   recommendation: string;
 }
 
 export function calculateRiskScore(): RiskScore {
-  const { positions, balance, equity, totalNetPnl, leverage } = useTradeStore.getState();
-  const { entries } = useJournalStore.getState();
-  const factors: RiskFactor[] = [];
-  let totalScore = 0;
+  const { positions, balance, equity, marginLevel } = useTradeStore.getState();
+  const factors: { name: string; score: number; description: string }[] = [];
 
-  // 1. Number of open positions
-  if (positions.length >= 3) {
-    factors.push({ label: "Too many positions", score: 20, reason: `${positions.length} positions open simultaneously`, severity: "high" });
-    totalScore += 20;
-  } else if (positions.length === 2) {
-    factors.push({ label: "Multiple positions", score: 10, reason: "2 positions open", severity: "medium" });
-    totalScore += 10;
-  }
+  // Factor 1: Number of open positions
+  if (positions.length >= 5) factors.push({ name: "Overtrading", score: 20, description: "5+ open positions simultaneously" });
+  else if (positions.length >= 3) factors.push({ name: "Multiple positions", score: 10, description: "3+ open positions" });
 
-  // 2. Daily loss
-  const dailyLossPct = totalNetPnl < 0 ? Math.abs(totalNetPnl / balance) * 100 : 0;
-  if (dailyLossPct > 5) {
-    factors.push({ label: "High daily loss", score: 25, reason: `Down ${dailyLossPct.toFixed(1)}% today`, severity: "high" });
-    totalScore += 25;
-  } else if (dailyLossPct > 2) {
-    factors.push({ label: "Moderate daily loss", score: 12, reason: `Down ${dailyLossPct.toFixed(1)}% today`, severity: "medium" });
-    totalScore += 12;
-  }
+  // Factor 2: Total floating loss
+  const floatingPnl = positions.reduce((sum, p) => sum + p.netPnl, 0);
+  const floatingPct = (Math.abs(Math.min(floatingPnl, 0)) / balance) * 100;
+  if (floatingPct >= 5) factors.push({ name: "Large floating loss", score: 25, description: `${floatingPct.toFixed(1)}% floating loss` });
+  else if (floatingPct >= 2) factors.push({ name: "Floating loss", score: 10, description: `${floatingPct.toFixed(1)}% floating loss` });
 
-  // 3. Leverage
-  if (leverage >= 50) {
-    factors.push({ label: "Extreme leverage", score: 20, reason: `Using 1:${leverage} leverage`, severity: "high" });
-    totalScore += 20;
-  } else if (leverage >= 20) {
-    factors.push({ label: "High leverage", score: 10, reason: `Using 1:${leverage} leverage`, severity: "medium" });
-    totalScore += 10;
-  }
+  // Factor 3: Margin level
+  if (marginLevel > 0 && marginLevel < 150) factors.push({ name: "Critical margin", score: 30, description: `Margin level at ${marginLevel}%` });
+  else if (marginLevel > 0 && marginLevel < 200) factors.push({ name: "Low margin level", score: 15, description: `Margin level at ${marginLevel}%` });
 
-  // 4. Equity drawdown
-  const drawdownPct = balance > 0 ? ((balance - equity) / balance) * 100 : 0;
-  if (drawdownPct > 10) {
-    factors.push({ label: "Large drawdown", score: 20, reason: `${drawdownPct.toFixed(1)}% drawdown on account`, severity: "high" });
-    totalScore += 20;
-  } else if (drawdownPct > 5) {
-    factors.push({ label: "Moderate drawdown", score: 10, reason: `${drawdownPct.toFixed(1)}% drawdown`, severity: "medium" });
-    totalScore += 10;
-  }
+  // Factor 4: No stop loss
+  const noSL = positions.filter(p => !p.sl || p.sl === 0).length;
+  if (noSL > 0) factors.push({ name: "Missing stop loss", score: noSL * 10, description: `${noSL} position(s) without SL` });
 
-  // 5. Revenge trading detection
-  const recentEntries = entries.slice(0, 5);
-  const recentLosses = recentEntries.filter(e => e.pnl !== undefined && e.pnl < 0).length;
-  if (recentLosses >= 3) {
-    factors.push({ label: "Revenge trading risk", score: 15, reason: `${recentLosses} losses in last 5 trades`, severity: "high" });
-    totalScore += 15;
-  } else if (recentLosses === 2) {
-    factors.push({ label: "Loss streak", score: 8, reason: "2 consecutive losses detected", severity: "medium" });
-    totalScore += 8;
-  }
+  // Factor 5: Equity drawdown
+  const drawdown = ((balance - equity) / balance) * 100;
+  if (drawdown >= 10) factors.push({ name: "High drawdown", score: 20, description: `${drawdown.toFixed(1)}% equity drawdown` });
+  else if (drawdown >= 5) factors.push({ name: "Drawdown warning", score: 10, description: `${drawdown.toFixed(1)}% equity drawdown` });
 
-  // 6. Emotion check
-  const latestEntry = entries[0];
-  if (latestEntry) {
-    if (latestEntry.emotion === "frustrated" || latestEntry.emotion === "greedy") {
-      factors.push({ label: "Dangerous emotion", score: 15, reason: `Last trade emotion: ${latestEntry.emotion}`, severity: "high" });
-      totalScore += 15;
-    } else if (latestEntry.emotion === "fearful") {
-      factors.push({ label: "Fear detected", score: 8, reason: "Trading while fearful", severity: "medium" });
-      totalScore += 8;
-    }
-  }
+  const total = Math.min(factors.reduce((sum, f) => sum + f.score, 0), 100);
 
-  // 7. Followed plan check
-  const recentRuleBreaks = recentEntries.filter(e => e.followedPlan === false).length;
-  if (recentRuleBreaks >= 2) {
-    factors.push({ label: "Rule violations", score: 10, reason: `${recentRuleBreaks} rule breaks in recent trades`, severity: "medium" });
-    totalScore += 10;
-  }
+  let level: RiskLevel = "LOW";
+  let recommendation = "Risk is well controlled. Keep following your plan.";
 
-  // Cap at 100
-  totalScore = Math.min(totalScore, 100);
-
-  // Determine level
-  let level: RiskScore["level"] = "LOW";
-  let recommendation = "Conditions look good. Trade with your plan.";
-  if (totalScore >= 75) {
+  if (total >= 75) {
     level = "EXTREME";
-    recommendation = "Stop trading immediately. Review your positions and emotions.";
-  } else if (totalScore >= 50) {
+    recommendation = "EXTREME RISK: Stop trading immediately. Close positions and review your risk management.";
+  } else if (total >= 50) {
     level = "HIGH";
-    recommendation = "High risk detected. Reduce position sizes and review your plan.";
-  } else if (totalScore >= 25) {
-    level = "MODERATE";
-    recommendation = "Moderate risk. Proceed carefully and stick to your rules.";
+    recommendation = "HIGH RISK: Reduce exposure. Consider closing losing positions and tightening SL.";
+  } else if (total >= 25) {
+    level = "MEDIUM";
+    recommendation = "MEDIUM RISK: Monitor closely. Avoid opening new positions until risk reduces.";
   }
 
-  return { total: totalScore, level, factors, recommendation };
+  return { total, level, factors, recommendation };
 }
-
-interface RiskStore {
-  riskScore: RiskScore;
-  refresh: () => void;
-}
-
-export const useRiskStore = create<RiskStore>((set) => ({
-  riskScore: {
-    total: 0,
-    level: "LOW",
-    factors: [],
-    recommendation: "Place a trade to calculate risk score.",
-  },
-  refresh: () => set({ riskScore: calculateRiskScore() }),
-}));

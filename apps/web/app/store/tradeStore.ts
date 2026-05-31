@@ -1,36 +1,102 @@
 import { create } from "zustand";
-import { useJournalStore } from "./journalStore";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { getUserScopedStorage } from "@/lib/persistence/storage";
 
 export interface Position {
   id: string;
   symbol: string;
   direction: "BUY" | "SELL";
   lots: number;
-  contractSize: number;
   entryPrice: number;
   currentPrice: number;
   sl: number;
   tp: number;
-  leverage: number;
+  positionValue: number;
+  requiredMargin: number;
   spreadCost: number;
   commission: number;
   grossPnl: number;
   netPnl: number;
-  positionValue: number;
-  requiredMargin: number;
-  rrRatio: number | null;
+  rrRatio: number;
   breakeven: number;
-  openTime: Date;
+  openedAt: number; // timestamp ms for JSON serialization
+}
+
+export interface ClosedTrade {
+  id: string;
+  symbol: string;
+  direction: "BUY" | "SELL";
+  lots: number;
+  entryPrice: number;
+  exitPrice: number;
+  sl: number;
+  tp: number;
+  grossPnl: number;
+  netPnl: number;
+  spreadCost: number;
+  commission: number;
+  rrRatio: number;
+  openedAt: number;
+  closedAt: number;
+}
+
+const CONTRACT_SIZE = 1;
+
+function calcPosition(
+  symbol: string,
+  direction: "BUY" | "SELL",
+  lots: number,
+  entryPrice: number,
+  currentPrice: number,
+  sl: number,
+  tp: number,
+  leverage: number
+): Omit<Position, "id" | "openedAt"> {
+  const positionValue = lots * CONTRACT_SIZE * entryPrice;
+  const requiredMargin = positionValue / leverage;
+  const spreadCost = 0.0001 * lots * entryPrice;
+  const commission = 0.0005 * positionValue;
+
+  const grossPnl =
+    direction === "BUY"
+      ? lots * (currentPrice - entryPrice)
+      : lots * (entryPrice - currentPrice);
+  const netPnl = grossPnl - spreadCost - commission;
+
+  const slDistance = Math.abs(entryPrice - sl);
+  const tpDistance = Math.abs(tp - entryPrice);
+  const rrRatio = slDistance > 0 && tpDistance > 0 ? tpDistance / slDistance : 0;
+
+  const breakeven = direction === "BUY"
+    ? entryPrice + (spreadCost + commission) / lots
+    : entryPrice - (spreadCost + commission) / lots;
+
+  return {
+    symbol, direction, lots, entryPrice, currentPrice, sl, tp,
+    positionValue, requiredMargin, spreadCost, commission,
+    grossPnl, netPnl, rrRatio, breakeven,
+  };
+}
+
+function recalcAccount(positions: Position[], balance: number) {
+  const totalMargin = positions.reduce((sum, p) => sum + p.requiredMargin, 0);
+  const totalNetPnl = positions.reduce((sum, p) => sum + p.netPnl, 0);
+  const equity = balance + totalNetPnl;
+  const freeMargin = equity - totalMargin;
+  const marginLevel = totalMargin > 0 ? Math.round((equity / totalMargin) * 100) : 0;
+  return { equity, freeMargin, marginLevel, totalNetPnl };
 }
 
 interface TradeStore {
-  positions: Position[];
   balance: number;
   equity: number;
   freeMargin: number;
   marginLevel: number;
   totalNetPnl: number;
   leverage: number;
+  positions: Position[];
+  closedTrades: ClosedTrade[];
+
   openPosition: (params: {
     symbol: string;
     direction: "BUY" | "SELL";
@@ -40,139 +106,162 @@ interface TradeStore {
     tp: number;
   }) => void;
   closePosition: (id: string) => void;
+  closeAllPositions: () => void;
   updatePrices: (symbol: string, price: number) => void;
-  updateSlTp: (id: string, sl: number, tp: number) => void;
+  updateSLTP: (id: string, sl: number, tp: number) => void;
   setLeverage: (leverage: number) => void;
+  resetAccount: () => void;
 }
 
-const CONTRACT_SIZE = 1;
-const SPREAD_PCT = 0.0001;
-const COMMISSION_PCT = 0.0005;
+const INITIAL_BALANCE = 10000;
 
-function calcPosition(
-  direction: "BUY" | "SELL",
-  lots: number,
-  entryPrice: number,
-  currentPrice: number,
-  sl: number,
-  tp: number,
-  leverage: number
-) {
-  const positionValue = lots * CONTRACT_SIZE * entryPrice;
-  const requiredMargin = positionValue / leverage;
-  const spreadCost = SPREAD_PCT * lots * CONTRACT_SIZE * entryPrice;
-  const commission = COMMISSION_PCT * positionValue;
+export const useTradeStore = create<TradeStore>()(
+  persist(
+    (set, get) => ({
+      balance: INITIAL_BALANCE,
+      equity: INITIAL_BALANCE,
+      freeMargin: INITIAL_BALANCE,
+      marginLevel: 0,
+      totalNetPnl: 0,
+      leverage: 10,
+      positions: [],
+      closedTrades: [],
 
-  const grossPnl = direction === "BUY"
-    ? lots * CONTRACT_SIZE * (currentPrice - entryPrice)
-    : lots * CONTRACT_SIZE * (entryPrice - currentPrice);
+      openPosition: ({ symbol, direction, lots, entryPrice, sl, tp }) => {
+        const { positions, balance, leverage } = get();
+        const calc = calcPosition(symbol, direction, lots, entryPrice, entryPrice, sl, tp, leverage);
+        const newPos: Position = {
+          ...calc,
+          id: Date.now().toString(),
+          openedAt: Date.now(),
+        };
+        const updated = [...positions, newPos];
+        const account = recalcAccount(updated, balance);
+        set({ positions: updated, ...account });
+      },
 
-  const netPnl = parseFloat((grossPnl - spreadCost - commission).toFixed(2));
+      closePosition: (id) => {
+        const { positions, balance, closedTrades } = get();
+        const pos = positions.find(p => p.id === id);
+        if (!pos) return;
 
-  const slDistance = direction === "BUY"
-    ? entryPrice - sl
-    : sl - entryPrice;
-  const tpDistance = direction === "BUY"
-    ? tp - entryPrice
-    : entryPrice - tp;
-  const rrRatio = sl > 0 && tp > 0 && slDistance > 0
-    ? parseFloat((tpDistance / slDistance).toFixed(2))
-    : null;
+        const closed: ClosedTrade = {
+          id: pos.id,
+          symbol: pos.symbol,
+          direction: pos.direction,
+          lots: pos.lots,
+          entryPrice: pos.entryPrice,
+          exitPrice: pos.currentPrice,
+          sl: pos.sl,
+          tp: pos.tp,
+          grossPnl: pos.grossPnl,
+          netPnl: pos.netPnl,
+          spreadCost: pos.spreadCost,
+          commission: pos.commission,
+          rrRatio: pos.rrRatio,
+          openedAt: pos.openedAt,
+          closedAt: Date.now(),
+        };
 
-  const breakeven = direction === "BUY"
-    ? entryPrice + (spreadCost + commission) / (lots * CONTRACT_SIZE)
-    : entryPrice - (spreadCost + commission) / (lots * CONTRACT_SIZE);
+        const updated = positions.filter(p => p.id !== id);
+        const newBalance = parseFloat((balance + pos.netPnl).toFixed(2));
+        const account = recalcAccount(updated, newBalance);
 
-  return {
-    positionValue: parseFloat(positionValue.toFixed(2)),
-    requiredMargin: parseFloat(requiredMargin.toFixed(2)),
-    spreadCost: parseFloat(spreadCost.toFixed(2)),
-    commission: parseFloat(commission.toFixed(2)),
-    grossPnl: parseFloat(grossPnl.toFixed(2)),
-    netPnl,
-    rrRatio,
-    breakeven: parseFloat(breakeven.toFixed(2)),
-  };
-}
+        set({
+          positions: updated,
+          balance: newBalance,
+          closedTrades: [closed, ...closedTrades],
+          ...account,
+        });
 
-function recalcAccount(positions: Position[], balance: number) {
-  const totalNetPnl = parseFloat(positions.reduce((sum, p) => sum + p.netPnl, 0).toFixed(2));
-  const equity = parseFloat((balance + totalNetPnl).toFixed(2));
-  const totalMargin = positions.reduce((sum, p) => sum + p.requiredMargin, 0);
-  const freeMargin = parseFloat((equity - totalMargin).toFixed(2));
-  const marginLevel = totalMargin > 0
-    ? parseFloat(((equity / totalMargin) * 100).toFixed(2))
-    : 0;
-  return { totalNetPnl, equity, freeMargin, marginLevel };
-}
+        // Update journal entry with exit data
+        try {
+          import("@/store/journalStore").then(({ useJournalStore }) => {
+            const { entries, updateEntry } = useJournalStore.getState();
+            const journalEntry = entries.find(
+              e => e.symbol === pos.symbol && e.pnl === undefined
+            );
+            if (journalEntry) {
+              updateEntry(journalEntry.id, {
+                exitPrice: pos.currentPrice,
+                pnl: pos.netPnl,
+              });
+            }
+          });
+        } catch {}
+      },
 
-export const useTradeStore = create<TradeStore>((set, get) => ({
-  positions: [],
-  balance: 10000,
-  equity: 10000,
-  freeMargin: 10000,
-  marginLevel: 0,
-  totalNetPnl: 0,
-  leverage: 10,
+      closeAllPositions: () => {
+        const { positions } = get();
+        positions.forEach(p => get().closePosition(p.id));
+      },
 
-  openPosition: ({ symbol, direction, lots, entryPrice, sl, tp }) => {
-    const { leverage, balance, positions } = get();
-    const calc = calcPosition(direction, lots, entryPrice, entryPrice, sl, tp, leverage);
-    const newPos: Position = {
-      id: Date.now().toString(),
-      symbol, direction, lots,
-      contractSize: CONTRACT_SIZE,
-      entryPrice, currentPrice: entryPrice,
-      sl, tp, leverage,
-      openTime: new Date(),
-      ...calc,
-    };
-    const updated = [...positions, newPos];
-    const account = recalcAccount(updated, balance);
-    set({ positions: updated, ...account });
-  },
+      updatePrices: (symbol, price) => {
+        const { positions, balance, leverage } = get();
+        const updated = positions.map(p => {
+          if (p.symbol !== symbol) return p;
+          const calc = calcPosition(
+            p.symbol, p.direction, p.lots,
+            p.entryPrice, price, p.sl, p.tp, leverage
+          );
+          return { ...p, ...calc, currentPrice: price };
+        });
+        const account = recalcAccount(updated, balance);
+        set({ positions: updated, ...account });
+      },
 
-  closePosition: (id) => {
-    const { positions, balance } = get();
-    const pos = positions.find(p => p.id === id);
-    if (!pos) return;
-    const updated = positions.filter(p => p.id !== id);
-    const newBalance = parseFloat((balance + pos.netPnl).toFixed(2));
-    const account = recalcAccount(updated, newBalance);
-    set({ positions: updated, balance: newBalance, ...account });
+      updateSLTP: (id, sl, tp) => {
+        const { positions, balance, leverage } = get();
+        const updated = positions.map(p => {
+          if (p.id !== id) return p;
+          const calc = calcPosition(
+            p.symbol, p.direction, p.lots,
+            p.entryPrice, p.currentPrice, sl, tp, leverage
+          );
+          return { ...p, ...calc, sl, tp };
+        });
+        const account = recalcAccount(updated, balance);
+        set({ positions: updated, ...account });
+      },
 
-    // Update journal entry with final P&L
-    const { entries, updateEntry } = useJournalStore.getState();
-    const journalEntry = entries.find(e => e.symbol === pos.symbol && !e.pnl);
-    if (journalEntry) {
-      updateEntry(journalEntry.id, {
-        exitPrice: pos.currentPrice,
-        pnl: pos.netPnl,
-      });
+      setLeverage: (leverage) => {
+        const { positions, balance } = get();
+        const updated = positions.map(p => ({
+          ...p,
+          requiredMargin: (p.lots * CONTRACT_SIZE * p.entryPrice) / leverage,
+        }));
+        const account = recalcAccount(updated, balance);
+        set({ leverage, positions: updated, ...account });
+      },
+
+      resetAccount: () => {
+        set({
+          balance: INITIAL_BALANCE,
+          equity: INITIAL_BALANCE,
+          freeMargin: INITIAL_BALANCE,
+          marginLevel: 0,
+          totalNetPnl: 0,
+          positions: [],
+          closedTrades: [],
+        });
+      },
+    }),
+    {
+      name: "trading",
+      storage: createJSONStorage(() => getUserScopedStorage("trading")),
+      partialize: (state) => ({
+        balance: state.balance,
+        leverage: state.leverage,
+        positions: state.positions,
+        closedTrades: state.closedTrades,
+      }),
+      onRehydrateStorage: () => (state) => {
+        // Recalculate account after restore
+        if (state && state.positions) {
+          const account = recalcAccount(state.positions, state.balance);
+          Object.assign(state, account);
+        }
+      },
     }
-  },
-
-  updatePrices: (symbol, price) => {
-    const { positions, balance, leverage } = get();
-    const updated = positions.map(p => {
-      if (p.symbol !== symbol) return p;
-      const calc = calcPosition(p.direction, p.lots, p.entryPrice, price, p.sl, p.tp, leverage);
-      return { ...p, currentPrice: price, ...calc };
-    });
-    const account = recalcAccount(updated, balance);
-    set({ positions: updated, ...account });
-  },
-
-  updateSlTp: (id, sl, tp) => {
-    const { positions, balance, leverage } = get();
-    const updated = positions.map(p => {
-      if (p.id !== id) return p;
-      const calc = calcPosition(p.direction, p.lots, p.entryPrice, p.currentPrice, sl, tp, leverage);
-      return { ...p, sl, tp, ...calc };
-    });
-    const account = recalcAccount(updated, balance);
-    set({ positions: updated, ...account });
-  },
-
-  setLeverage: (leverage) => set({ leverage }),
-}));
+  )
+);

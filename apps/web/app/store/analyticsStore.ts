@@ -1,6 +1,34 @@
 import { create } from "zustand";
-import { useJournalStore } from "./journalStore";
-import { useTradeStore } from "./tradeStore";
+import { useJournalStore } from "@/store/journalStore";
+
+export interface EquityPoint {
+  time: string;
+  equity: number;
+}
+
+export interface SessionBreakdown {
+  session: string;
+  trades: number;
+  wins: number;
+  winRate: number;
+  pnl: number;
+}
+
+export interface StrategyBreakdown {
+  strategy: string;
+  trades: number;
+  wins: number;
+  winRate: number;
+  pnl: number;
+}
+
+export interface EmotionBreakdown {
+  emotion: string;
+  trades: number;
+  wins: number;
+  winRate: number;
+  pnl: number;
+}
 
 export interface AnalyticsData {
   totalTrades: number;
@@ -9,172 +37,172 @@ export interface AnalyticsData {
   profitFactor: number;
   avgRR: number;
   totalPnl: number;
-  grossProfit: number;
-  grossLoss: number;
+  maxDrawdown: number;
+  currentStreak: number;
+  streakType: "win" | "loss";
   avgWin: number;
   avgLoss: number;
   bestTrade: number;
   worstTrade: number;
-  maxDrawdown: number;
-  currentStreak: number;
-  streakType: "win" | "loss" | "none";
-  equityCurve: { time: string; equity: number }[];
-  sessionBreakdown: {
-    session: string;
-    trades: number;
-    winRate: number;
-    pnl: number;
-  }[];
-  strategyBreakdown: {
-    strategy: string;
-    trades: number;
-    winRate: number;
-    pnl: number;
-  }[];
-  emotionBreakdown: {
-    emotion: string;
-    trades: number;
-    winRate: number;
-    pnl: number;
-  }[];
-  dayBreakdown: {
-    day: string;
-    trades: number;
-    pnl: number;
-  }[];
+  equityCurve: EquityPoint[];
+  sessionBreakdown: SessionBreakdown[];
+  strategyBreakdown: StrategyBreakdown[];
+  emotionBreakdown: EmotionBreakdown[];
 }
 
 export function calculateAnalytics(): AnalyticsData {
-  const { entries } = useJournalStore.getState();
-  const { balance } = useTradeStore.getState();
+  const entries = useJournalStore.getState().entries.filter(
+    (e) => e.pnl !== undefined
+  );
 
-  const closedTrades = entries.filter(e => e.pnl !== undefined);
-  const totalTrades = closedTrades.length;
+  const empty: AnalyticsData = {
+    totalTrades: 0,
+    winRate: 0,
+    lossRate: 0,
+    profitFactor: 0,
+    avgRR: 0,
+    totalPnl: 0,
+    maxDrawdown: 0,
+    currentStreak: 0,
+    streakType: "win",
+    avgWin: 0,
+    avgLoss: 0,
+    bestTrade: 0,
+    worstTrade: 0,
+    equityCurve: [{ time: "Start", equity: 10000 }],
+    sessionBreakdown: [],
+    strategyBreakdown: [],
+    emotionBreakdown: [],
+  };
 
-  if (totalTrades === 0) {
-    return {
-      totalTrades: 0, winRate: 0, lossRate: 0, profitFactor: 0,
-      avgRR: 0, totalPnl: 0, grossProfit: 0, grossLoss: 0,
-      avgWin: 0, avgLoss: 0, bestTrade: 0, worstTrade: 0,
-      maxDrawdown: 0, currentStreak: 0, streakType: "none",
-      equityCurve: [{ time: "Start", equity: balance }],
-      sessionBreakdown: [], strategyBreakdown: [],
-      emotionBreakdown: [], dayBreakdown: [],
-    };
-  }
+  if (entries.length === 0) return empty;
 
-  const wins = closedTrades.filter(e => (e.pnl || 0) > 0);
-  const losses = closedTrades.filter(e => (e.pnl || 0) <= 0);
-  const grossProfit = wins.reduce((s, e) => s + (e.pnl || 0), 0);
-  const grossLoss = Math.abs(losses.reduce((s, e) => s + (e.pnl || 0), 0));
-  const totalPnl = grossProfit - grossLoss;
+  // Sort by timestamp ascending
+  const sorted = [...entries].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+  const totalTrades = sorted.length;
+  const wins = sorted.filter(e => (e.pnl || 0) > 0);
+  const losses = sorted.filter(e => (e.pnl || 0) <= 0);
   const winRate = totalTrades > 0 ? (wins.length / totalTrades) * 100 : 0;
   const lossRate = 100 - winRate;
-  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 999 : 0;
+
+  const grossProfit = wins.reduce((sum, e) => sum + (e.pnl || 0), 0);
+  const grossLoss = Math.abs(losses.reduce((sum, e) => sum + (e.pnl || 0), 0));
+  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : wins.length > 0 ? 999 : 0;
+
   const avgWin = wins.length > 0 ? grossProfit / wins.length : 0;
   const avgLoss = losses.length > 0 ? grossLoss / losses.length : 0;
-  const avgRR = avgLoss > 0 ? avgWin / avgLoss : 0;
-  const bestTrade = Math.max(...closedTrades.map(e => e.pnl || 0));
-  const worstTrade = Math.min(...closedTrades.map(e => e.pnl || 0));
+  const totalPnl = sorted.reduce((sum, e) => sum + (e.pnl || 0), 0);
+
+  const validRR = sorted.filter(e => e.rrRatio && e.rrRatio > 0);
+  const avgRR = validRR.length > 0
+    ? validRR.reduce((sum, e) => sum + (e.rrRatio || 0), 0) / validRR.length
+    : 0;
+
+  const bestTrade = Math.max(...sorted.map(e => e.pnl || 0));
+  const worstTrade = Math.min(...sorted.map(e => e.pnl || 0));
 
   // Equity curve
-  let equity = balance - totalPnl;
-  const equityCurve = [{ time: "Start", equity }];
-  [...closedTrades].reverse().forEach((e, i) => {
-    equity += (e.pnl || 0);
+  let equity = 10000;
+  const equityCurve: EquityPoint[] = [{ time: "Start", equity }];
+  let peak = equity;
+  let maxDrawdown = 0;
+  sorted.forEach(e => {
+    equity += e.pnl || 0;
+    const dd = ((peak - equity) / peak) * 100;
+    if (dd > maxDrawdown) maxDrawdown = dd;
+    if (equity > peak) peak = equity;
+    const date = new Date(e.timestamp || Date.now());
     equityCurve.push({
-      time: new Date(e.timestamp).toLocaleDateString(),
+      time: date.toLocaleDateString(undefined, { month: "numeric", day: "numeric", year: "numeric" }),
       equity: parseFloat(equity.toFixed(2)),
     });
   });
 
-  // Max drawdown
-  let peak = equityCurve[0].equity;
-  let maxDrawdown = 0;
-  equityCurve.forEach(p => {
-    if (p.equity > peak) peak = p.equity;
-    const dd = ((peak - p.equity) / peak) * 100;
-    if (dd > maxDrawdown) maxDrawdown = dd;
-  });
-
   // Streak
   let currentStreak = 0;
-  let streakType: "win" | "loss" | "none" = "none";
-  for (const e of closedTrades) {
-    if ((e.pnl || 0) > 0) {
-      if (streakType === "win") currentStreak++;
-      else { streakType = "win"; currentStreak = 1; }
+  let streakType: "win" | "loss" = "win";
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const pnl = sorted[i].pnl || 0;
+    if (i === sorted.length - 1) {
+      streakType = pnl > 0 ? "win" : "loss";
+      currentStreak = 1;
     } else {
-      if (streakType === "loss") currentStreak++;
-      else { streakType = "loss"; currentStreak = 1; }
+      const isWin = pnl > 0;
+      if ((isWin && streakType === "win") || (!isWin && streakType === "loss")) {
+        currentStreak++;
+      } else break;
     }
   }
 
   // Session breakdown
-  const sessions = ["london", "newyork", "asian", "sydney"];
-  const sessionBreakdown = sessions.map(session => {
-    const trades = closedTrades.filter(e => e.session === session);
-    const w = trades.filter(e => (e.pnl || 0) > 0);
-    return {
-      session,
-      trades: trades.length,
-      winRate: trades.length > 0 ? (w.length / trades.length) * 100 : 0,
-      pnl: trades.reduce((s, e) => s + (e.pnl || 0), 0),
-    };
-  }).filter(s => s.trades > 0);
+  const sessionMap: Record<string, { trades: number; wins: number; pnl: number }> = {};
+  sorted.forEach(e => {
+    if (!sessionMap[e.session]) sessionMap[e.session] = { trades: 0, wins: 0, pnl: 0 };
+    sessionMap[e.session].trades++;
+    if ((e.pnl || 0) > 0) sessionMap[e.session].wins++;
+    sessionMap[e.session].pnl += e.pnl || 0;
+  });
+  const sessionBreakdown: SessionBreakdown[] = Object.entries(sessionMap).map(([session, d]) => ({
+    session,
+    trades: d.trades,
+    wins: d.wins,
+    winRate: (d.wins / d.trades) * 100,
+    pnl: parseFloat(d.pnl.toFixed(2)),
+  }));
 
   // Strategy breakdown
-  const strategyMap = new Map<string, { trades: number; wins: number; pnl: number }>();
-  closedTrades.forEach(e => {
-    const s = e.strategy || "other";
-    const existing = strategyMap.get(s) || { trades: 0, wins: 0, pnl: 0 };
-    strategyMap.set(s, {
-      trades: existing.trades + 1,
-      wins: existing.wins + ((e.pnl || 0) > 0 ? 1 : 0),
-      pnl: existing.pnl + (e.pnl || 0),
-    });
+  const strategyMap: Record<string, { trades: number; wins: number; pnl: number }> = {};
+  sorted.forEach(e => {
+    const k = e.strategy || "other";
+    if (!strategyMap[k]) strategyMap[k] = { trades: 0, wins: 0, pnl: 0 };
+    strategyMap[k].trades++;
+    if ((e.pnl || 0) > 0) strategyMap[k].wins++;
+    strategyMap[k].pnl += e.pnl || 0;
   });
-  const strategyBreakdown = Array.from(strategyMap.entries()).map(([strategy, data]) => ({
+  const strategyBreakdown: StrategyBreakdown[] = Object.entries(strategyMap).map(([strategy, d]) => ({
     strategy,
-    trades: data.trades,
-    winRate: (data.wins / data.trades) * 100,
-    pnl: data.pnl,
+    trades: d.trades,
+    wins: d.wins,
+    winRate: (d.wins / d.trades) * 100,
+    pnl: parseFloat(d.pnl.toFixed(2)),
   }));
 
   // Emotion breakdown
-  const emotionMap = new Map<string, { trades: number; wins: number; pnl: number }>();
-  closedTrades.forEach(e => {
-    const em = e.emotion || "neutral";
-    const existing = emotionMap.get(em) || { trades: 0, wins: 0, pnl: 0 };
-    emotionMap.set(em, {
-      trades: existing.trades + 1,
-      wins: existing.wins + ((e.pnl || 0) > 0 ? 1 : 0),
-      pnl: existing.pnl + (e.pnl || 0),
-    });
+  const emotionMap: Record<string, { trades: number; wins: number; pnl: number }> = {};
+  sorted.forEach(e => {
+    const k = e.emotion || "neutral";
+    if (!emotionMap[k]) emotionMap[k] = { trades: 0, wins: 0, pnl: 0 };
+    emotionMap[k].trades++;
+    if ((e.pnl || 0) > 0) emotionMap[k].wins++;
+    emotionMap[k].pnl += e.pnl || 0;
   });
-  const emotionBreakdown = Array.from(emotionMap.entries()).map(([emotion, data]) => ({
+  const emotionBreakdown: EmotionBreakdown[] = Object.entries(emotionMap).map(([emotion, d]) => ({
     emotion,
-    trades: data.trades,
-    winRate: (data.wins / data.trades) * 100,
-    pnl: data.pnl,
+    trades: d.trades,
+    wins: d.wins,
+    winRate: (d.wins / d.trades) * 100,
+    pnl: parseFloat(d.pnl.toFixed(2)),
   }));
 
-  // Day breakdown
-  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  const dayMap = new Map<string, { trades: number; pnl: number }>();
-  closedTrades.forEach(e => {
-    const day = days[new Date(e.timestamp).getDay()];
-    const existing = dayMap.get(day) || { trades: 0, pnl: 0 };
-    dayMap.set(day, { trades: existing.trades + 1, pnl: existing.pnl + (e.pnl || 0) });
-  });
-  const dayBreakdown = Array.from(dayMap.entries()).map(([day, data]) => ({ day, ...data }));
-
   return {
-    totalTrades, winRate, lossRate, profitFactor, avgRR,
-    totalPnl, grossProfit, grossLoss, avgWin, avgLoss,
-    bestTrade, worstTrade, maxDrawdown: parseFloat(maxDrawdown.toFixed(2)),
-    currentStreak, streakType, equityCurve,
-    sessionBreakdown, strategyBreakdown, emotionBreakdown, dayBreakdown,
+    totalTrades,
+    winRate: parseFloat(winRate.toFixed(1)),
+    lossRate: parseFloat(lossRate.toFixed(1)),
+    profitFactor: parseFloat(profitFactor.toFixed(2)),
+    avgRR: parseFloat(avgRR.toFixed(2)),
+    totalPnl: parseFloat(totalPnl.toFixed(2)),
+    maxDrawdown: parseFloat(maxDrawdown.toFixed(2)),
+    currentStreak,
+    streakType,
+    avgWin: parseFloat(avgWin.toFixed(2)),
+    avgLoss: parseFloat(avgLoss.toFixed(2)),
+    bestTrade: parseFloat(bestTrade.toFixed(2)),
+    worstTrade: parseFloat(worstTrade.toFixed(2)),
+    equityCurve,
+    sessionBreakdown,
+    strategyBreakdown,
+    emotionBreakdown,
   };
 }
 
@@ -185,5 +213,7 @@ interface AnalyticsStore {
 
 export const useAnalyticsStore = create<AnalyticsStore>((set) => ({
   data: null,
-  refresh: () => set({ data: calculateAnalytics() }),
+  refresh: () => {
+    set({ data: calculateAnalytics() });
+  },
 }));

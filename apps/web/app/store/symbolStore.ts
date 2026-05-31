@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { getUserScopedStorage } from "@/lib/persistence/storage";
 
 export interface Symbol {
   id: string;
@@ -23,12 +25,12 @@ export const SYMBOLS: Symbol[] = [
   { id: "GBPUSD", label: "GBP/USD", description: "Pound / US Dollar", assetClass: "forex", tradingViewSymbol: "FX:GBPUSD", emoji: "£", category: "Forex" },
   { id: "USDJPY", label: "USD/JPY", description: "Dollar / Yen", assetClass: "forex", tradingViewSymbol: "FX:USDJPY", emoji: "¥", category: "Forex" },
   { id: "USDCHF", label: "USD/CHF", description: "Dollar / Swiss Franc", assetClass: "forex", tradingViewSymbol: "FX:USDCHF", emoji: "₣", category: "Forex" },
-  { id: "USDCAD", label: "USD/CAD", description: "Dollar / Canadian Dollar", assetClass: "forex", tradingViewSymbol: "FX:USDCAD", emoji: "C$", category: "Forex" },
+  { id: "USDCAD", label: "USD/CAD", description: "Dollar / Canadian", assetClass: "forex", tradingViewSymbol: "FX:USDCAD", emoji: "C$", category: "Forex" },
   { id: "AUDUSD", label: "AUD/USD", description: "Australian / US Dollar", assetClass: "forex", tradingViewSymbol: "FX:AUDUSD", emoji: "A$", category: "Forex" },
   { id: "NZDUSD", label: "NZD/USD", description: "New Zealand / US Dollar", assetClass: "forex", tradingViewSymbol: "FX:NZDUSD", emoji: "N$", category: "Forex" },
   { id: "EURGBP", label: "EUR/GBP", description: "Euro / British Pound", assetClass: "forex", tradingViewSymbol: "FX:EURGBP", emoji: "€£", category: "Forex" },
-  { id: "EURJPY", label: "EUR/JPY", description: "Euro / Japanese Yen", assetClass: "forex", tradingViewSymbol: "FX:EURJPY", emoji: "€¥", category: "Forex" },
-  { id: "GBPJPY", label: "GBP/JPY", description: "Pound / Japanese Yen", assetClass: "forex", tradingViewSymbol: "FX:GBPJPY", emoji: "£¥", category: "Forex" },
+  { id: "EURJPY", label: "EUR/JPY", description: "Euro / Yen", assetClass: "forex", tradingViewSymbol: "FX:EURJPY", emoji: "€¥", category: "Forex" },
+  { id: "GBPJPY", label: "GBP/JPY", description: "Pound / Yen", assetClass: "forex", tradingViewSymbol: "FX:GBPJPY", emoji: "£¥", category: "Forex" },
   { id: "AUDJPY", label: "AUD/JPY", description: "Australian / Yen", assetClass: "forex", tradingViewSymbol: "FX:AUDJPY", emoji: "A¥", category: "Forex" },
   { id: "CADJPY", label: "CAD/JPY", description: "Canadian / Yen", assetClass: "forex", tradingViewSymbol: "FX:CADJPY", emoji: "C¥", category: "Forex" },
   // Commodities
@@ -53,10 +55,22 @@ export const SYMBOL_MAP = Object.fromEntries(SYMBOLS.map(s => [s.id, s]));
 
 interface SymbolStore {
   activeSymbol: Symbol;
+  lastInterval: string;
   setActiveSymbol: (symbol: Symbol) => void;
+  setLastInterval: (interval: string) => void;
 }
 
-export const useSymbolStore = create<SymbolStore>((set) => ({
-  activeSymbol: SYMBOLS[0],
-  setActiveSymbol: (symbol) => set({ activeSymbol: symbol }),
-}));
+export const useSymbolStore = create<SymbolStore>()(
+  persist(
+    (set) => ({
+      activeSymbol: SYMBOLS[0],
+      lastInterval: "60",
+      setActiveSymbol: (symbol) => set({ activeSymbol: symbol }),
+      setLastInterval: (interval) => set({ lastInterval: interval }),
+    }),
+    {
+      name: "symbol",
+      storage: createJSONStorage(() => getUserScopedStorage("symbol")),
+    }
+  )
+);

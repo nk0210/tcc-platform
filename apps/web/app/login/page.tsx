@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
+import { rehydrateAllStores } from "@/lib/persistence/storage";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -28,7 +29,13 @@ export default function LoginPage() {
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
+
+      // Set auth first (this updates localStorage tcc:auth)
       setAuth(data.user, data.token);
+
+      // Then rehydrate all stores with the new userId scoping
+      rehydrateAllStores();
+
       router.push("/");
     } catch (err: any) {
       setError(err.message);
@@ -39,26 +46,19 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center relative overflow-hidden">
-
-      {/* Background effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-green-500/5 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl" />
       </div>
 
       <div className="relative w-full max-w-md px-4">
-
-        {/* Logo */}
         <div className="text-center mb-8">
           <h1 className="text-5xl font-bold text-green-400 tracking-widest mb-2">TCC</h1>
           <p className="text-white/40 text-sm tracking-widest uppercase">Trader's Command Center</p>
           <p className="text-white/20 text-xs mt-2">The world's first platform where trading is a sport</p>
         </div>
 
-        {/* Card */}
         <div className="glass border border-white/10 rounded-2xl p-8">
-
-          {/* Tabs */}
           <div className="flex mb-6 bg-white/5 rounded-xl p-1">
             <button onClick={() => setIsRegister(false)}
               className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition ${!isRegister ? "bg-green-500/20 text-green-400" : "text-white/40 hover:text-white/60"}`}>
@@ -96,32 +96,25 @@ export default function LoginPage() {
                 onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 text-sm focus:outline-none focus:border-green-400/50 transition" />
             </div>
-
             {error && (
               <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
                 <p className="text-red-400 text-xs">{error}</p>
               </div>
             )}
-
             <button onClick={handleSubmit} disabled={loading}
               className="mt-2 w-full bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 py-3.5 rounded-xl text-sm font-semibold transition disabled:opacity-50">
               {loading ? "Please wait..." : isRegister ? "Create Account" : "Enter the Platform"}
             </button>
           </div>
 
-          {/* Demo hint */}
           <div className="mt-6 pt-4 border-t border-white/5">
             <p className="text-white/20 text-xs text-center">Demo version · Paper trading · No real money</p>
+            <p className="text-white/10 text-xs text-center mt-1">Owner access: set localStorage 'tcc:dev:role' = 'owner'</p>
           </div>
         </div>
 
-        {/* Features */}
         <div className="mt-6 grid grid-cols-3 gap-3">
-          {[
-            { emoji: "📊", label: "Live Charts" },
-            { emoji: "🤖", label: "AI Journal" },
-            { emoji: "🏆", label: "Competitions" },
-          ].map(f => (
+          {[{ emoji: "📊", label: "Live Charts" }, { emoji: "🤖", label: "AI Journal" }, { emoji: "🏆", label: "Competitions" }].map(f => (
             <div key={f.label} className="glass border border-white/5 rounded-xl p-3 text-center">
               <p className="text-xl mb-1">{f.emoji}</p>
               <p className="text-white/30 text-xs">{f.label}</p>

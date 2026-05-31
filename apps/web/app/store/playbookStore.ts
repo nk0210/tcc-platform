@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { getUserScopedStorage } from "@/lib/persistence/storage";
 
 export interface ChecklistItem {
   id: string;
@@ -33,16 +35,14 @@ export interface Playbook {
   adherenceScore: number;
   totalChecks: number;
   passedChecks: number;
-  createdAt: Date;
+  createdAt: number;
 }
 
 const defaultPlaybook: Playbook = {
   id: "pb1",
   name: "My SMC Playbook",
   description: "Smart Money Concepts playbook for XAUUSD. London and NY sessions only.",
-  asset: "XAUUSD",
-  timeframe: "H1",
-  strategy: "SMC",
+  asset: "XAUUSD", timeframe: "H1", strategy: "SMC",
   entryRules: [
     { id: "e1", category: "entry", rule: "HTF bias confirmed before entry" },
     { id: "e2", category: "entry", rule: "BOS or CHOCH confirmed on entry TF" },
@@ -81,15 +81,9 @@ const defaultPlaybook: Playbook = {
     { id: "c9", text: "Emotion check — am I calm?", required: false, checked: false },
     { id: "c10", text: "No recent losses affecting decision", required: false, checked: false },
   ],
-  maxDailyLoss: 3,
-  maxTradesPerDay: 5,
-  maxLotSize: 0.5,
-  minRR: 1.5,
-  active: true,
-  adherenceScore: 78,
-  totalChecks: 24,
-  passedChecks: 19,
-  createdAt: new Date("2026-01-01"),
+  maxDailyLoss: 3, maxTradesPerDay: 5, maxLotSize: 0.5, minRR: 1.5,
+  active: true, adherenceScore: 0, totalChecks: 0, passedChecks: 0,
+  createdAt: Date.now(),
 };
 
 interface PlaybookStore {
@@ -103,60 +97,68 @@ interface PlaybookStore {
   updatePlaybook: (playbookId: string, updates: Partial<Playbook>) => void;
 }
 
-export const usePlaybookStore = create<PlaybookStore>((set) => ({
-  playbooks: [defaultPlaybook],
-  activePlaybookId: "pb1",
+export const usePlaybookStore = create<PlaybookStore>()(
+  persist(
+    (set) => ({
+      playbooks: [defaultPlaybook],
+      activePlaybookId: "pb1",
 
-  toggleChecklistItem: (playbookId, itemId) =>
-    set((state) => ({
-      playbooks: state.playbooks.map(pb => pb.id !== playbookId ? pb : {
-        ...pb,
-        checklist: pb.checklist.map(item => item.id === itemId ? { ...item, checked: !item.checked } : item),
-      }),
-    })),
+      toggleChecklistItem: (playbookId, itemId) =>
+        set((state) => ({
+          playbooks: state.playbooks.map(pb => pb.id !== playbookId ? pb : {
+            ...pb,
+            checklist: pb.checklist.map(item => item.id === itemId ? { ...item, checked: !item.checked } : item),
+          }),
+        })),
 
-  resetChecklist: (playbookId) =>
-    set((state) => ({
-      playbooks: state.playbooks.map(pb => pb.id !== playbookId ? pb : {
-        ...pb,
-        checklist: pb.checklist.map(item => ({ ...item, checked: false })),
-      }),
-    })),
+      resetChecklist: (playbookId) =>
+        set((state) => ({
+          playbooks: state.playbooks.map(pb => pb.id !== playbookId ? pb : {
+            ...pb,
+            checklist: pb.checklist.map(item => ({ ...item, checked: false })),
+          }),
+        })),
 
-  addRule: (playbookId, category, rule) =>
-    set((state) => ({
-      playbooks: state.playbooks.map(pb => {
-        if (pb.id !== playbookId) return pb;
-        const newRule: PlaybookRule = { id: Date.now().toString(), category, rule };
-        const key = `${category}Rules` as keyof Playbook;
-        return { ...pb, [key]: [...(pb[key] as PlaybookRule[]), newRule] };
-      }),
-    })),
+      addRule: (playbookId, category, rule) =>
+        set((state) => ({
+          playbooks: state.playbooks.map(pb => {
+            if (pb.id !== playbookId) return pb;
+            const newRule: PlaybookRule = { id: Date.now().toString(), category, rule };
+            const key = `${category}Rules` as keyof Playbook;
+            return { ...pb, [key]: [...(pb[key] as PlaybookRule[]), newRule] };
+          }),
+        })),
 
-  deleteRule: (playbookId, ruleId) =>
-    set((state) => ({
-      playbooks: state.playbooks.map(pb => {
-        if (pb.id !== playbookId) return pb;
-        return {
-          ...pb,
-          entryRules: pb.entryRules.filter(r => r.id !== ruleId),
-          exitRules: pb.exitRules.filter(r => r.id !== ruleId),
-          riskRules: pb.riskRules.filter(r => r.id !== ruleId),
-          psychologyRules: pb.psychologyRules.filter(r => r.id !== ruleId),
-        };
-      }),
-    })),
+      deleteRule: (playbookId, ruleId) =>
+        set((state) => ({
+          playbooks: state.playbooks.map(pb => {
+            if (pb.id !== playbookId) return pb;
+            return {
+              ...pb,
+              entryRules: pb.entryRules.filter(r => r.id !== ruleId),
+              exitRules: pb.exitRules.filter(r => r.id !== ruleId),
+              riskRules: pb.riskRules.filter(r => r.id !== ruleId),
+              psychologyRules: pb.psychologyRules.filter(r => r.id !== ruleId),
+            };
+          }),
+        })),
 
-  addChecklistItem: (playbookId, text, required) =>
-    set((state) => ({
-      playbooks: state.playbooks.map(pb => pb.id !== playbookId ? pb : {
-        ...pb,
-        checklist: [...pb.checklist, { id: Date.now().toString(), text, required, checked: false }],
-      }),
-    })),
+      addChecklistItem: (playbookId, text, required) =>
+        set((state) => ({
+          playbooks: state.playbooks.map(pb => pb.id !== playbookId ? pb : {
+            ...pb,
+            checklist: [...pb.checklist, { id: Date.now().toString(), text, required, checked: false }],
+          }),
+        })),
 
-  updatePlaybook: (playbookId, updates) =>
-    set((state) => ({
-      playbooks: state.playbooks.map(pb => pb.id !== playbookId ? pb : { ...pb, ...updates }),
-    })),
-}));
+      updatePlaybook: (playbookId, updates) =>
+        set((state) => ({
+          playbooks: state.playbooks.map(pb => pb.id !== playbookId ? pb : { ...pb, ...updates }),
+        })),
+    }),
+    {
+      name: "playbook",
+      storage: createJSONStorage(() => getUserScopedStorage("playbook")),
+    }
+  )
+);

@@ -1,11 +1,13 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { getUserScopedStorage } from "@/lib/persistence/storage";
 
 export interface PriceAlert {
   id: string;
   type: "above" | "below";
   price: number;
   triggered: boolean;
-  createdAt: Date;
+  createdAt: number;
 }
 
 export interface WatchlistItem {
@@ -25,11 +27,9 @@ const defaultWatchlist: WatchlistItem[] = [
   { symbol: "BTCUSDT", label: "BTC/USDT", category: "crypto", currentPrice: 0, change24h: 0, changePct24h: 0, high24h: 0, low24h: 0, volume24h: 0, alerts: [] },
   { symbol: "ETHUSDT", label: "ETH/USDT", category: "crypto", currentPrice: 0, change24h: 0, changePct24h: 0, high24h: 0, low24h: 0, volume24h: 0, alerts: [] },
   { symbol: "SOLUSDT", label: "SOL/USDT", category: "crypto", currentPrice: 0, change24h: 0, changePct24h: 0, high24h: 0, low24h: 0, volume24h: 0, alerts: [] },
-  { symbol: "BNBUSDT", label: "BNB/USDT", category: "crypto", currentPrice: 0, change24h: 0, changePct24h: 0, high24h: 0, low24h: 0, volume24h: 0, alerts: [] },
-  { symbol: "XRPUSDT", label: "XRP/USDT", category: "crypto", currentPrice: 0, change24h: 0, changePct24h: 0, high24h: 0, low24h: 0, volume24h: 0, alerts: [] },
 ];
 
-const availableSymbols = [
+export const availableSymbols = [
   { symbol: "BTCUSDT", label: "BTC/USDT" },
   { symbol: "ETHUSDT", label: "ETH/USDT" },
   { symbol: "SOLUSDT", label: "SOL/USDT" },
@@ -55,49 +55,74 @@ interface WatchlistStore {
   triggerAlert: (symbol: string, alertId: string) => void;
 }
 
-export const useWatchlistStore = create<WatchlistStore>((set, get) => ({
-  items: defaultWatchlist,
-  availableSymbols,
+export const useWatchlistStore = create<WatchlistStore>()(
+  persist(
+    (set, get) => ({
+      items: defaultWatchlist,
+      availableSymbols,
 
-  updatePrice: (symbol, data) =>
-    set((state) => ({
-      items: state.items.map(item => item.symbol === symbol ? { ...item, ...data } : item),
-    })),
+      updatePrice: (symbol, data) =>
+        set((state) => ({
+          items: state.items.map(item =>
+            item.symbol === symbol ? { ...item, ...data } : item
+          ),
+        })),
 
-  addSymbol: (symbol, label) => {
-    if (get().items.find(i => i.symbol === symbol)) return;
-    set((state) => ({
-      items: [...state.items, { symbol, label, category: "crypto", currentPrice: 0, change24h: 0, changePct24h: 0, high24h: 0, low24h: 0, volume24h: 0, alerts: [] }],
-    }));
-  },
+      addSymbol: (symbol, label) => {
+        if (get().items.find(i => i.symbol === symbol)) return;
+        set((state) => ({
+          items: [
+            ...state.items,
+            { symbol, label, category: "crypto", currentPrice: 0, change24h: 0, changePct24h: 0, high24h: 0, low24h: 0, volume24h: 0, alerts: [] },
+          ],
+        }));
+      },
 
-  removeSymbol: (symbol) =>
-    set((state) => ({ items: state.items.filter(i => i.symbol !== symbol) })),
+      removeSymbol: (symbol) =>
+        set((state) => ({ items: state.items.filter(i => i.symbol !== symbol) })),
 
-  addAlert: (symbol, type, price) =>
-    set((state) => ({
-      items: state.items.map(item =>
-        item.symbol === symbol ? {
+      addAlert: (symbol, type, price) =>
+        set((state) => ({
+          items: state.items.map(item =>
+            item.symbol === symbol
+              ? { ...item, alerts: [...item.alerts, { id: Date.now().toString(), type, price, triggered: false, createdAt: Date.now() }] }
+              : item
+          ),
+        })),
+
+      removeAlert: (symbol, alertId) =>
+        set((state) => ({
+          items: state.items.map(item =>
+            item.symbol === symbol
+              ? { ...item, alerts: item.alerts.filter(a => a.id !== alertId) }
+              : item
+          ),
+        })),
+
+      triggerAlert: (symbol, alertId) =>
+        set((state) => ({
+          items: state.items.map(item =>
+            item.symbol === symbol
+              ? { ...item, alerts: item.alerts.map(a => a.id === alertId ? { ...a, triggered: true } : a) }
+              : item
+          ),
+        })),
+    }),
+    {
+      name: "watchlist",
+      storage: createJSONStorage(() => getUserScopedStorage("watchlist")),
+      partialize: (state) => ({
+        items: state.items.map(item => ({
           ...item,
-          alerts: [...item.alerts, { id: Date.now().toString(), type, price, triggered: false, createdAt: new Date() }],
-        } : item
-      ),
-    })),
-
-  removeAlert: (symbol, alertId) =>
-    set((state) => ({
-      items: state.items.map(item =>
-        item.symbol === symbol ? { ...item, alerts: item.alerts.filter(a => a.id !== alertId) } : item
-      ),
-    })),
-
-  triggerAlert: (symbol, alertId) =>
-    set((state) => ({
-      items: state.items.map(item =>
-        item.symbol === symbol ? {
-          ...item,
-          alerts: item.alerts.map(a => a.id === alertId ? { ...a, triggered: true } : a),
-        } : item
-      ),
-    })),
-}));
+          // Don't persist live prices — will be updated by WebSocket
+          currentPrice: 0,
+          change24h: 0,
+          changePct24h: 0,
+          high24h: 0,
+          low24h: 0,
+          volume24h: 0,
+        })),
+      }),
+    }
+  )
+);

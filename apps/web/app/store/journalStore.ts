@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { getUserScopedStorage } from "@/lib/persistence/storage";
 
 export type Emotion = "confident" | "fearful" | "greedy" | "hesitant" | "neutral" | "frustrated";
 export type Session = "london" | "newyork" | "asian" | "sydney" | "unknown";
@@ -36,7 +38,7 @@ export interface JournalEntry {
   aiAnalysis: string;
   aiLoading: boolean;
   disciplineScore?: number;
-  timestamp: Date;
+  timestamp: number; // ms timestamp for JSON safety
 }
 
 interface JournalStore {
@@ -44,6 +46,7 @@ interface JournalStore {
   addEntry: (entry: Omit<JournalEntry, "id" | "aiAnalysis" | "aiLoading" | "timestamp">) => string;
   updateAiAnalysis: (id: string, analysis: string) => void;
   updateEntry: (id: string, updates: Partial<JournalEntry>) => void;
+  deleteEntry: (id: string) => void;
 }
 
 export function detectSession(): Session {
@@ -55,34 +58,50 @@ export function detectSession(): Session {
   return "unknown";
 }
 
-export const useJournalStore = create<JournalStore>((set) => ({
-  entries: [], // No seed data — only real TCC trades
+export const useJournalStore = create<JournalStore>()(
+  persist(
+    (set) => ({
+      entries: [],
 
-  addEntry: (entry) => {
-    const id = Date.now().toString();
-    set((state) => ({
-      entries: [{
-        ...entry,
-        id,
-        aiAnalysis: "",
-        aiLoading: false,
-        timestamp: new Date(),
-      }, ...state.entries],
-    }));
-    return id;
-  },
+      addEntry: (entry) => {
+        const id = Date.now().toString();
+        set((state) => ({
+          entries: [
+            {
+              ...entry,
+              id,
+              aiAnalysis: "",
+              aiLoading: false,
+              timestamp: Date.now(),
+            },
+            ...state.entries,
+          ],
+        }));
+        return id;
+      },
 
-  updateAiAnalysis: (id, analysis) =>
-    set((state) => ({
-      entries: state.entries.map(e =>
-        e.id === id ? { ...e, aiAnalysis: analysis, aiLoading: false } : e
-      ),
-    })),
+      updateAiAnalysis: (id, analysis) =>
+        set((state) => ({
+          entries: state.entries.map((e) =>
+            e.id === id ? { ...e, aiAnalysis: analysis, aiLoading: false } : e
+          ),
+        })),
 
-  updateEntry: (id, updates) =>
-    set((state) => ({
-      entries: state.entries.map(e =>
-        e.id === id ? { ...e, ...updates } : e
-      ),
-    })),
-}));
+      updateEntry: (id, updates) =>
+        set((state) => ({
+          entries: state.entries.map((e) =>
+            e.id === id ? { ...e, ...updates } : e
+          ),
+        })),
+
+      deleteEntry: (id) =>
+        set((state) => ({
+          entries: state.entries.filter((e) => e.id !== id),
+        })),
+    }),
+    {
+      name: "journal",
+      storage: createJSONStorage(() => getUserScopedStorage("journal")),
+    }
+  )
+);
