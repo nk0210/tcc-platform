@@ -56,31 +56,32 @@ export function detectSession(): Session {
 }
 
 export const useJournalStore = create<JournalStore>((set) => ({
-  entries: [],
+  entries: [], // No seed data — only real TCC trades
 
   addEntry: (entry) => {
     const id = Date.now().toString();
-    const newEntry: JournalEntry = {
-      ...entry,
-      id,
-      aiAnalysis: "",
-      aiLoading: false,
-      timestamp: new Date(),
-    };
-    set((state) => ({ entries: [newEntry, ...state.entries] }));
+    set((state) => ({
+      entries: [{
+        ...entry,
+        id,
+        aiAnalysis: "",
+        aiLoading: false,
+        timestamp: new Date(),
+      }, ...state.entries],
+    }));
     return id;
   },
 
   updateAiAnalysis: (id, analysis) =>
     set((state) => ({
-      entries: state.entries.map((e) =>
+      entries: state.entries.map(e =>
         e.id === id ? { ...e, aiAnalysis: analysis, aiLoading: false } : e
       ),
     })),
 
   updateEntry: (id, updates) =>
     set((state) => ({
-      entries: state.entries.map((e) =>
+      entries: state.entries.map(e =>
         e.id === id ? { ...e, ...updates } : e
       ),
     })),

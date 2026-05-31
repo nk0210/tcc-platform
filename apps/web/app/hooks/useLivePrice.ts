@@ -1,71 +1,70 @@
 "use client";
 import { useEffect, useRef } from "react";
 import { usePriceStore } from "@/store/priceStore";
+import { useTradeStore } from "@/store/tradeStore";
 import { Symbol } from "@/store/symbolStore";
 
 export function useLivePrice(symbol: Symbol) {
-  const { setPrice, setCandles } = usePriceStore();
+  const { setPrice } = usePriceStore();
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    if (!symbol.binanceSymbol) return;
-
-    // Close existing WebSocket
-    if (wsRef.current) wsRef.current.close();
-
-    // Clear candles on symbol switch
-    setCandles([]);
-    setPrice(0, 0, 0);
-
-    async function fetchCandles() {
-      try {
-        const res = await fetch(
-          `https://api.binance.com/api/v3/klines?symbol=${symbol.binanceSymbol}&interval=1h&limit=200`
-        );
-        const data = await res.json();
-        const candles = data.map((k: any) => ({
-          time: k[0] / 1000,
-          open: parseFloat(k[1]),
-          high: parseFloat(k[2]),
-          low: parseFloat(k[3]),
-          close: parseFloat(k[4]),
-        }));
-        setCandles(candles);
-        const last = candles[candles.length - 1];
-        const first = candles[0];
-        const change = last.close - first.open;
-        const changePct = (change / first.open) * 100;
-        setPrice(last.close, change, changePct);
-      } catch (err) {
-        console.error("Failed to fetch candles:", err);
+    // Reset price and stop WS for non-crypto symbols
+    if (!symbol.binanceSymbol) {
+      setPrice(0, 0, 0);
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
       }
+      return;
     }
 
-    fetchCandles();
+    // Close existing connection
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
 
+    // Fetch initial price immediately via REST
+    fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol.binanceSymbol}`)
+      .then(r => r.json())
+      .then(data => {
+        const price = parseFloat(data.lastPrice);
+        const change = parseFloat(data.priceChange);
+        const changePct = parseFloat(data.priceChangePercent);
+        setPrice(price, change, changePct);
+        if (price > 0) {
+          useTradeStore.getState().updatePrices(symbol.id, price);
+        }
+      })
+      .catch(() => {});
+
+    // WebSocket for real-time ticker updates
     const ws = new WebSocket(
-      `wss://stream.binance.com:9443/ws/${symbol.binanceSymbol.toLowerCase()}@kline_1h`
+      `wss://stream.binance.com:9443/ws/${symbol.binanceSymbol.toLowerCase()}@ticker`
     );
+    wsRef.current = ws;
 
     ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      const k = msg.k;
-      const candle = {
-        time: k.t / 1000,
-        open: parseFloat(k.o),
-        high: parseFloat(k.h),
-        low: parseFloat(k.l),
-        close: parseFloat(k.c),
-      };
-      usePriceStore.getState().addCandle(candle);
-      usePriceStore.getState().setPrice(
-        parseFloat(k.c),
-        parseFloat(k.c) - parseFloat(k.o),
-        ((parseFloat(k.c) - parseFloat(k.o)) / parseFloat(k.o)) * 100
-      );
+      try {
+        const msg = JSON.parse(event.data);
+        const price = parseFloat(msg.c);   // last price
+        const change = parseFloat(msg.p);   // price change
+        const changePct = parseFloat(msg.P); // price change %
+        setPrice(price, change, changePct);
+        if (price > 0) {
+          useTradeStore.getState().updatePrices(symbol.id, price);
+        }
+      } catch {}
     };
 
-    wsRef.current = ws;
-    return () => ws.close();
+    ws.onerror = () => {
+      // Silently fail — REST already loaded initial price
+    };
+
+    return () => {
+      ws.close();
+      wsRef.current = null;
+    };
   }, [symbol.id]);
 }
