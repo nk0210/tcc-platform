@@ -2,15 +2,15 @@
 import { useEffect, useRef } from "react";
 import { usePriceStore } from "@/store/priceStore";
 import { useTradeStore } from "@/store/tradeStore";
-import { Symbol } from "@/store/symbolStore";
+import { TCCSymbol } from "@/lib/markets/symbols";
 
-export function useLivePrice(symbol: Symbol) {
+export function useLivePrice(symbol: TCCSymbol) {
   const { setPrice } = usePriceStore();
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    // Reset price and stop WS for non-crypto symbols
-    if (!symbol.binanceSymbol) {
+    // Non-crypto or no Binance symbol → no live price
+    if (!symbol.binanceSymbol || !symbol.livePriceSupported) {
       setPrice(0, 0, 0);
       if (wsRef.current) {
         wsRef.current.close();
@@ -19,7 +19,6 @@ export function useLivePrice(symbol: Symbol) {
       return;
     }
 
-    // Close existing connection
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -33,13 +32,11 @@ export function useLivePrice(symbol: Symbol) {
         const change = parseFloat(data.priceChange);
         const changePct = parseFloat(data.priceChangePercent);
         setPrice(price, change, changePct);
-        if (price > 0) {
-          useTradeStore.getState().updatePrices(symbol.id, price);
-        }
+        if (price > 0) useTradeStore.getState().updatePrices(symbol.id, price);
       })
       .catch(() => {});
 
-    // WebSocket for real-time ticker updates
+    // WebSocket for real-time updates
     const ws = new WebSocket(
       `wss://stream.binance.com:9443/ws/${symbol.binanceSymbol.toLowerCase()}@ticker`
     );
@@ -48,19 +45,15 @@ export function useLivePrice(symbol: Symbol) {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        const price = parseFloat(msg.c);   // last price
-        const change = parseFloat(msg.p);   // price change
-        const changePct = parseFloat(msg.P); // price change %
+        const price = parseFloat(msg.c);
+        const change = parseFloat(msg.p);
+        const changePct = parseFloat(msg.P);
         setPrice(price, change, changePct);
-        if (price > 0) {
-          useTradeStore.getState().updatePrices(symbol.id, price);
-        }
+        if (price > 0) useTradeStore.getState().updatePrices(symbol.id, price);
       } catch {}
     };
 
-    ws.onerror = () => {
-      // Silently fail — REST already loaded initial price
-    };
+    ws.onerror = () => {};
 
     return () => {
       ws.close();

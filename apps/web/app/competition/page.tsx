@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import React, { useState } from "react";
 import { useCompetitionStore, Competition } from "@/store/competitionStore";
 import { useAuthStore } from "@/store/authStore";
 import Topbar from "@/components/Topbar";
@@ -53,7 +53,7 @@ export default function CompetitionPage() {
           max_tokens: 200,
           messages: [
             { role: "system", content: "You are a trading competition analyst. Be concise. Max 3 sentences." },
-            { role: "user", content: `Analyze: Handle: ${participant.handle}, Return: ${participant.pnlPct}%, Win Rate: ${participant.winRate}%, MaxDD: ${participant.maxDrawdown}%, Risk: ${participant.riskScore}/100, Score: ${participant.competitionScore}. Give 1 strength, 1 improvement, draft consideration.` },
+            { role: "user", content: `Analyze: Handle: ${participant.handle}, Return: ${participant.pnlPct}%, WinRate: ${participant.winRate}%, MaxDD: ${participant.maxDrawdown}%, RiskScore: ${participant.riskScore}/100, CompScore: ${participant.competitionScore}. Give 1 strength, 1 improvement, draft consideration.` },
           ],
         }),
       });
@@ -89,7 +89,8 @@ export default function CompetitionPage() {
           </div>
 
           <div className="flex gap-6">
-            {/* Left — Competition List */}
+
+            {/* Left — List */}
             <div className="w-72 shrink-0 flex flex-col gap-3">
               {competitions.map((comp) => (
                 <div key={comp.id}
@@ -128,6 +129,7 @@ export default function CompetitionPage() {
             {/* Right — Active Competition */}
             {activeCompetition && (
               <div className="flex-1 flex flex-col gap-4">
+
                 <div className="glass border border-white/5 rounded-xl p-6">
                   <div className="flex items-start justify-between">
                     <div>
@@ -194,9 +196,6 @@ export default function CompetitionPage() {
                           💰 P&L Only
                         </button>
                       </div>
-                      {rankBy === "score" && (
-                        <p className="text-white/20 text-xs italic">Score = Return + Consistency + Risk - Drawdown penalty</p>
-                      )}
                     </div>
 
                     <div className="glass border border-white/5 rounded-xl overflow-hidden">
@@ -217,15 +216,16 @@ export default function CompetitionPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {sortedParticipants.map((p, i) => {
+                          {/* ── FIXED: React.Fragment with unique key ── */}
+                          {sortedParticipants.map((p, index) => {
                             const isMe = p.handle === (user?.handle || "guest");
                             return (
-                              <>
-                                <tr key={p.id}
+                              <React.Fragment key={`participant-${p.id ?? "unknown"}-${index}`}>
+                                <tr
                                   className={`border-b border-white/5 transition cursor-pointer ${isMe ? "bg-green-500/5" : "hover:bg-white/2"}`}
                                   onClick={() => setExpandedParticipant(expandedParticipant === p.id ? null : p.id)}>
                                   <td className="px-4 py-3">
-                                    <span className="text-lg">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}</span>
+                                    <span className="text-lg">{index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `#${index + 1}`}</span>
                                   </td>
                                   <td className="px-4 py-3">
                                     <div className="flex items-center gap-2">
@@ -278,7 +278,7 @@ export default function CompetitionPage() {
                                   </td>
                                 </tr>
                                 {expandedParticipant === p.id && p.aiReport && (
-                                  <tr key={`${p.id}-report`} className="border-b border-white/5 bg-indigo-500/3">
+                                  <tr className="border-b border-white/5 bg-indigo-500/3">
                                     <td colSpan={11} className="px-6 py-3">
                                       <div className="flex items-start gap-3">
                                         <span className="text-indigo-400 text-sm">🤖</span>
@@ -290,7 +290,7 @@ export default function CompetitionPage() {
                                     </td>
                                   </tr>
                                 )}
-                              </>
+                              </React.Fragment>
                             );
                           })}
                         </tbody>
@@ -367,11 +367,12 @@ export default function CompetitionPage() {
                             <div className="w-full bg-white/5 rounded-full h-1.5">
                               <div className="bg-green-400 h-1.5 rounded-full" style={{ width: `${Math.min(p.competitionScore, 100)}%` }} />
                             </div>
-                            <div className="flex gap-4 mt-1">
-                              <span className="text-white/30 text-xs">Score: <span className="text-amber-400">{p.competitionScore}</span></span>
-                              <span className="text-white/30 text-xs">Return: <span className="text-green-400">+{p.pnlPct}%</span></span>
-                              <span className="text-white/30 text-xs">Risk: <span className="text-white/60">{p.riskScore}/100</span></span>
-                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className={`text-sm font-bold ${p.pnlPct >= 0 ? "text-green-400" : "text-red-400"}`}>
+                              {p.pnlPct >= 0 ? "+" : ""}{p.pnlPct}%
+                            </p>
+                            <p className="text-white/30 text-xs">{p.trades} trades</p>
                           </div>
                           <button className="bg-white/5 hover:bg-white/10 text-white/50 text-xs px-3 py-1.5 rounded-lg border border-white/10 transition">
                             Watch Live
@@ -382,6 +383,7 @@ export default function CompetitionPage() {
                     </div>
                   </div>
                 )}
+
               </div>
             )}
           </div>

@@ -1,6 +1,14 @@
+/**
+ * TCC Watchlist Store
+ * Default is EMPTY — fresh users start with no watchlist.
+ * Users add symbols from Markets page (only TCC-supported symbols).
+ * Live prices for crypto are updated by useMarketPrices hook.
+ * Non-crypto symbols are added but show "Chart available" — no live price.
+ */
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { getUserScopedStorage } from "@/lib/persistence/storage";
+import { TCC_SYMBOLS, TCC_SYMBOL_MAP, TCCSymbol } from "@/lib/markets/symbols";
 
 export interface PriceAlert {
   id: string;
@@ -11,98 +19,99 @@ export interface PriceAlert {
 }
 
 export interface WatchlistItem {
-  symbol: string;
-  label: string;
-  category: "crypto" | "forex" | "commodity";
+  symbolId: string;         // references TCC_SYMBOLS id
+  displayName: string;      // e.g. "BTC/USDT"
+  category: string;         // from central config
+  addedAt: number;
+  alerts: PriceAlert[];
+  // live data — NOT persisted, reset on load, updated by hooks
   currentPrice: number;
   change24h: number;
   changePct24h: number;
   high24h: number;
   low24h: number;
   volume24h: number;
-  alerts: PriceAlert[];
 }
-
-const defaultWatchlist: WatchlistItem[] = [
-  { symbol: "BTCUSDT", label: "BTC/USDT", category: "crypto", currentPrice: 0, change24h: 0, changePct24h: 0, high24h: 0, low24h: 0, volume24h: 0, alerts: [] },
-  { symbol: "ETHUSDT", label: "ETH/USDT", category: "crypto", currentPrice: 0, change24h: 0, changePct24h: 0, high24h: 0, low24h: 0, volume24h: 0, alerts: [] },
-  { symbol: "SOLUSDT", label: "SOL/USDT", category: "crypto", currentPrice: 0, change24h: 0, changePct24h: 0, high24h: 0, low24h: 0, volume24h: 0, alerts: [] },
-];
-
-export const availableSymbols = [
-  { symbol: "BTCUSDT", label: "BTC/USDT" },
-  { symbol: "ETHUSDT", label: "ETH/USDT" },
-  { symbol: "SOLUSDT", label: "SOL/USDT" },
-  { symbol: "BNBUSDT", label: "BNB/USDT" },
-  { symbol: "XRPUSDT", label: "XRP/USDT" },
-  { symbol: "DOGEUSDT", label: "DOGE/USDT" },
-  { symbol: "ADAUSDT", label: "ADA/USDT" },
-  { symbol: "AVAXUSDT", label: "AVAX/USDT" },
-  { symbol: "DOTUSDT", label: "DOT/USDT" },
-  { symbol: "LINKUSDT", label: "LINK/USDT" },
-  { symbol: "MATICUSDT", label: "MATIC/USDT" },
-  { symbol: "LTCUSDT", label: "LTC/USDT" },
-];
 
 interface WatchlistStore {
   items: WatchlistItem[];
-  availableSymbols: { symbol: string; label: string }[];
-  updatePrice: (symbol: string, data: Partial<WatchlistItem>) => void;
-  addSymbol: (symbol: string, label: string) => void;
-  removeSymbol: (symbol: string) => void;
-  addAlert: (symbol: string, type: "above" | "below", price: number) => void;
-  removeAlert: (symbol: string, alertId: string) => void;
-  triggerAlert: (symbol: string, alertId: string) => void;
+  // returns all TCC symbols NOT already in watchlist, for the Add Symbol picker
+  getAvailableToAdd: () => TCCSymbol[];
+  updatePrice: (symbolId: string, data: Partial<Pick<WatchlistItem, "currentPrice" | "change24h" | "changePct24h" | "high24h" | "low24h" | "volume24h">>) => void;
+  addSymbol: (symbolId: string) => void;
+  removeSymbol: (symbolId: string) => void;
+  addAlert: (symbolId: string, type: "above" | "below", price: number) => void;
+  removeAlert: (symbolId: string, alertId: string) => void;
+  triggerAlert: (symbolId: string, alertId: string) => void;
 }
 
 export const useWatchlistStore = create<WatchlistStore>()(
   persist(
     (set, get) => ({
-      items: defaultWatchlist,
-      availableSymbols,
+      items: [], // Fresh user starts with empty watchlist — NO fake defaults
 
-      updatePrice: (symbol, data) =>
+      getAvailableToAdd: () => {
+        const watchedIds = new Set(get().items.map(i => i.symbolId));
+        return TCC_SYMBOLS.filter(s => !watchedIds.has(s.id));
+      },
+
+      updatePrice: (symbolId, data) =>
         set((state) => ({
           items: state.items.map(item =>
-            item.symbol === symbol ? { ...item, ...data } : item
+            item.symbolId === symbolId ? { ...item, ...data } : item
           ),
         })),
 
-      addSymbol: (symbol, label) => {
-        if (get().items.find(i => i.symbol === symbol)) return;
+      addSymbol: (symbolId) => {
+        const existing = get().items.find(i => i.symbolId === symbolId);
+        if (existing) return;
+        const def = TCC_SYMBOL_MAP[symbolId];
+        if (!def) return; // Only add TCC-supported symbols
         set((state) => ({
           items: [
             ...state.items,
-            { symbol, label, category: "crypto", currentPrice: 0, change24h: 0, changePct24h: 0, high24h: 0, low24h: 0, volume24h: 0, alerts: [] },
+            {
+              symbolId,
+              displayName: def.displayName,
+              category: def.category,
+              addedAt: Date.now(),
+              alerts: [],
+              currentPrice: 0,
+              change24h: 0,
+              changePct24h: 0,
+              high24h: 0,
+              low24h: 0,
+              volume24h: 0,
+            },
           ],
         }));
       },
 
-      removeSymbol: (symbol) =>
-        set((state) => ({ items: state.items.filter(i => i.symbol !== symbol) })),
+      removeSymbol: (symbolId) =>
+        set((state) => ({ items: state.items.filter(i => i.symbolId !== symbolId) })),
 
-      addAlert: (symbol, type, price) =>
+      addAlert: (symbolId, type, price) =>
         set((state) => ({
           items: state.items.map(item =>
-            item.symbol === symbol
+            item.symbolId === symbolId
               ? { ...item, alerts: [...item.alerts, { id: Date.now().toString(), type, price, triggered: false, createdAt: Date.now() }] }
               : item
           ),
         })),
 
-      removeAlert: (symbol, alertId) =>
+      removeAlert: (symbolId, alertId) =>
         set((state) => ({
           items: state.items.map(item =>
-            item.symbol === symbol
+            item.symbolId === symbolId
               ? { ...item, alerts: item.alerts.filter(a => a.id !== alertId) }
               : item
           ),
         })),
 
-      triggerAlert: (symbol, alertId) =>
+      triggerAlert: (symbolId, alertId) =>
         set((state) => ({
           items: state.items.map(item =>
-            item.symbol === symbol
+            item.symbolId === symbolId
               ? { ...item, alerts: item.alerts.map(a => a.id === alertId ? { ...a, triggered: true } : a) }
               : item
           ),
@@ -111,10 +120,15 @@ export const useWatchlistStore = create<WatchlistStore>()(
     {
       name: "watchlist",
       storage: createJSONStorage(() => getUserScopedStorage("watchlist")),
+      // Only persist symbolId, displayName, category, addedAt, alerts
+      // Live prices are NOT persisted — they reset to 0 and are repopulated by hooks
       partialize: (state) => ({
         items: state.items.map(item => ({
-          ...item,
-          // Don't persist live prices — will be updated by WebSocket
+          symbolId: item.symbolId,
+          displayName: item.displayName,
+          category: item.category,
+          addedAt: item.addedAt,
+          alerts: item.alerts,
           currentPrice: 0,
           change24h: 0,
           changePct24h: 0,

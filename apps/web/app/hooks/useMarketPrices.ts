@@ -1,6 +1,13 @@
 "use client";
+/**
+ * TCC Market Prices Hook
+ * Uses central symbol config for Binance streams.
+ * Crypto: Binance WebSocket (primary) → REST fallback.
+ * Non-crypto: no price data here — use TradingView chart only.
+ */
 import { useEffect, useState } from "react";
 import { useWatchlistStore } from "@/store/watchlistStore";
+import { BINANCE_STREAM_SYMBOLS } from "@/lib/markets/symbols";
 
 export interface MarketTicker {
   symbol: string;
@@ -13,24 +20,19 @@ export interface MarketTicker {
   quoteVolume: number;
 }
 
-const CRYPTO_SYMBOLS = [
-  "BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT",
-  "DOGEUSDT","ADAUSDT","AVAXUSDT","DOTUSDT","LINKUSDT",
-  "MATICUSDT","LTCUSDT","ATOMUSDT","UNIUSDT","AAVEUSDT",
-];
-
-const STREAMS = CRYPTO_SYMBOLS.map(s => `${s.toLowerCase()}@ticker`).join("/");
+const STREAMS = BINANCE_STREAM_SYMBOLS.map(s => `${s.toLowerCase()}@ticker`).join("/");
 const WS_URL = `wss://stream.binance.com:9443/stream?streams=${STREAMS}`;
-const REST_URL = `https://api.binance.com/api/v3/ticker/24hr?symbols=[${CRYPTO_SYMBOLS.map(s => `"${s}"`).join(",")}]`;
+const REST_URL = `https://api.binance.com/api/v3/ticker/24hr?symbols=[${BINANCE_STREAM_SYMBOLS.map(s => `"${s}"`).join(",")}]`;
 
-// ─── Module-level singletons (shared across all hook instances) ───
+// ── Module-level singletons — shared across all hook instances ───────────
 let globalTickers: Record<string, MarketTicker> = {};
-let subscribers = new Set<(t: Record<string, MarketTicker>) => void>();
 let wsInstance: WebSocket | null = null;
 let restInterval: ReturnType<typeof setInterval> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectDelay = 5000;
 let isInitialized = false;
+let isWsOpen = false;
+const subscribers = new Set<(t: Record<string, MarketTicker>) => void>();
 
 function notify() {
   subscribers.forEach(fn => fn({ ...globalTickers }));
@@ -49,25 +51,31 @@ function parseTicker(d: any): MarketTicker {
   };
 }
 
-function updateWatchlist(ticker: MarketTicker) {
-  useWatchlistStore.getState().updatePrice(ticker.symbol, {
-    currentPrice: ticker.price,
-    change24h: ticker.change,
-    changePct24h: ticker.changePct,
-    high24h: ticker.high,
-    low24h: ticker.low,
-    volume24h: ticker.volume,
-  });
+function updateWatchlistPrices(ticker: MarketTicker) {
+  const { items, updatePrice } = useWatchlistStore.getState();
+  const watched = items.find(i => i.symbolId === ticker.symbol);
+  if (watched) {
+    updatePrice(ticker.symbol, {
+      currentPrice: ticker.price,
+      change24h: ticker.change,
+      changePct24h: ticker.changePct,
+      high24h: ticker.high,
+      low24h: ticker.low,
+      volume24h: ticker.volume,
+    });
+  }
 }
 
 function fetchRest() {
   fetch(REST_URL)
     .then(r => r.json())
     .then((data: any[]) => {
+      if (!Array.isArray(data)) return;
       data.forEach(d => {
         const t = parseTicker(d);
+        if (!t.symbol) return;
         globalTickers[t.symbol] = t;
-        updateWatchlist(t);
+        updateWatchlistPrices(t);
       });
       notify();
     })
@@ -91,8 +99,10 @@ function connectWS() {
   wsInstance = ws;
 
   ws.onopen = () => {
-    reconnectDelay = 5000; // reset backoff
-    stopRest(); // WS is working — stop REST polling
+    isWsOpen = true;
+    reconnectDelay = 5000;
+    stopRest(); // WS working — REST not needed
+    notify();
   };
 
   ws.onmessage = (event) => {
@@ -102,7 +112,7 @@ function connectWS() {
         const t = parseTicker(msg.data);
         if (!t.symbol) return;
         globalTickers[t.symbol] = t;
-        updateWatchlist(t);
+        updateWatchlistPrices(t);
         notify();
       }
     } catch {}
@@ -111,52 +121,52 @@ function connectWS() {
   ws.onerror = () => {};
 
   ws.onclose = () => {
+    isWsOpen = false;
     wsInstance = null;
-    startRest(); // Fallback to REST
-    // Reconnect with exponential backoff (max 30s)
+    startRest(); // Fallback REST on WS close
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectTimer = setTimeout(() => {
       reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
       connectWS();
     }, reconnectDelay);
+    notify();
   };
 }
 
 function initialize() {
   if (isInitialized) return;
   isInitialized = true;
-  startRest(); // Start REST immediately for fast first load
-  connectWS(); // Then connect WS (will stop REST when open)
+  startRest(); // Immediate first load via REST
+  connectWS(); // Then WS (will stop REST once open)
 }
 
 export function useMarketPrices() {
   const [tickers, setTickers] = useState<Record<string, MarketTicker>>(globalTickers);
   const [loading, setLoading] = useState(Object.keys(globalTickers).length === 0);
-  const [wsConnected, setWsConnected] = useState(false);
+  const [wsConnected, setWsConnected] = useState(isWsOpen);
 
   useEffect(() => {
-    // Subscribe to price updates
-    const subscriber = (t: Record<string, MarketTicker>) => {
+    const sub = (t: Record<string, MarketTicker>) => {
       setTickers({ ...t });
       if (Object.keys(t).length > 0) setLoading(false);
-      setWsConnected(wsInstance?.readyState === WebSocket.OPEN);
+      setWsConnected(isWsOpen);
     };
-    subscribers.add(subscriber);
-
-    // Initialize if not already done
+    subscribers.add(sub);
     initialize();
 
-    // If we already have data, render immediately
     if (Object.keys(globalTickers).length > 0) {
       setTickers({ ...globalTickers });
       setLoading(false);
     }
 
-    return () => {
-      subscribers.delete(subscriber);
-      // Note: We intentionally keep WS alive — this is a trading platform
-    };
+    return () => { subscribers.delete(sub); };
   }, []);
 
-  return { tickers, loading, wsConnected, symbols: CRYPTO_SYMBOLS };
+  return {
+    tickers,
+    loading,
+    wsConnected,
+    /** Only crypto symbols with Binance data */
+    cryptoSymbols: BINANCE_STREAM_SYMBOLS,
+  };
 }
