@@ -5,6 +5,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useJournalStore } from "@/store/journalStore";
 import Topbar from "@/components/Topbar";
 import Sidebar from "@/components/Sidebar";
+import ReportButton from "@/components/ReportButton";
 
 export default function MentoringPage() {
   const { mentors, sessions, tradeReviews, pods, bookSession, joinPod, leavePod, requestReview } = useMentoringStore();
@@ -62,15 +63,12 @@ export default function MentoringPage() {
               <h1 className="text-2xl font-bold text-white">👨‍🏫 Mentoring</h1>
               <p className="text-white/40 text-sm mt-1">Learn 1:1 from verified pro traders. Book sessions, get trade reviews, join pods.</p>
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => setShowReviewRequest(true)}
-                className="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-500/30 transition">
-                📝 Request Trade Review
-              </button>
-            </div>
+            <button onClick={() => setShowReviewRequest(true)}
+              className="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-500/30 transition">
+              📝 Request Trade Review
+            </button>
           </div>
 
-          {/* Tabs */}
           <div className="flex gap-1 bg-white/5 rounded-lg p-1 mb-6">
             {(["discover", "sessions", "reviews", "pods"] as const).map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)}
@@ -85,7 +83,6 @@ export default function MentoringPage() {
             <div className="grid grid-cols-2 gap-4">
               {mentors.map((mentor) => (
                 <div key={mentor.id} className="glass border border-white/5 rounded-xl p-5 hover:border-white/10 transition">
-
                   <div className="flex items-start gap-4 mb-4">
                     <div className="w-14 h-14 rounded-2xl bg-green-500/20 border border-green-500/30 flex items-center justify-center text-green-400 text-2xl font-bold shrink-0">
                       {mentor.handle[0].toUpperCase()}
@@ -102,9 +99,19 @@ export default function MentoringPage() {
                         ))}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-green-400 font-bold text-lg">${mentor.hourlyRate}/hr</p>
-                      <p className="text-white/30 text-xs">{mentor.students} students</p>
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="text-right">
+                        <p className="text-green-400 font-bold text-lg">${mentor.hourlyRate}/hr</p>
+                        <p className="text-white/30 text-xs">{mentor.students} students</p>
+                      </div>
+                      <ReportButton
+                        reportedItemType="mentor"
+                        reportedItemId={mentor.id}
+                        reportedItemTitle={`${mentor.handle} — Mentor`}
+                        reportedUserId={mentor.handle}
+                        sourceFeature="Mentoring Discovery"
+                        compact
+                      />
                     </div>
                   </div>
 
@@ -131,16 +138,12 @@ export default function MentoringPage() {
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <div className="text-xs text-white/30">
-                      🕐 {mentor.availability}
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => { setSelectedMentor(mentor); setBookingForm({ ...bookingForm, price: mentor.hourlyRate }); setShowBooking(true); }}
-                        className="bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 px-4 py-1.5 rounded-lg text-xs font-semibold transition">
-                        📅 Book Session
-                      </button>
-                    </div>
+                    <div className="text-xs text-white/30">🕐 {mentor.availability}</div>
+                    <button
+                      onClick={() => { setSelectedMentor(mentor); setBookingForm({ ...bookingForm, price: mentor.hourlyRate }); setShowBooking(true); }}
+                      className="bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 px-4 py-1.5 rounded-lg text-xs font-semibold transition">
+                      📅 Book Session
+                    </button>
                   </div>
                 </div>
               ))}
@@ -171,10 +174,18 @@ export default function MentoringPage() {
                           <p className="text-white/40 text-xs">{session.topic}</p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <span className={`text-xs px-2 py-1 rounded-full border ${session.status === "upcoming" ? "text-green-400 bg-green-500/10 border-green-500/20" : session.status === "completed" ? "text-white/40 bg-white/5 border-white/10" : "text-red-400 bg-red-500/10 border-red-500/20"}`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2 py-1 rounded-full border ${session.status === "upcoming" ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-white/40 bg-white/5 border-white/10"}`}>
                           {session.status === "upcoming" ? "⏰ Upcoming" : session.status === "completed" ? "✓ Completed" : "✕ Cancelled"}
                         </span>
+                        <ReportButton
+                          reportedItemType="mentor"
+                          reportedItemId={session.mentorId}
+                          reportedItemTitle={`Session with ${session.mentorHandle}: ${session.topic}`}
+                          reportedUserId={session.mentorHandle}
+                          sourceFeature="Mentoring Sessions"
+                          compact
+                        />
                       </div>
                     </div>
                     <div className="flex gap-4 mt-3 text-xs text-white/40">
@@ -235,6 +246,14 @@ export default function MentoringPage() {
                         <span className={`text-xs px-2 py-1 rounded-full border ${review.status === "reviewed" ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-amber-400 bg-amber-500/10 border-amber-500/20"}`}>
                           {review.status === "reviewed" ? "✓ Reviewed" : "⏳ Pending"}
                         </span>
+                        <ReportButton
+                          reportedItemType="mentor"
+                          reportedItemId={review.id}
+                          reportedItemTitle={`Trade review by ${review.mentorHandle}`}
+                          reportedUserId={review.mentorHandle}
+                          sourceFeature="Mentoring Trade Reviews"
+                          compact
+                        />
                       </div>
                     </div>
 
@@ -247,19 +266,11 @@ export default function MentoringPage() {
                       <div className="flex gap-4">
                         <div className="flex-1">
                           <p className="text-green-400 text-xs font-semibold mb-2">✅ Strengths</p>
-                          <div className="flex flex-col gap-1">
-                            {review.strengths.map((s, i) => (
-                              <p key={i} className="text-white/50 text-xs">• {s}</p>
-                            ))}
-                          </div>
+                          {review.strengths.map((s, i) => <p key={i} className="text-white/50 text-xs">• {s}</p>)}
                         </div>
                         <div className="flex-1">
                           <p className="text-amber-400 text-xs font-semibold mb-2">⚡ Improvements</p>
-                          <div className="flex flex-col gap-1">
-                            {review.improvements.map((imp, i) => (
-                              <p key={i} className="text-white/50 text-xs">• {imp}</p>
-                            ))}
-                          </div>
+                          {review.improvements.map((imp, i) => <p key={i} className="text-white/50 text-xs">• {imp}</p>)}
                         </div>
                       </div>
                     )}
@@ -283,9 +294,19 @@ export default function MentoringPage() {
                       </div>
                       <p className="text-white/40 text-xs">by {pod.mentorHandle}</p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-green-400 font-bold">${pod.price}/mo</p>
-                      <p className="text-white/30 text-xs">{pod.members}/{pod.maxMembers} members</p>
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="text-right">
+                        <p className="text-green-400 font-bold">${pod.price}/mo</p>
+                        <p className="text-white/30 text-xs">{pod.members}/{pod.maxMembers} members</p>
+                      </div>
+                      <ReportButton
+                        reportedItemType="mentor"
+                        reportedItemId={pod.id}
+                        reportedItemTitle={`Pod: ${pod.name} by ${pod.mentorHandle}`}
+                        reportedUserId={pod.mentorHandle}
+                        sourceFeature="Mentoring Pods"
+                        compact
+                      />
                     </div>
                   </div>
 
@@ -317,7 +338,6 @@ export default function MentoringPage() {
               ))}
             </div>
           )}
-
         </div>
       </div>
 
@@ -333,7 +353,6 @@ export default function MentoringPage() {
               <button onClick={() => { setShowBooking(false); setSelectedMentor(null); }}
                 className="text-white/30 hover:text-white text-xl">✕</button>
             </div>
-
             <div className="flex flex-col gap-4">
               <div>
                 <p className="text-white/40 text-xs mb-1">Session Topic</p>
@@ -342,14 +361,12 @@ export default function MentoringPage() {
                   placeholder="e.g. Trade review, SMC concepts, Risk management"
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm" />
               </div>
-
               <div>
                 <p className="text-white/40 text-xs mb-1">Date & Time</p>
                 <input type="datetime-local" value={bookingForm.date}
                   onChange={e => setBookingForm({ ...bookingForm, date: e.target.value })}
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm" />
               </div>
-
               <div>
                 <p className="text-white/40 text-xs mb-1">Duration</p>
                 <div className="flex gap-2">
@@ -361,14 +378,12 @@ export default function MentoringPage() {
                   ))}
                 </div>
               </div>
-
               <div className="glass border border-white/5 rounded-lg p-3">
                 <div className="flex justify-between text-xs">
                   <span className="text-white/40">Total</span>
                   <span className="text-white font-bold">${bookingForm.price} (Paper/Demo)</span>
                 </div>
               </div>
-
               <button onClick={handleBook}
                 disabled={!bookingForm.topic || !bookingForm.date}
                 className="w-full bg-green-500/20 text-green-400 border border-green-500/30 py-3 rounded-xl text-sm font-semibold hover:bg-green-500/30 transition disabled:opacity-40">
@@ -387,7 +402,6 @@ export default function MentoringPage() {
               <h2 className="text-white font-bold text-lg">Request Trade Review</h2>
               <button onClick={() => setShowReviewRequest(false)} className="text-white/30 hover:text-white text-xl">✕</button>
             </div>
-
             <div className="flex flex-col gap-4">
               <div>
                 <p className="text-white/40 text-xs mb-1">Select Mentor</p>
@@ -400,7 +414,6 @@ export default function MentoringPage() {
                   ))}
                 </select>
               </div>
-
               <div>
                 <p className="text-white/40 text-xs mb-1">Select Trade to Review</p>
                 {entries.length === 0 ? (
@@ -418,7 +431,6 @@ export default function MentoringPage() {
                   </select>
                 )}
               </div>
-
               <button onClick={handleReviewRequest}
                 disabled={!reviewForm.mentorHandle || !reviewForm.tradeId}
                 className="w-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 py-3 rounded-xl text-sm font-semibold hover:bg-indigo-500/30 transition disabled:opacity-40">
@@ -428,7 +440,6 @@ export default function MentoringPage() {
           </div>
         </div>
       )}
-
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useCompetitionStore, Competition } from "@/store/competitionStore";
 import { useAuthStore } from "@/store/authStore";
 import Topbar from "@/components/Topbar";
 import Sidebar from "@/components/Sidebar";
-import React from "react";
+import ReportButton from "@/components/ReportButton";
 
 const divisionColors: Record<string, string> = {
   ROOKIE: "text-blue-400 border-blue-500/30 bg-blue-500/10",
@@ -26,42 +26,6 @@ function daysLeft(endDate: Date): string {
   return `${days} days left`;
 }
 
-async function generateAiReport(participant: any): Promise<string> {
-  try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.NEXT_PUBLIC_GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        max_tokens: 200,
-        messages: [
-          { role: "system", content: "You are a trading competition analyst. Be concise and specific. Max 3 sentences." },
-          { role: "user", content: `Analyze this trader's competition performance:
-Handle: ${participant.handle}
-Return: ${participant.pnlPct}%
-Win Rate: ${participant.winRate}%
-Max Drawdown: ${participant.maxDrawdown}%
-Avg R:R: ${participant.avgRR}
-Trades: ${participant.trades}
-Risk Score: ${participant.riskScore}/100
-Consistency: ${participant.consistencyScore}/100
-Competition Score: ${participant.competitionScore}
-Draft Eligible: ${participant.draftEligible}
-
-Give: 1 key strength, 1 area to improve, and whether they deserve draft consideration.` }
-        ],
-      }),
-    });
-    const data = await response.json();
-    return data.choices[0].message.content;
-  } catch {
-    return "AI report unavailable. Please try again.";
-  }
-}
-
 export default function CompetitionPage() {
   const { competitions, activeCompetition, setActiveCompetition, joinCompetition, setAiReport } = useCompetitionStore();
   const { user } = useAuthStore();
@@ -77,14 +41,33 @@ export default function CompetitionPage() {
 
   const handleGenerateReport = async (participant: any) => {
     setGeneratingReport(participant.id);
-    const report = await generateAiReport(participant);
-    setAiReport(activeCompetition!.id, participant.id, report);
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.NEXT_PUBLIC_GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          max_tokens: 200,
+          messages: [
+            { role: "system", content: "You are a trading competition analyst. Be concise. Max 3 sentences." },
+            { role: "user", content: `Analyze: Handle: ${participant.handle}, Return: ${participant.pnlPct}%, Win Rate: ${participant.winRate}%, MaxDD: ${participant.maxDrawdown}%, Risk: ${participant.riskScore}/100, Score: ${participant.competitionScore}. Give 1 strength, 1 improvement, draft consideration.` },
+          ],
+        }),
+      });
+      const data = await response.json();
+      const report = data.choices?.[0]?.message?.content || "AI report unavailable.";
+      if (activeCompetition) setAiReport(activeCompetition.id, participant.id, report);
+    } catch {
+      if (activeCompetition) setAiReport(activeCompetition.id, participant.id, "AI report unavailable. Please try again.");
+    }
     setGeneratingReport(null);
     setExpandedParticipant(participant.id);
   };
 
   const isJoined = activeCompetition?.participants.find(p => p.handle === (user?.handle || "guest"));
-
   const sortedParticipants = activeCompetition
     ? [...activeCompetition.participants].sort((a, b) =>
         rankBy === "score" ? b.competitionScore - a.competitionScore : b.pnlPct - a.pnlPct
@@ -106,7 +89,6 @@ export default function CompetitionPage() {
           </div>
 
           <div className="flex gap-6">
-
             {/* Left — Competition List */}
             <div className="w-72 shrink-0 flex flex-col gap-3">
               {competitions.map((comp) => (
@@ -117,9 +99,7 @@ export default function CompetitionPage() {
                     <span className={`text-xs px-2 py-0.5 rounded-full border ${statusColors[comp.status]}`}>
                       {comp.status === "LIVE" ? "🔴 LIVE" : comp.status === "UPCOMING" ? "⏳ UPCOMING" : "✓ ENDED"}
                     </span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full border ${divisionColors[comp.division]}`}>
-                      {comp.division}
-                    </span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full border ${divisionColors[comp.division]}`}>{comp.division}</span>
                   </div>
                   <p className="text-white font-semibold text-sm mb-1">{comp.name}</p>
                   <p className="text-white/40 text-xs mb-2">{comp.asset} · {comp.participants.length} traders</p>
@@ -130,14 +110,11 @@ export default function CompetitionPage() {
                 </div>
               ))}
 
-              {/* Prize Distribution */}
               <div className="glass border border-white/5 rounded-xl p-4 mt-2">
                 <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-3">Prize Distribution</p>
                 {[
-                  { place: "🥇 1st", pct: "50%" },
-                  { place: "🥈 2nd", pct: "25%" },
-                  { place: "🥉 3rd", pct: "15%" },
-                  { place: "🎯 Best Risk", pct: "5%" },
+                  { place: "🥇 1st", pct: "50%" }, { place: "🥈 2nd", pct: "25%" },
+                  { place: "🥉 3rd", pct: "15%" }, { place: "🎯 Best Risk", pct: "5%" },
                   { place: "❤️ Community", pct: "5%" },
                 ].map(item => (
                   <div key={item.place} className="flex items-center justify-between mb-2">
@@ -151,8 +128,6 @@ export default function CompetitionPage() {
             {/* Right — Active Competition */}
             {activeCompetition && (
               <div className="flex-1 flex flex-col gap-4">
-
-                {/* Competition Header */}
                 <div className="glass border border-white/5 rounded-xl p-6">
                   <div className="flex items-start justify-between">
                     <div>
@@ -160,9 +135,7 @@ export default function CompetitionPage() {
                         <span className={`text-xs px-2 py-0.5 rounded-full border ${statusColors[activeCompetition.status]}`}>
                           {activeCompetition.status === "LIVE" ? "🔴 LIVE" : activeCompetition.status === "UPCOMING" ? "⏳ UPCOMING" : "✓ ENDED"}
                         </span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full border ${divisionColors[activeCompetition.division]}`}>
-                          {activeCompetition.division}
-                        </span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full border ${divisionColors[activeCompetition.division]}`}>{activeCompetition.division}</span>
                         <span className="text-white/30 text-xs">{daysLeft(activeCompetition.endDate)}</span>
                       </div>
                       <h2 className="text-2xl font-bold text-white mb-1">{activeCompetition.name}</h2>
@@ -174,7 +147,6 @@ export default function CompetitionPage() {
                       <p className="text-white/30 text-xs mt-1">{activeCompetition.participants.length} participants</p>
                     </div>
                   </div>
-
                   <div className="flex items-center gap-3 mt-4">
                     {!isJoined && activeCompetition.status !== "ENDED" ? (
                       <button onClick={() => handleJoin(activeCompetition)}
@@ -182,14 +154,18 @@ export default function CompetitionPage() {
                         🏁 Join Competition
                       </button>
                     ) : isJoined ? (
-                      <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-4 py-2 rounded-lg text-sm font-semibold">
-                        ✓ Joined
-                      </span>
+                      <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-4 py-2 rounded-lg text-sm font-semibold">✓ Joined</span>
                     ) : null}
                     <button onClick={() => setActiveTab("spectate")}
                       className="bg-white/5 hover:bg-white/10 text-white/60 border border-white/10 px-4 py-2 rounded-lg text-sm transition">
                       👁 Spectate
                     </button>
+                    <ReportButton
+                      reportedItemType="competition"
+                      reportedItemId={activeCompetition.id}
+                      reportedItemTitle={activeCompetition.name}
+                      sourceFeature="Competition Page"
+                    />
                   </div>
                 </div>
 
@@ -206,8 +182,6 @@ export default function CompetitionPage() {
                 {/* Leaderboard */}
                 {activeTab === "leaderboard" && (
                   <div className="flex flex-col gap-3">
-
-                    {/* Rank toggle */}
                     <div className="flex items-center gap-3">
                       <p className="text-white/40 text-xs">Rank by:</p>
                       <div className="flex gap-1 bg-white/5 rounded-lg p-1">
@@ -238,15 +212,16 @@ export default function CompetitionPage() {
                             <th className="text-right px-4 py-3 text-white/40">Risk</th>
                             <th className="text-right px-4 py-3 text-white/40">Fair Play</th>
                             <th className="text-right px-4 py-3 text-white/40">Draft</th>
-                            <th className="text-right px-4 py-3 text-white/40">AI Report</th>
+                            <th className="text-right px-4 py-3 text-white/40">AI</th>
+                            <th className="text-right px-4 py-3 text-white/40">Report</th>
                           </tr>
                         </thead>
                         <tbody>
                           {sortedParticipants.map((p, i) => {
                             const isMe = p.handle === (user?.handle || "guest");
                             return (
-                              <React.Fragment key={p.id}>
-                                <tr
+                              <>
+                                <tr key={p.id}
                                   className={`border-b border-white/5 transition cursor-pointer ${isMe ? "bg-green-500/5" : "hover:bg-white/2"}`}
                                   onClick={() => setExpandedParticipant(expandedParticipant === p.id ? null : p.id)}>
                                   <td className="px-4 py-3">
@@ -262,9 +237,7 @@ export default function CompetitionPage() {
                                       </span>
                                     </div>
                                   </td>
-                                  <td className="px-4 py-3 text-right">
-                                    <span className="text-amber-400 font-bold">{p.competitionScore}</span>
-                                  </td>
+                                  <td className="px-4 py-3 text-right"><span className="text-amber-400 font-bold">{p.competitionScore}</span></td>
                                   <td className={`px-4 py-3 text-right font-bold ${p.pnlPct >= 0 ? "text-green-400" : "text-red-400"}`}>
                                     {p.pnlPct >= 0 ? "+" : ""}{p.pnlPct.toFixed(1)}%
                                   </td>
@@ -276,15 +249,12 @@ export default function CompetitionPage() {
                                   </td>
                                   <td className="px-4 py-3 text-right text-white/60">{p.riskScore}/100</td>
                                   <td className="px-4 py-3 text-right">
-                                    <span className={p.fairPlayScore >= 95 ? "text-green-400" : "text-amber-400"}>
-                                      {p.fairPlayScore}/100
-                                    </span>
+                                    <span className={p.fairPlayScore >= 95 ? "text-green-400" : "text-amber-400"}>{p.fairPlayScore}/100</span>
                                   </td>
                                   <td className="px-4 py-3 text-right">
                                     {p.draftEligible
                                       ? <span className="text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full">⭐ Eligible</span>
-                                      : <span className="text-white/20 text-xs">—</span>
-                                    }
+                                      : <span className="text-white/20 text-xs">—</span>}
                                   </td>
                                   <td className="px-4 py-3 text-right">
                                     <button
@@ -294,10 +264,22 @@ export default function CompetitionPage() {
                                       {generatingReport === p.id ? "..." : p.aiReport ? "✓ View" : "🤖 AI"}
                                     </button>
                                   </td>
+                                  <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
+                                    {!isMe && (
+                                      <ReportButton
+                                        reportedItemType="competition"
+                                        reportedItemId={p.id}
+                                        reportedItemTitle={`${p.handle} in ${activeCompetition.name}`}
+                                        reportedUserId={p.handle}
+                                        sourceFeature="Competition Leaderboard"
+                                        compact
+                                      />
+                                    )}
+                                  </td>
                                 </tr>
                                 {expandedParticipant === p.id && p.aiReport && (
                                   <tr key={`${p.id}-report`} className="border-b border-white/5 bg-indigo-500/3">
-                                    <td colSpan={10} className="px-6 py-3">
+                                    <td colSpan={11} className="px-6 py-3">
                                       <div className="flex items-start gap-3">
                                         <span className="text-indigo-400 text-sm">🤖</span>
                                         <div>
@@ -308,18 +290,17 @@ export default function CompetitionPage() {
                                     </td>
                                   </tr>
                                 )}
-                              </React.Fragment>
+                              </>
                             );
                           })}
                         </tbody>
                       </table>
                     </div>
 
-                    {/* Draft Notice */}
                     {sortedParticipants.some(p => p.draftEligible) && (
                       <div className="glass border border-amber-500/20 bg-amber-500/5 rounded-xl p-4">
                         <p className="text-amber-400 font-semibold text-sm mb-1">⭐ Draft Eligible Traders</p>
-                        <p className="text-white/50 text-xs">The following traders qualify for the Pro Draft based on their competition score, fair play score, and drawdown control:</p>
+                        <p className="text-white/50 text-xs">These traders qualify for the Pro Draft based on score, fair play, and drawdown control:</p>
                         <div className="flex gap-2 mt-2 flex-wrap">
                           {sortedParticipants.filter(p => p.draftEligible).map(p => (
                             <span key={p.id} className="text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1 rounded-full">
@@ -344,7 +325,6 @@ export default function CompetitionPage() {
                         </div>
                       ))}
                     </div>
-
                     <p className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">Scoring Formula</p>
                     <div className="glass border border-white/5 rounded-lg p-4 text-xs text-white/50 font-mono">
                       <p className="text-green-400 mb-2">Competition Score =</p>
@@ -356,23 +336,14 @@ export default function CompetitionPage() {
                       <p className="text-red-400">- Max Drawdown × 0.5</p>
                       <p className="text-red-400">- Fair Play Penalty</p>
                     </div>
-
                     <div className="mt-4 glass border border-white/5 rounded-lg p-4">
                       <p className="text-white/40 text-xs mb-2">Timeline</p>
                       <div className="flex items-center gap-4 text-xs">
-                        <div>
-                          <p className="text-white/30">Start</p>
-                          <p className="text-white">{new Date(activeCompetition.startDate).toLocaleDateString()}</p>
-                        </div>
+                        <div><p className="text-white/30">Start</p><p className="text-white">{new Date(activeCompetition.startDate).toLocaleDateString()}</p></div>
                         <div className="flex-1 h-px bg-white/10" />
-                        <div className="text-center">
-                          <p className="text-green-400 font-bold">{daysLeft(activeCompetition.endDate)}</p>
-                        </div>
+                        <div className="text-center"><p className="text-green-400 font-bold">{daysLeft(activeCompetition.endDate)}</p></div>
                         <div className="flex-1 h-px bg-white/10" />
-                        <div className="text-right">
-                          <p className="text-white/30">End</p>
-                          <p className="text-white">{new Date(activeCompetition.endDate).toLocaleDateString()}</p>
-                        </div>
+                        <div className="text-right"><p className="text-white/30">End</p><p className="text-white">{new Date(activeCompetition.endDate).toLocaleDateString()}</p></div>
                       </div>
                     </div>
                   </div>
@@ -394,8 +365,7 @@ export default function CompetitionPage() {
                               {p.draftEligible && <span className="text-xs text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-full border border-amber-500/20">⭐ Draft Pick</span>}
                             </div>
                             <div className="w-full bg-white/5 rounded-full h-1.5">
-                              <div className="bg-green-400 h-1.5 rounded-full transition-all"
-                                style={{ width: `${Math.min(p.competitionScore, 100)}%` }} />
+                              <div className="bg-green-400 h-1.5 rounded-full" style={{ width: `${Math.min(p.competitionScore, 100)}%` }} />
                             </div>
                             <div className="flex gap-4 mt-1">
                               <span className="text-white/30 text-xs">Score: <span className="text-amber-400">{p.competitionScore}</span></span>
@@ -408,13 +378,10 @@ export default function CompetitionPage() {
                           </button>
                         </div>
                       ))}
-                      <p className="text-white/20 text-xs text-center mt-2">
-                        Live trade streaming — 5 minute delay active
-                      </p>
+                      <p className="text-white/20 text-xs text-center mt-2">Live trade streaming — 5 minute delay active</p>
                     </div>
                   </div>
                 )}
-
               </div>
             )}
           </div>

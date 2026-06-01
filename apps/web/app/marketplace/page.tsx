@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
-import { useStrategyStore, Strategy, StrategyAsset, StrategyRisk } from "@/store/strategyStore";
+import { useStrategyStore, Strategy, StrategyRisk } from "@/store/strategyStore";
 import { useAuthStore } from "@/store/authStore";
 import Topbar from "@/components/Topbar";
 import Sidebar from "@/components/Sidebar";
+import ReportButton from "@/components/ReportButton";
 
 const riskColors: Record<StrategyRisk, string> = {
   LOW: "text-green-400 bg-green-500/10 border-green-500/20",
@@ -44,11 +45,10 @@ export default function MarketplacePage() {
             <div className="max-w-3xl mx-auto">
               <button onClick={() => setSelectedStrategy(null)} className="text-white/40 hover:text-white text-sm mb-4 transition">← Back to Marketplace</button>
 
-              {/* Strategy Header */}
               <div className="glass border border-white/5 rounded-xl p-6 mb-4">
                 <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <span className={`text-xs px-2 py-0.5 rounded-full border ${riskColors[selectedStrategy.riskLevel]}`}>{selectedStrategy.riskLevel} RISK</span>
                       <span className="text-xs bg-white/5 text-white/40 border border-white/10 px-2 py-0.5 rounded-full">{selectedStrategy.asset}</span>
                       <span className="text-xs bg-white/5 text-white/40 border border-white/10 px-2 py-0.5 rounded-full">{selectedStrategy.timeframe}</span>
@@ -58,14 +58,25 @@ export default function MarketplacePage() {
                     <h1 className="text-xl font-bold text-white mb-1">{selectedStrategy.title}</h1>
                     <p className="text-white/40 text-xs">by {selectedStrategy.authorHandle} · {selectedStrategy.authorTccId}</p>
                   </div>
-                  <div className="text-right">
-                    {selectedStrategy.pricingModel === "free" ? (
-                      <p className="text-green-400 text-2xl font-bold">FREE</p>
-                    ) : (
-                      <>
-                        <p className="text-white text-2xl font-bold">${selectedStrategy.price}</p>
-                        <p className="text-white/30 text-xs">{selectedStrategy.pricingModel}</p>
-                      </>
+                  <div className="flex items-start gap-3">
+                    <div className="text-right">
+                      {selectedStrategy.pricingModel === "free" ? (
+                        <p className="text-green-400 text-2xl font-bold">FREE</p>
+                      ) : (
+                        <>
+                          <p className="text-white text-2xl font-bold">${selectedStrategy.price}</p>
+                          <p className="text-white/30 text-xs">{selectedStrategy.pricingModel}</p>
+                        </>
+                      )}
+                    </div>
+                    {selectedStrategy.authorHandle !== (user?.handle || "guest") && (
+                      <ReportButton
+                        reportedItemType="strategy"
+                        reportedItemId={selectedStrategy.id}
+                        reportedItemTitle={selectedStrategy.title}
+                        reportedUserId={selectedStrategy.authorHandle}
+                        sourceFeature="Strategy Marketplace"
+                      />
                     )}
                   </div>
                 </div>
@@ -105,7 +116,6 @@ export default function MarketplacePage() {
                 )}
               </div>
 
-              {/* Rules */}
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div className="glass border border-white/5 rounded-xl p-5">
                   <p className="text-white/60 text-xs font-semibold uppercase tracking-wider mb-3">📋 Rules</p>
@@ -139,7 +149,6 @@ export default function MarketplacePage() {
                 </div>
               </div>
 
-              {/* Reviews */}
               <div className="glass border border-white/5 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-4">
                   <p className="text-white/60 text-xs font-semibold uppercase tracking-wider">
@@ -154,10 +163,19 @@ export default function MarketplacePage() {
                     <div key={review.id} className="border-b border-white/5 pb-3 mb-3 last:border-0">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-white/70 text-xs font-semibold">{review.handle}</span>
-                        <div className="flex items-center gap-1">
-                          {Array.from({ length: 5 }).map((_, i) => (
-                            <span key={i} className={i < review.rating ? "text-amber-400" : "text-white/20"}>★</span>
-                          ))}
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <span key={i} className={i < review.rating ? "text-amber-400" : "text-white/20"}>★</span>
+                            ))}
+                          </div>
+                          <ReportButton
+                            reportedItemType="comment"
+                            reportedItemId={review.id}
+                            reportedItemTitle={review.comment.slice(0, 60)}
+                            sourceFeature="Strategy Marketplace Review"
+                            compact
+                          />
                         </div>
                       </div>
                       <p className="text-white/50 text-xs">{review.comment}</p>
@@ -166,7 +184,6 @@ export default function MarketplacePage() {
                 )}
               </div>
 
-              {/* Review Form */}
               {showReviewForm && (
                 <div className="glass border border-white/10 rounded-xl p-5 mt-4">
                   <p className="text-white font-semibold mb-3">Write a Review</p>
@@ -248,7 +265,22 @@ export default function MarketplacePage() {
             {filteredStrategies.map(strategy => (
               <div key={strategy.id}
                 onClick={() => setSelectedStrategy(strategy)}
-                className="glass border border-white/5 rounded-xl p-5 cursor-pointer hover:border-white/15 transition">
+                className="glass border border-white/5 rounded-xl p-5 cursor-pointer hover:border-white/15 transition relative group">
+
+                {/* Report button — top right, only visible on hover */}
+                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition z-10"
+                  onClick={e => e.stopPropagation()}>
+                  {strategy.authorHandle !== (user?.handle || "guest") && (
+                    <ReportButton
+                      reportedItemType="strategy"
+                      reportedItemId={strategy.id}
+                      reportedItemTitle={strategy.title}
+                      reportedUserId={strategy.authorHandle}
+                      sourceFeature="Strategy Marketplace"
+                      compact
+                    />
+                  )}
+                </div>
 
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -257,7 +289,7 @@ export default function MarketplacePage() {
                     <span className="text-xs bg-white/5 text-white/40 border border-white/10 px-2 py-0.5 rounded-full">{strategy.timeframe}</span>
                     {strategy.verified && <span className="text-xs text-green-400">✓</span>}
                   </div>
-                  <div className="text-right shrink-0">
+                  <div className="text-right shrink-0 mr-6">
                     {strategy.pricingModel === "free"
                       ? <span className="text-green-400 font-bold text-sm">FREE</span>
                       : <span className="text-white font-bold text-sm">${strategy.price}</span>}

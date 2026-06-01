@@ -5,6 +5,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useJournalStore } from "@/store/journalStore";
 import Topbar from "@/components/Topbar";
 import Sidebar from "@/components/Sidebar";
+import ReportButton from "@/components/ReportButton";
 
 const postTypeColors: Record<PostType, string> = {
   trade: "text-blue-400 bg-blue-500/10 border-blue-500/20",
@@ -23,7 +24,7 @@ const skillBadgeColors: Record<string, string> = {
   MENTOR: "text-orange-400 bg-orange-500/10",
 };
 
-function timeAgo(date: Date): string {
+function timeAgo(date: Date | number): string {
   const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
   if (seconds < 60) return `${seconds}s ago`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
@@ -91,7 +92,6 @@ export default function CommunityPage() {
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-2xl mx-auto py-6 px-4">
 
-            {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h1 className="text-2xl font-bold text-white">Community</h1>
@@ -103,7 +103,6 @@ export default function CommunityPage() {
               </button>
             </div>
 
-            {/* Tabs */}
             <div className="flex gap-1 mb-6 bg-white/5 rounded-lg p-1">
               {(["feed", "saved"] as const).map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)}
@@ -113,11 +112,9 @@ export default function CommunityPage() {
               ))}
             </div>
 
-            {/* Post Form */}
             {showPostForm && (
               <div className="glass border border-white/10 rounded-xl p-5 mb-6">
                 <p className="text-white/60 text-sm font-semibold mb-4">Create a Post</p>
-
                 <div className="flex gap-2 mb-3 flex-wrap">
                   {(["trade", "idea", "lesson", "win", "loss"] as PostType[]).map(type => (
                     <button key={type} onClick={() => setForm({ ...form, postType: type })}
@@ -126,7 +123,6 @@ export default function CommunityPage() {
                     </button>
                   ))}
                 </div>
-
                 {entries.filter(e => e.pnl !== undefined).length > 0 && (
                   <div className="mb-3">
                     <p className="text-white/40 text-xs mb-1">Link a verified trade (optional)</p>
@@ -142,12 +138,10 @@ export default function CommunityPage() {
                     </select>
                   </div>
                 )}
-
                 <textarea value={form.content}
                   onChange={(e) => setForm({ ...form, content: e.target.value })}
                   placeholder="Share your trade idea, lesson, or market insight..."
                   className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm resize-none h-24 w-full mb-3" />
-
                 <div className="flex gap-3">
                   <button onClick={handlePost}
                     className="bg-green-500/20 text-green-400 border border-green-500/30 px-4 py-2 rounded-lg text-xs font-semibold hover:bg-green-500/30 transition">
@@ -161,7 +155,6 @@ export default function CommunityPage() {
               </div>
             )}
 
-            {/* Posts */}
             {displayPosts.length === 0 ? (
               <div className="text-center py-16">
                 <p className="text-white/20">No posts yet</p>
@@ -169,8 +162,6 @@ export default function CommunityPage() {
             ) : (
               displayPosts.map(post => (
                 <div key={post.id} className="glass border border-white/5 rounded-xl p-5 mb-4">
-
-                  {/* Post header */}
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center text-green-400 font-bold text-sm">
@@ -192,16 +183,26 @@ export default function CommunityPage() {
                         </div>
                       </div>
                     </div>
+                    {/* Report Button */}
+                    {post.userId !== (user?.id || "guest") && (
+                      <ReportButton
+                        reportedItemType="post"
+                        reportedItemId={post.id}
+                        reportedItemTitle={`${post.handle}: ${post.content.slice(0, 60)}...`}
+                        reportedUserId={post.userId}
+                        sourceFeature="Community Feed"
+                        compact
+                      />
+                    )}
                   </div>
 
-                  {/* Trade card */}
                   {post.symbol && (
                     <div className="glass border border-white/5 rounded-lg p-3 mb-3 flex items-center gap-4">
                       <span className={`text-sm font-bold ${post.direction === "BUY" ? "text-green-400" : "text-red-400"}`}>
                         {post.direction}
                       </span>
                       <span className="text-white font-semibold">{post.symbol}</span>
-                      {post.entryPrice && <span className="text-white/40 text-xs">@ ${post.entryPrice.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>}
+                      {post.entryPrice && <span className="text-white/40 text-xs">@ ${post.entryPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>}
                       {post.pnl !== undefined && (
                         <span className={`text-sm font-bold ml-auto ${post.pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
                           {post.pnl >= 0 ? "+" : ""}${post.pnl.toFixed(2)}
@@ -215,10 +216,8 @@ export default function CommunityPage() {
                     </div>
                   )}
 
-                  {/* Content */}
                   <p className="text-white/80 text-sm leading-relaxed mb-4">{post.content}</p>
 
-                  {/* Actions */}
                   <div className="flex items-center gap-4 border-t border-white/5 pt-3">
                     <button onClick={() => likePost(post.id)}
                       className={`flex items-center gap-1.5 text-xs transition ${post.liked ? "text-red-400" : "text-white/40 hover:text-red-400"}`}>
@@ -237,7 +236,6 @@ export default function CommunityPage() {
                     </button>
                   </div>
 
-                  {/* Comments */}
                   {expandedPost === post.id && (
                     <div className="mt-4 border-t border-white/5 pt-4">
                       {post.comments.map(comment => (
@@ -246,12 +244,20 @@ export default function CommunityPage() {
                             {comment.handle[0].toUpperCase()}
                           </div>
                           <div className="glass border border-white/5 rounded-lg px-3 py-2 flex-1">
-                            <p className="text-white/60 text-xs font-semibold mb-0.5">{comment.handle}</p>
+                            <div className="flex items-center justify-between mb-0.5">
+                              <p className="text-white/60 text-xs font-semibold">{comment.handle}</p>
+                              <ReportButton
+                                reportedItemType="comment"
+                                reportedItemId={comment.id}
+                                reportedItemTitle={comment.content.slice(0, 60)}
+                                sourceFeature="Community Comments"
+                                compact
+                              />
+                            </div>
                             <p className="text-white/70 text-xs">{comment.content}</p>
                           </div>
                         </div>
                       ))}
-
                       {commentingOn === post.id ? (
                         <div className="flex gap-2 mt-2">
                           <input value={commentText}

@@ -1,8 +1,10 @@
 "use client";
 import { useState } from "react";
 import { useAcademyStore, Course, CourseCategory } from "@/store/academyStore";
+import { useAuthStore } from "@/store/authStore";
 import Topbar from "@/components/Topbar";
 import Sidebar from "@/components/Sidebar";
+import ReportButton from "@/components/ReportButton";
 
 const levelColors: Record<string, string> = {
   BEGINNER: "text-green-400 bg-green-500/10 border-green-500/20",
@@ -18,10 +20,10 @@ const categoryIcons: Record<CourseCategory, string> = {
 
 export default function AcademyPage() {
   const { courses, userProgress, enrollCourse, completeLesson, submitQuiz, isEnrolled, getProgress } = useAcademyStore();
+  const { user } = useAuthStore();
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [selectedLesson, setSelectedLesson] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "enrolled" | "completed">("all");
-  const [quizMode, setQuizMode] = useState(false);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [filterCategory, setFilterCategory] = useState<string>("all");
@@ -50,6 +52,7 @@ export default function AcademyPage() {
     if (score >= 70) completeLesson(activeCourse.id, activeLesson.id);
   };
 
+  // Lesson player view
   if (selectedCourse && selectedLesson && activeLesson) {
     return (
       <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
@@ -57,12 +60,9 @@ export default function AcademyPage() {
         <div className="flex flex-1 overflow-hidden">
           <Sidebar />
           <div className="flex flex-1 overflow-hidden">
-
-            {/* Lesson sidebar */}
             <div className="w-72 shrink-0 glass border-r border-white/5 overflow-y-auto">
               <div className="p-4 border-b border-white/5">
-                <button onClick={() => setSelectedLesson(null)}
-                  className="text-white/40 hover:text-white text-xs mb-2 transition">← Back to course</button>
+                <button onClick={() => setSelectedLesson(null)} className="text-white/40 hover:text-white text-xs mb-2 transition">← Back to course</button>
                 <p className="text-white font-semibold text-sm">{activeCourse.title}</p>
                 <div className="mt-2">
                   <div className="flex justify-between mb-1">
@@ -79,7 +79,7 @@ export default function AcademyPage() {
                   const isCompleted = progressData?.completedLessons.includes(lesson.id);
                   const isActive = lesson.id === selectedLesson;
                   return (
-                    <button key={lesson.id} onClick={() => { setSelectedLesson(lesson.id); setQuizMode(false); setQuizSubmitted(false); setQuizAnswers({}); }}
+                    <button key={lesson.id} onClick={() => { setSelectedLesson(lesson.id); setQuizSubmitted(false); setQuizAnswers({}); }}
                       className={`w-full text-left p-3 rounded-lg mb-1 transition flex items-start gap-3 ${isActive ? "bg-green-500/10 border border-green-500/20" : "hover:bg-white/5"}`}>
                       <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 mt-0.5 ${isCompleted ? "bg-green-500/20 text-green-400" : "bg-white/5 text-white/40"}`}>
                         {isCompleted ? "✓" : i + 1}
@@ -94,10 +94,8 @@ export default function AcademyPage() {
               </div>
             </div>
 
-            {/* Lesson content */}
             <div className="flex-1 overflow-y-auto p-6">
               <div className="max-w-3xl mx-auto">
-
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <p className="text-white/40 text-xs mb-1">{activeCourse.title}</p>
@@ -106,7 +104,6 @@ export default function AcademyPage() {
                   <span className="text-white/30 text-sm">{activeLesson.duration}</span>
                 </div>
 
-                {/* Video placeholder */}
                 <div className="glass border border-white/5 rounded-xl aspect-video flex items-center justify-center mb-6 relative overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-transparent" />
                   <div className="text-center relative z-10">
@@ -122,7 +119,6 @@ export default function AcademyPage() {
                   <p className="text-white/60 text-sm leading-relaxed">{activeLesson.description}</p>
                 </div>
 
-                {/* Quiz */}
                 {activeLesson.quizQuestions && !quizSubmitted && (
                   <div className="glass border border-white/5 rounded-xl p-5 mb-4">
                     <p className="text-white font-semibold mb-4">📝 Quick Quiz</p>
@@ -151,14 +147,14 @@ export default function AcademyPage() {
                   <div className="glass border border-green-500/20 bg-green-500/5 rounded-xl p-5 mb-4">
                     <p className="text-green-400 font-semibold">
                       ✓ Quiz Score: {progressData?.quizScores[activeLesson.id]}%
-                      {(progressData?.quizScores[activeLesson.id] || 0) >= 70 ? " — Lesson completed! 🎉" : " — Score 70% or above to complete"}
+                      {(progressData?.quizScores[activeLesson.id] || 0) >= 70 ? " — Lesson completed! 🎉" : " — Score 70%+ to complete"}
                     </p>
                   </div>
                 )}
 
                 <div className="flex gap-3">
                   {!activeLesson.quizQuestions && (
-                    <button onClick={() => { completeLesson(activeCourse.id, activeLesson.id); }}
+                    <button onClick={() => completeLesson(activeCourse.id, activeLesson.id)}
                       className="bg-green-500/20 text-green-400 border border-green-500/30 px-6 py-2 rounded-lg text-sm font-semibold hover:bg-green-500/30 transition">
                       ✓ Mark Complete
                     </button>
@@ -170,7 +166,6 @@ export default function AcademyPage() {
                     </div>
                   )}
                 </div>
-
               </div>
             </div>
           </div>
@@ -179,6 +174,7 @@ export default function AcademyPage() {
     );
   }
 
+  // Course detail view
   if (selectedCourse) {
     const enrolled = isEnrolled(selectedCourse.id);
     return (
@@ -188,9 +184,7 @@ export default function AcademyPage() {
           <Sidebar />
           <div className="flex-1 overflow-y-auto p-6">
             <div className="max-w-3xl mx-auto">
-
-              <button onClick={() => setSelectedCourse(null)}
-                className="text-white/40 hover:text-white text-sm mb-4 transition">← Back to Academy</button>
+              <button onClick={() => setSelectedCourse(null)} className="text-white/40 hover:text-white text-sm mb-4 transition">← Back to Academy</button>
 
               <div className="glass border border-white/5 rounded-xl p-6 mb-6">
                 <div className="flex items-start gap-5">
@@ -198,7 +192,8 @@ export default function AcademyPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <span className={`text-xs px-2 py-0.5 rounded-full border ${levelColors[selectedCourse.level]}`}>{selectedCourse.level}</span>
-                      {selectedCourse.isFree ? <span className="text-xs text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full">FREE</span>
+                      {selectedCourse.isFree
+                        ? <span className="text-xs text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full">FREE</span>
                         : <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">${selectedCourse.price}</span>}
                     </div>
                     <h1 className="text-xl font-bold text-white mb-2">{selectedCourse.title}</h1>
@@ -210,6 +205,15 @@ export default function AcademyPage() {
                       <span>👥 {selectedCourse.enrolled.toLocaleString()} enrolled</span>
                       <span>⭐ {selectedCourse.rating}</span>
                     </div>
+                  </div>
+                  <div className="shrink-0">
+                    <ReportButton
+                      reportedItemType="course"
+                      reportedItemId={selectedCourse.id}
+                      reportedItemTitle={selectedCourse.title}
+                      reportedUserId={selectedCourse.instructorHandle}
+                      sourceFeature="Academy Course Detail"
+                    />
                   </div>
                 </div>
 
@@ -266,7 +270,6 @@ export default function AcademyPage() {
                   );
                 })}
               </div>
-
             </div>
           </div>
         </div>
@@ -274,6 +277,7 @@ export default function AcademyPage() {
     );
   }
 
+  // Course listing view
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
       <Topbar />
@@ -320,11 +324,24 @@ export default function AcademyPage() {
                 return (
                   <div key={course.id}
                     onClick={() => setSelectedCourse(course)}
-                    className="glass border border-white/5 rounded-xl p-5 cursor-pointer hover:border-white/15 transition">
+                    className="glass border border-white/5 rounded-xl p-5 cursor-pointer hover:border-white/15 transition relative group">
+
+                    {/* Report button — top right, on hover */}
+                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition z-10"
+                      onClick={e => e.stopPropagation()}>
+                      <ReportButton
+                        reportedItemType="course"
+                        reportedItemId={course.id}
+                        reportedItemTitle={course.title}
+                        reportedUserId={course.instructorHandle}
+                        sourceFeature="Academy Course Listing"
+                        compact
+                      />
+                    </div>
 
                     <div className="flex items-start justify-between mb-3">
                       <span className="text-4xl">{course.thumbnail}</span>
-                      <div className="flex flex-col items-end gap-1">
+                      <div className="flex flex-col items-end gap-1 mr-6">
                         <span className={`text-xs px-2 py-0.5 rounded-full border ${levelColors[course.level]}`}>{course.level}</span>
                         {course.isFree
                           ? <span className="text-xs text-green-400 font-bold">FREE</span>

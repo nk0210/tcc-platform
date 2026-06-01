@@ -5,6 +5,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useTradeStore } from "@/store/tradeStore";
 import Topbar from "@/components/Topbar";
 import Sidebar from "@/components/Sidebar";
+import ReportButton from "@/components/ReportButton";
 
 const trustScoreColor = (score: number) =>
   score >= 90 ? "text-green-400" : score >= 75 ? "text-amber-400" : "text-red-400";
@@ -39,13 +40,10 @@ export default function CopyTradingPage() {
 
   const handleSetup = () => {
     if (!selectedMaster || !consentChecked) return;
-
-    // Check broker match
     if (selectedMaster.broker !== "TCC Paper") {
       alert(`${selectedMaster.handle} uses a different broker. Connect their broker to copy.`);
       return;
     }
-
     setupRelationship({
       followerId: user?.id || "guest",
       followerHandle: user?.handle || "guest",
@@ -55,7 +53,6 @@ export default function CopyTradingPage() {
       broker: "TCC Paper",
       ...form,
     });
-
     setShowConsentModal(false);
     setShowSetupForm(false);
     setSelectedMaster(null);
@@ -63,31 +60,24 @@ export default function CopyTradingPage() {
     setActiveTab("active");
   };
 
-  // Simulate a copy trade execution
   const simulateCopyTrade = (masterHandle: string) => {
     const rel = activeRelationships.find(r => r.masterHandle === masterHandle);
     const master = masters.find(m => m.handle === masterHandle);
     if (!rel || !master) return;
-
     const masterLot = 0.5;
     const entryPrice = 77500;
     const sl = 77200;
     const tp = 78100;
     const slDistance = Math.abs(entryPrice - sl);
     const rrRatio = Math.abs(tp - entryPrice) / slDistance;
-
     const calc = calculateFollowerLot(master, rel, masterLot, slDistance, entryPrice);
-
     const checks = [
       { check: rel.broker === master.broker, reason: "Different broker" },
       { check: rel.status === "active", reason: "Relationship not active" },
       { check: calc.finalLot >= 0.01, reason: "Lot too small" },
       { check: rrRatio >= rel.minRR, reason: `RR ${rrRatio.toFixed(1)} below minimum ${rel.minRR}` },
-      { check: activeRelationships.length <= rel.maxOpenTrades, reason: "Max open trades reached" },
     ];
-
     const failed = checks.find(c => !c.check);
-
     const { addCopyTrade } = useCopyTradingStore.getState();
     addCopyTrade({
       masterId: master.id,
@@ -97,8 +87,7 @@ export default function CopyTradingPage() {
       masterLot,
       followerLot: calc.finalLot,
       entryPrice,
-      sl,
-      tp,
+      sl, tp,
       rrRatio: parseFloat(rrRatio.toFixed(2)),
       slDistance,
       riskAmount: calc.riskAmount,
@@ -115,7 +104,6 @@ export default function CopyTradingPage() {
         <Sidebar />
         <div className="flex-1 overflow-y-auto p-6">
 
-          {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-bold text-white">📡 Copy Trading</h1>
@@ -129,7 +117,6 @@ export default function CopyTradingPage() {
             )}
           </div>
 
-          {/* Tabs */}
           <div className="flex gap-1 bg-white/5 rounded-lg p-1 mb-6">
             {(["discover", "active", "history"] as const).map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)}
@@ -146,7 +133,6 @@ export default function CopyTradingPage() {
                 const isFollowing = myRelationshipHandles.has(master.handle);
                 return (
                   <div key={master.id} className="glass border border-white/5 rounded-xl p-5 hover:border-white/10 transition">
-
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-xl bg-green-500/20 border border-green-500/30 flex items-center justify-center text-green-400 text-xl font-bold">
@@ -161,10 +147,18 @@ export default function CopyTradingPage() {
                           <p className="text-white/30 text-xs">{master.specialty} specialist</p>
                         </div>
                       </div>
-                      <div className={`px-2 py-1 rounded-lg border text-xs font-bold ${trustScoreBg(master.traderTrustScore)}`}>
-                        <span className={trustScoreColor(master.traderTrustScore)}>
-                          Trust: {master.traderTrustScore}/100
-                        </span>
+                      <div className="flex flex-col items-end gap-2">
+                        <div className={`px-2 py-1 rounded-lg border text-xs font-bold ${trustScoreBg(master.traderTrustScore)}`}>
+                          <span className={trustScoreColor(master.traderTrustScore)}>Trust: {master.traderTrustScore}/100</span>
+                        </div>
+                        <ReportButton
+                          reportedItemType="master_trader"
+                          reportedItemId={master.id}
+                          reportedItemTitle={`${master.handle} (${master.tccId})`}
+                          reportedUserId={master.handle}
+                          sourceFeature="Copy Trading Discovery"
+                          compact
+                        />
                       </div>
                     </div>
 
@@ -195,15 +189,11 @@ export default function CopyTradingPage() {
 
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs bg-white/5 text-white/40 px-2 py-0.5 rounded-full border border-white/10">
-                          {master.broker}
-                        </span>
+                        <span className="text-xs bg-white/5 text-white/40 px-2 py-0.5 rounded-full border border-white/10">{master.broker}</span>
                         <span className="text-xs text-white/30">{master.totalTrades} trades</span>
                       </div>
                       {isFollowing ? (
-                        <span className="text-xs bg-green-500/10 text-green-400 border border-green-500/20 px-3 py-1 rounded-lg">
-                          ✓ Following
-                        </span>
+                        <span className="text-xs bg-green-500/10 text-green-400 border border-green-500/20 px-3 py-1 rounded-lg">✓ Following</span>
                       ) : (
                         <button
                           onClick={() => { setSelectedMaster(master); setShowSetupForm(true); }}
@@ -249,16 +239,24 @@ export default function CopyTradingPage() {
                           <span className={`text-xs px-2 py-1 rounded-full border ${rel.status === "active" ? "text-green-400 bg-green-500/10 border-green-500/20" : "text-amber-400 bg-amber-500/10 border-amber-500/20"}`}>
                             {rel.status === "active" ? "🟢 Active" : "⏸ Paused"}
                           </span>
-                          <button
-                            onClick={() => updateRelationshipStatus(rel.id, rel.status === "active" ? "paused" : "active")}
+                          <button onClick={() => updateRelationshipStatus(rel.id, rel.status === "active" ? "paused" : "active")}
                             className="bg-white/5 hover:bg-white/10 text-white/50 text-xs px-3 py-1 rounded-lg border border-white/10 transition">
                             {rel.status === "active" ? "Pause" : "Resume"}
                           </button>
-                          <button
-                            onClick={() => simulateCopyTrade(rel.masterHandle)}
+                          <button onClick={() => simulateCopyTrade(rel.masterHandle)}
                             className="bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-400 text-xs px-3 py-1 rounded-lg border border-indigo-500/20 transition">
                             🧪 Simulate Trade
                           </button>
+                          {master && (
+                            <ReportButton
+                              reportedItemType="copy_trade"
+                              reportedItemId={rel.id}
+                              reportedItemTitle={`Copy relationship with ${rel.masterHandle}`}
+                              reportedUserId={rel.masterHandle}
+                              sourceFeature="Active Copy Trading"
+                              compact
+                            />
+                          )}
                         </div>
                       </div>
 
@@ -304,13 +302,9 @@ export default function CopyTradingPage() {
                                   <td className="py-2 text-white/60">1:{t.rrRatio}</td>
                                   <td className="py-2 text-white/60">${t.riskAmount}</td>
                                   <td className="py-2">
-                                    {t.status === "copied" ? (
-                                      <span className="text-green-400">✓ Copied</span>
-                                    ) : t.status === "blocked" ? (
-                                      <span className="text-red-400" title={t.blockReason}>⛔ {t.blockReason}</span>
-                                    ) : (
-                                      <span className="text-amber-400">{t.status}</span>
-                                    )}
+                                    {t.status === "copied" ? <span className="text-green-400">✓ Copied</span>
+                                      : t.status === "blocked" ? <span className="text-red-400" title={t.blockReason}>⛔ {t.blockReason}</span>
+                                      : <span className="text-amber-400">{t.status}</span>}
                                   </td>
                                   <td className={`py-2 font-bold ${(t.pnl || 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
                                     {t.pnl !== undefined ? `${t.pnl >= 0 ? "+" : ""}$${t.pnl}` : "—"}
@@ -477,9 +471,7 @@ export default function CopyTradingPage() {
             </div>
             <div className="flex gap-3">
               <button onClick={() => { setShowConsentModal(false); setShowSetupForm(true); }}
-                className="flex-1 bg-white/5 text-white/50 py-2 rounded-lg text-sm border border-white/10">
-                Back
-              </button>
+                className="flex-1 bg-white/5 text-white/50 py-2 rounded-lg text-sm border border-white/10">Back</button>
               <button onClick={handleSetup}
                 className="flex-1 bg-green-500/20 text-green-400 border border-green-500/30 py-2 rounded-lg text-sm font-semibold">
                 ✓ Start Copying
@@ -488,7 +480,6 @@ export default function CopyTradingPage() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
