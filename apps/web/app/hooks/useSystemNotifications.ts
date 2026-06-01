@@ -1,116 +1,161 @@
 "use client";
+
+/**
+ * TCC System Notifications Hook
+ *
+ * Listens to trade store events and watchlist alerts.
+ * No fake notifications. All generated from actual user actions.
+ */
+
 import { useEffect, useRef } from "react";
-import { useTradeStore } from "@/store/tradeStore";
-import { useCopyTradingStore } from "@/store/copyTradingStore";
+import { useTradeStore, TradeEvent } from "@/store/tradeStore";
+import { useJournalStore } from "@/store/journalStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useWatchlistStore } from "@/store/watchlistStore";
 import { calculateRiskScore } from "@/store/riskStore";
 
+function formatPnl(pnl: number): string {
+  return `${pnl >= 0 ? "+" : "-"}$${Math.abs(pnl).toFixed(2)}`;
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 60000) return `${Math.round(ms / 1000)}s`;
+  if (ms < 3600000) return `${Math.round(ms / 60000)}m`;
+  return `${(ms / 3600000).toFixed(1)}h`;
+}
+
 export function useSystemNotifications() {
-  const prevPositions = useRef(0);
-  const prevCopyTrades = useRef(0);
-  const prevRiskLevel = useRef("LOW");
-  const initialized = useRef(false);
+  const processedEvents = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    // Don't fire on first mount
-    if (!initialized.current) {
-      initialized.current = true;
-      prevPositions.current = useTradeStore.getState().positions.length;
-      prevCopyTrades.current = useCopyTradingStore.getState().copyTrades.length;
-      return;
-    }
+    // Trade events subscription.
+    // Use one-argument subscribe because the store does not use subscribeWithSelector.
+    const unsubTrade = useTradeStore.subscribe((state) => {
+      const events = state.events;
 
-    const unsubTrade = useTradeStore.subscribe(
-      (state) => state.positions.length,
-      (count, prev) => {
-        const { addNotification } = useNotificationStore.getState();
+      if (!events || events.length === 0) return;
 
-        if (count > prev) {
-          // New position opened
+      const { addNotification } = useNotificationStore.getState();
+      const { addEntryFromClosedTrade } = useJournalStore.getState();
+
+      const unprocessedEvents = events.filter(
+        (event: TradeEvent) => !processedEvents.current.has(event.id)
+      );
+
+      if (unprocessedEvents.length === 0) return;
+
+      unprocessedEvents.forEach((event: TradeEvent) => {
+        processedEvents.current.add(event.id);
+
+        if (event.type === "position_opened" && event.position) {
+          const pos = event.position;
+
           addNotification({
             type: "journal_prompt",
             priority: "low",
-            title: "📓 New Trade Opened",
-            message: "Log your emotion in the Journal while it's fresh. What's your confidence level?",
-            action: { label: "Open Journal", path: "/journal" },
+            title: `📊 Paper ${pos.side} Opened — ${pos.displayName}`,
+            message: `${pos.lotSize} lot${pos.lotSize !== 1 ? "s" : ""} @ $${pos.entryPrice.toLocaleString(
+              undefined,
+              { maximumFractionDigits: 4 }
+            )} | Paper Mode`,
+            action: { label: "View Positions", path: "/" },
           });
 
-          // Check risk
           const risk = calculateRiskScore();
+
           if (risk.level === "HIGH" || risk.level === "EXTREME") {
             addNotification({
               type: "risk_warning",
               priority: risk.level === "EXTREME" ? "critical" : "high",
-              title: `⚠ Risk Score ${risk.level}: ${risk.total}/100`,
+              title: `⚠ Risk Level: ${risk.level}`,
               message: risk.recommendation,
               action: { label: "View Dashboard", path: "/" },
             });
           }
         }
 
-        if (count < prev) {
-          // Position closed
-          addNotification({
-            type: "journal_prompt",
-            priority: "low",
-            title: "✅ Trade Closed",
-            message: "Update your journal — what went right? What went wrong? Log it now.",
-            action: { label: "Open Journal", path: "/journal" },
-          });
-        }
-      }
-    );
+        if (
+          (event.type === "position_closed_manual" ||
+            event.type === "position_closed_sl" ||
+            event.type === "position_closed_tp") &&
+          event.closedTrade
+        ) {
+          const trade = event.closedTrade;
 
-    const unsubCopy = useCopyTradingStore.subscribe(
-      (state) => state.copyTrades.length,
-      (count, prev) => {
-        if (count > prev) {
-          const { addNotification } = useNotificationStore.getState();
-          const latest = useCopyTradingStore.getState().copyTrades[0];
-          if (latest) {
+          const reasonLabel =
+            event.type === "position_closed_sl"
+              ? "⛔ Stop Loss Hit"
+              : event.type === "position_closed_tp"
+                ? "✅ Take Profit Hit"
+                : "📤 Manually Closed";
+
+          addNotification({
+            type: event.type === "position_closed_sl" ? "risk_warning" : "journal_prompt",
+            priority: event.type === "position_closed_sl" ? "high" : "medium",
+            title: `${reasonLabel} — ${trade.displayName}`,
+            message: `Paper ${trade.side} closed | P&L: ${formatPnl(
+              trade.netPnl
+            )} | Duration: ${formatDuration(trade.durationMs)}`,
+            action: { label: "Update Journal", path: "/journal" },
+          });
+
+          try {
+            addEntryFromClosedTrade(trade);
+
             addNotification({
-              type: "copy_trade",
-              priority: latest.status === "blocked" ? "medium" : "high",
-              title: `📡 Copy Trade ${latest.status === "copied" ? "Executed" : "Blocked"}`,
-              message: `${latest.masterHandle}: ${latest.direction} ${latest.symbol} — Your lot: ${latest.followerLot}${latest.status === "blocked" ? ` | Blocked: ${latest.blockReason}` : ""}`,
-              action: { label: "View Copy Trading", path: "/copy-trading" },
+              type: "journal_prompt",
+              priority: "low",
+              title: "📓 Journal Entry Created",
+              message: `${trade.displayName} trade logged. Add your notes, emotion, and lessons.`,
+              action: { label: "Update Journal", path: "/journal" },
             });
+          } catch {
+            // Keep silent so notification hook never breaks trading flow.
           }
         }
-      }
-    );
+      });
+    });
 
-    // Watchlist alerts check
-    const unsubWatchlist = useWatchlistStore.subscribe(
-      (state) => state.items,
-      (items) => {
-        const { addNotification } = useNotificationStore.getState();
-        items.forEach(item => {
-          if (item.currentPrice === 0) return;
-          item.alerts.forEach(alert => {
-            if (alert.triggered) return;
-            const triggered =
-              (alert.type === "above" && item.currentPrice >= alert.price) ||
-              (alert.type === "below" && item.currentPrice <= alert.price);
-            if (triggered) {
-              useWatchlistStore.getState().triggerAlert(item.symbol, alert.id);
-              addNotification({
-                type: "price_alert",
-                priority: "high",
-                title: `🔔 Price Alert Triggered — ${item.label}`,
-                message: `${item.symbol} is now ${alert.type} your alert at $${alert.price.toLocaleString()}. Current: $${item.currentPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}`,
-                action: { label: "Open Chart", path: "/" },
-              });
-            }
+    // Watchlist alerts subscription.
+    // Also one-argument subscribe for the same reason.
+    const unsubWatchlist = useWatchlistStore.subscribe((state) => {
+      const items = state.items;
+
+      if (!items || items.length === 0) return;
+
+      const { addNotification } = useNotificationStore.getState();
+
+      items.forEach((item) => {
+        if (!item.currentPrice || item.currentPrice === 0) return;
+        if (!item.alerts || item.alerts.length === 0) return;
+
+        item.alerts.forEach((alert) => {
+          if (alert.triggered) return;
+
+          const triggered =
+            (alert.type === "above" && item.currentPrice >= alert.price) ||
+            (alert.type === "below" && item.currentPrice <= alert.price);
+
+          if (!triggered) return;
+
+          useWatchlistStore.getState().triggerAlert(item.symbolId, alert.id);
+
+          addNotification({
+            type: "price_alert",
+            priority: "high",
+            title: `🔔 Price Alert — ${item.displayName}`,
+            message: `${item.symbolId} hit your ${alert.type} alert at $${alert.price.toLocaleString()}. Current: $${item.currentPrice.toLocaleString(
+              undefined,
+              { maximumFractionDigits: 4 }
+            )}`,
+            action: { label: "Open Chart", path: "/" },
           });
         });
-      }
-    );
+      });
+    });
 
     return () => {
       unsubTrade();
-      unsubCopy();
       unsubWatchlist();
     };
   }, []);

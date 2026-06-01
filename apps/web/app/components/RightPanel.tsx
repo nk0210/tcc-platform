@@ -1,225 +1,369 @@
 "use client";
-import { useJournalStore, Emotion } from "@/store/journalStore";
-import { analyzeTrade, autoTag } from "@/lib/analyzeTrade";
-import { useRiskStore, calculateRiskScore } from "@/store/riskStore";
-import { useEffect, useState } from "react";
+/**
+ * TCC Right Panel — Risk Score + Journal + News
+ *
+ * Risk score calculated from REAL trade state.
+ * No fake scores. Empty/low state when no positions.
+ */
+import { useState, useEffect, useRef } from "react";
+import { useTradeStore } from "@/store/tradeStore";
+import { useJournalStore, JournalEntry } from "@/store/journalStore";
+import { calculateRiskScore, getRiskColor, getRiskBg, RiskScore } from "@/store/riskStore";
+import { useNewsStore } from "@/store/newsStore";
 
-const emotions: { value: Emotion; emoji: string; label: string }[] = [
-  { value: "confident", emoji: "💪", label: "Confident" },
-  { value: "fearful", emoji: "😨", label: "Fearful" },
-  { value: "greedy", emoji: "🤑", label: "Greedy" },
-  { value: "hesitant", emoji: "😰", label: "Hesitant" },
-  { value: "neutral", emoji: "😐", label: "Neutral" },
-  { value: "frustrated", emoji: "😤", label: "Frustrated" },
-];
+type RightTab = "risk" | "journal" | "news";
 
-const levelColors: Record<string, string> = {
-  LOW: "text-green-400",
-  MODERATE: "text-amber-400",
-  HIGH: "text-orange-400",
-  EXTREME: "text-red-400",
-};
+// ── Risk Score Display ────────────────────────────────────────────────
 
-const levelBg: Record<string, string> = {
-  LOW: "from-green-400",
-  MODERATE: "from-green-400 via-amber-400",
-  HIGH: "from-green-400 via-amber-400 to-orange-400",
-  EXTREME: "from-green-400 via-amber-400 to-red-500",
-};
+function RiskPanel({ score }: { score: RiskScore }) {
+  const levelColor = getRiskColor(score.level);
+  const levelBg = getRiskBg(score.level);
+  const pct = score.total;
 
-export default function RightPanel() {
-  const { entries, updateAiAnalysis, updateEntry } = useJournalStore();
-  const { riskScore, refresh } = useRiskStore();
-  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
-  const latestEntry = entries[0] || null;
-
-  useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 5000);
-    return () => clearInterval(interval);
-  }, [entries]);
-
-  const handleAnalyze = async () => {
-    if (!latestEntry) return;
-    setAnalyzingId(latestEntry.id);
-    const tags = autoTag({
-      emotion: latestEntry.emotion,
-      lots: latestEntry.lots,
-      pnl: latestEntry.pnl,
-      notes: latestEntry.notes,
-      strategy: latestEntry.strategy,
-      entryQuality: latestEntry.entryQuality,
-      followedPlan: latestEntry.followedPlan,
-      session: latestEntry.session,
-    });
-    updateEntry(latestEntry.id, { tags });
-    const analysis = await analyzeTrade({
-      symbol: latestEntry.symbol,
-      direction: latestEntry.direction,
-      entryPrice: latestEntry.entryPrice,
-      lots: latestEntry.lots,
-      pnl: latestEntry.pnl,
-      emotion: latestEntry.emotion,
-      confidenceLevel: latestEntry.confidenceLevel,
-      stressLevel: latestEntry.stressLevel,
-      entryQuality: latestEntry.entryQuality,
-      followedPlan: latestEntry.followedPlan,
-      strategy: latestEntry.strategy,
-      marketStructure: latestEntry.marketStructure,
-      session: latestEntry.session,
-      timeframe: latestEntry.timeframe,
-      notes: latestEntry.notes,
-      whatWentRight: latestEntry.whatWentRight,
-      whatWentWrong: latestEntry.whatWentWrong,
-      lessonLearned: latestEntry.lessonLearned,
-      tags,
-    });
-    updateAiAnalysis(latestEntry.id, analysis);
-    setAnalyzingId(null);
-  };
+  const gaugeColor =
+    score.level === "LOW" ? "#00ff88"
+    : score.level === "MEDIUM" ? "#f59e0b"
+    : score.level === "HIGH" ? "#f97316"
+    : "#ef4444";
 
   return (
-    <div className="glass flex flex-col w-72 border-l border-white/5 overflow-y-auto">
+    <div className="p-4 flex flex-col gap-3">
 
-      {/* Risk Score */}
-      <div className="p-4 border-b border-white/5">
+      {/* Score gauge */}
+      <div className={`glass border rounded-xl p-4 ${levelBg}`}>
         <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">Risk Score</span>
-          <span className={`text-xs font-bold ${levelColors[riskScore.level]}`}>{riskScore.level}</span>
-        </div>
-        <div className="w-full bg-white/5 rounded-full h-2 mb-2">
-          <div className={`bg-gradient-to-r ${levelBg[riskScore.level]} h-2 rounded-full transition-all duration-500`}
-            style={{width: `${riskScore.total}%`}}></div>
-        </div>
-        <div className="flex justify-between mb-2">
-          <span className="text-white/30 text-xs">0</span>
-          <span className={`text-sm font-bold ${levelColors[riskScore.level]}`}>{riskScore.total}/100</span>
-          <span className="text-white/30 text-xs">100</span>
+          <p className="text-white/50 text-xs uppercase tracking-wider">Risk Score</p>
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${levelBg} border ${levelColor}`}>
+            {score.level}
+          </span>
         </div>
 
-        {riskScore.factors.length > 0 && (
-          <div className="flex flex-col gap-1 mt-2">
-            {riskScore.factors.map((f, i) => (
-              <div key={i} className="flex items-start gap-2">
-                <span className={`text-xs mt-0.5 ${f.severity === "high" ? "text-red-400" : f.severity === "medium" ? "text-amber-400" : "text-green-400"}`}>
-                  {f.severity === "high" ? "⚠" : f.severity === "medium" ? "•" : "✓"}
-                </span>
-                <p className="text-white/50 text-xs">{f.reason}</p>
-              </div>
-            ))}
+        {/* Score bar */}
+        <div className="flex items-center gap-3 mb-3">
+          <span className={`text-3xl font-bold ${levelColor}`}>{score.total}</span>
+          <div className="flex-1">
+            <div className="w-full bg-white/10 rounded-full h-2">
+              <div
+                className="h-2 rounded-full transition-all duration-500"
+                style={{ width: `${pct}%`, backgroundColor: gaugeColor }} />
+            </div>
+            <div className="flex justify-between text-white/20 text-xs mt-0.5">
+              <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
+            </div>
           </div>
-        )}
+        </div>
 
-        <p className={`text-xs mt-3 italic ${levelColors[riskScore.level]}`}>
-          "{riskScore.recommendation}"
+        <p className={`text-xs leading-relaxed ${score.total === 0 ? "text-white/30" : levelColor}`}>
+          {score.recommendation}
         </p>
       </div>
 
-      {/* Sentiment */}
-      <div className="p-4 border-b border-white/5">
-        <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">Sentiment</span>
-        <div className="mt-3 flex flex-col gap-2">
-          {[
-            { asset: "XAUUSD", bias: "Bullish", pct: 68, color: "green" },
-            { asset: "EURUSD", bias: "Bearish", pct: 42, color: "red" },
-            { asset: "GBPUSD", bias: "Neutral", pct: 51, color: "amber" },
-          ].map((item) => (
-            <div key={item.asset} className="flex items-center gap-2">
-              <span className="text-white/60 text-xs w-16">{item.asset}</span>
-              <div className="flex-1 bg-white/5 rounded-full h-1.5">
-                <div className={`h-1.5 rounded-full ${item.color === "green" ? "bg-green-400" : item.color === "red" ? "bg-red-400" : "bg-amber-400"}`}
-                  style={{width: `${item.pct}%`}}></div>
-              </div>
-              <span className={`text-xs font-semibold ${item.color === "green" ? "text-green-400" : item.color === "red" ? "text-red-400" : "text-amber-400"}`}>
-                {item.bias}
-              </span>
+      {/* Account summary */}
+      <div className="glass border border-white/5 rounded-xl p-4">
+        <p className="text-white/40 text-xs uppercase tracking-wider mb-3">Account (Paper)</p>
+        {(() => {
+          const { balance, equity, freeMargin, marginUsed, marginLevel, floatingPnl } = useTradeStore.getState();
+          const items = [
+            { label: "Balance", value: `$${balance.toFixed(2)}`, color: "text-white" },
+            { label: "Equity", value: `$${equity.toFixed(2)}`, color: equity >= balance ? "text-green-400" : "text-red-400" },
+            { label: "Free Margin", value: `$${freeMargin.toFixed(2)}`, color: freeMargin < 500 ? "text-red-400" : "text-white/70" },
+            { label: "Margin Used", value: `$${marginUsed.toFixed(2)}`, color: "text-white/50" },
+            { label: "Margin Level", value: marginUsed > 0 ? `${marginLevel.toFixed(0)}%` : "—", color: marginLevel < 150 && marginUsed > 0 ? "text-red-400" : "text-white/50" },
+            { label: "Floating P&L", value: `${floatingPnl >= 0 ? "+" : ""}$${floatingPnl.toFixed(2)}`, color: floatingPnl >= 0 ? "text-green-400" : "text-red-400" },
+          ];
+          return items.map(item => (
+            <div key={item.label} className="flex justify-between items-center mb-1.5">
+              <span className="text-white/30 text-xs">{item.label}</span>
+              <span className={`text-xs font-semibold ${item.color}`}>{item.value}</span>
             </div>
-          ))}
-        </div>
-        <p className="text-white/30 text-xs mt-3 italic">"Gold bullish — weak dollar + geopolitical risk"</p>
+          ));
+        })()}
       </div>
 
-      {/* News */}
-      <div className="p-4 border-b border-white/5">
-        <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">News</span>
-        <div className="mt-3 flex flex-col gap-3">
-          {[
-            { time: "14:30", event: "US CPI Data Release", impact: "HIGH" },
-            { time: "16:00", event: "Fed Chair Speech", impact: "HIGH" },
-            { time: "18:00", event: "Crude Oil Inventories", impact: "MED" },
-          ].map((item) => (
-            <div key={item.event} className="flex items-start gap-2">
-              <span className="text-white/30 text-xs w-10 mt-0.5">{item.time}</span>
-              <div className="flex-1">
-                <p className="text-white/70 text-xs">{item.event}</p>
-                <span className={`text-xs font-bold ${item.impact === "HIGH" ? "text-red-400" : "text-amber-400"}`}>
-                  {item.impact}
+      {/* Risk factors */}
+      {score.factors.length > 0 && (
+        <div className="glass border border-white/5 rounded-xl p-4">
+          <p className="text-white/40 text-xs uppercase tracking-wider mb-3">Risk Factors</p>
+          <div className="flex flex-col gap-2">
+            {score.factors.map((factor, i) => (
+              <div key={i} className={`flex items-start gap-2 p-2 rounded-lg ${
+                factor.severity === "danger" ? "bg-red-500/8" :
+                factor.severity === "warning" ? "bg-amber-500/8" :
+                "bg-white/3"
+              }`}>
+                <span className="text-sm shrink-0">
+                  {factor.severity === "danger" ? "🔴" : factor.severity === "warning" ? "🟡" : "🟢"}
                 </span>
+                <div>
+                  <p className={`text-xs font-semibold ${
+                    factor.severity === "danger" ? "text-red-400" :
+                    factor.severity === "warning" ? "text-amber-400" :
+                    "text-white/60"
+                  }`}>{factor.name}</p>
+                  <p className="text-white/30 text-xs">{factor.description}</p>
+                </div>
+                <span className="ml-auto text-xs text-white/20 shrink-0">+{factor.score}</span>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* AI Assistant */}
-      <div className="p-4 border-b border-white/5">
-        <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">AI Assistant</span>
-        <div className="mt-3 bg-green-400/5 border border-green-400/10 rounded-lg p-3">
-          <p className="text-white/70 text-xs leading-relaxed">
-            {riskScore.total > 50
-              ? `⚠ Risk is ${riskScore.level}. ${riskScore.recommendation}`
-              : `"Your last 3 losses occurred after 3PM. Current time is 2:45PM — consider waiting for tomorrow's London session."`}
+      {score.total === 0 && (
+        <div className="glass border border-white/5 rounded-xl p-4">
+          <p className="text-white/20 text-xs text-center">
+            Open paper trades to see real risk analysis.
           </p>
         </div>
-      </div>
+      )}
+    </div>
+  );
+}
 
-      {/* Trade Journal — Latest Entry */}
-      <div className="p-4">
-        <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">Trade Journal</span>
-        {!latestEntry ? (
-          <p className="text-white/20 text-xs mt-3">Place a trade to log your journal entry</p>
-        ) : (
-          <div className="mt-3 flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <span className={`text-xs font-bold ${latestEntry.direction === "BUY" ? "text-green-400" : "text-red-400"}`}>
-                {latestEntry.direction}
-              </span>
-              <span className="text-white/60 text-xs">{latestEntry.symbol}</span>
-              <span className="text-white/40 text-xs">@ ${latestEntry.entryPrice.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
-            </div>
+// ── Journal Panel ─────────────────────────────────────────────────────
 
+function JournalPanel() {
+  const { entries, updateEntry } = useJournalStore();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const selected = entries.find(e => e.id === selectedId);
+  const recentEntries = entries.slice(0, 15);
+
+  if (selected) {
+    const pnlColor = (selected.netPnl || 0) >= 0 ? "text-green-400" : "text-red-400";
+    const resultBadge = selected.result === "win" ? "text-green-400 bg-green-500/10 border-green-500/20"
+      : selected.result === "loss" ? "text-red-400 bg-red-500/10 border-red-500/20"
+      : "text-white/40 bg-white/5 border-white/10";
+
+    return (
+      <div className="p-4 flex flex-col gap-3">
+        <button onClick={() => setSelectedId(null)} className="text-white/30 hover:text-white/60 text-xs transition text-left">
+          ← Back to journal
+        </button>
+
+        <div className="glass border border-white/5 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="text-white/40 text-xs mb-1">How are you feeling?</p>
-              <select value={latestEntry.emotion}
-                onChange={(e) => updateEntry(latestEntry.id, { emotion: e.target.value as Emotion })}
-                className="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs w-full">
-                {emotions.map(em => (
-                  <option key={em.value} value={em.value} className="bg-[#0a0a0f]">
-                    {em.emoji} {em.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <textarea value={latestEntry.notes}
-              onChange={(e) => updateEntry(latestEntry.id, { notes: e.target.value })}
-              placeholder="Notes... (breakout, news, scalp...)"
-              className="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs resize-none h-16 w-full" />
-
-            <button onClick={handleAnalyze} disabled={analyzingId === latestEntry.id}
-              className="bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-400 border border-indigo-500/30 py-1.5 rounded text-xs font-semibold transition disabled:opacity-50">
-              {analyzingId === latestEntry.id ? "Analyzing..." : "🤖 Get AI Analysis"}
-            </button>
-
-            {latestEntry.aiAnalysis && (
-              <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-lg p-3">
-                <p className="text-white/60 text-xs leading-relaxed">{latestEntry.aiAnalysis}</p>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className={`text-sm font-bold ${selected.side === "BUY" ? "text-green-400" : "text-red-400"}`}>{selected.side}</span>
+                <span className="text-white font-semibold text-sm">{selected.displayName}</span>
               </div>
-            )}
+              <p className="text-white/30 text-xs">
+                {selected.closedAt ? new Date(selected.closedAt).toLocaleString() : "Open trade"}
+              </p>
+            </div>
+            <span className={`text-xs px-2 py-0.5 rounded-full border capitalize ${resultBadge}`}>
+              {selected.result || "—"}
+            </span>
           </div>
-        )}
+
+          {selected.netPnl !== undefined && (
+            <p className={`text-xl font-bold ${pnlColor} mb-3`}>
+              {selected.netPnl >= 0 ? "+" : ""}${selected.netPnl.toFixed(2)}
+            </p>
+          )}
+
+          <div className="grid grid-cols-2 gap-1 text-xs mb-3">
+            <div><span className="text-white/30">Entry</span> <span className="text-white/70">${selected.entryPrice?.toFixed(4)}</span></div>
+            {selected.exitPrice && <div><span className="text-white/30">Exit</span> <span className="text-white/70">${selected.exitPrice?.toFixed(4)}</span></div>}
+            <div><span className="text-white/30">Lots</span> <span className="text-white/70">{selected.lotSize}</span></div>
+            {selected.closeReason && <div><span className="text-white/30">Reason</span> <span className="text-white/70 capitalize">{selected.closeReason.replace("_", " ")}</span></div>}
+          </div>
+        </div>
+
+        {/* Editable fields */}
+        <div className="glass border border-white/5 rounded-xl p-4 flex flex-col gap-3">
+          <p className="text-white/40 text-xs uppercase tracking-wider">Your Notes</p>
+
+          <div>
+            <p className="text-white/30 text-xs mb-1">Emotion</p>
+            <select value={selected.emotion}
+              onChange={e => updateEntry(selected.id, { emotion: e.target.value as any })}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs">
+              {["neutral", "confident", "fearful", "greedy", "hesitant", "frustrated"].map(e => (
+                <option key={e} value={e} className="bg-[#0a0a0f] capitalize">{e}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <p className="text-white/30 text-xs mb-1">Followed plan?</p>
+            <div className="flex gap-2">
+              {[{ label: "Yes", val: true }, { label: "No", val: false }, { label: "—", val: null }].map(opt => (
+                <button key={String(opt.val)} onClick={() => updateEntry(selected.id, { followedPlan: opt.val })}
+                  className={`flex-1 py-1 rounded-lg text-xs border transition ${selected.followedPlan === opt.val ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-white/5 text-white/40 border-white/10"}`}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-white/30 text-xs mb-1">Notes</p>
+            <textarea
+              value={selected.notes}
+              onChange={e => updateEntry(selected.id, { notes: e.target.value })}
+              placeholder="What happened? What was your thesis?"
+              rows={3}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs resize-none focus:outline-none focus:border-white/20 placeholder-white/20"
+            />
+          </div>
+
+          <div>
+            <p className="text-white/30 text-xs mb-1">Lesson Learned</p>
+            <textarea
+              value={selected.lessonLearned}
+              onChange={e => updateEntry(selected.id, { lessonLearned: e.target.value })}
+              placeholder="What would you do differently?"
+              rows={2}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs resize-none focus:outline-none focus:border-white/20 placeholder-white/20"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4">
+      {recentEntries.length === 0 ? (
+        <div className="flex items-center justify-center h-32">
+          <div className="text-center">
+            <p className="text-3xl mb-2">📓</p>
+            <p className="text-white/20 text-xs">No journal entries yet.</p>
+            <p className="text-white/15 text-xs mt-1">Entries are created automatically when you close a paper trade.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {recentEntries.map(entry => {
+            const pnlColor = (entry.netPnl || 0) >= 0 ? "text-green-400" : "text-red-400";
+            return (
+              <div key={entry.id}
+                onClick={() => setSelectedId(entry.id)}
+                className="glass border border-white/5 rounded-xl p-3 cursor-pointer hover:border-white/15 transition">
+                <div className="flex items-start justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-bold ${entry.side === "BUY" ? "text-green-400" : "text-red-400"}`}>{entry.side}</span>
+                    <span className="text-white/80 text-xs font-semibold">{entry.displayName}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full capitalize ${
+                      entry.result === "win" ? "text-green-400 bg-green-500/10" :
+                      entry.result === "loss" ? "text-red-400 bg-red-500/10" :
+                      "text-white/30 bg-white/5"
+                    }`}>{entry.result || "—"}</span>
+                  </div>
+                  {entry.netPnl !== undefined && (
+                    <span className={`text-xs font-bold ${pnlColor}`}>
+                      {entry.netPnl >= 0 ? "+" : ""}${entry.netPnl.toFixed(2)}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className="text-white/20 text-xs">{new Date(entry.createdAt).toLocaleString()}</p>
+                  {entry.closeReason && (
+                    <span className="text-white/20 text-xs capitalize">{entry.closeReason.replace("_", " ")}</span>
+                  )}
+                </div>
+                {!entry.notes && (
+                  <p className="text-white/15 text-xs mt-1 italic">Tap to add notes →</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── News Panel ────────────────────────────────────────────────────────
+
+function NewsPanel() {
+  const { news } = useNewsStore();
+  const recent = news.slice(0, 8);
+
+  return (
+    <div className="p-4 flex flex-col gap-2">
+      {recent.length === 0 ? (
+        <p className="text-white/20 text-xs text-center py-8">No news loaded yet.</p>
+      ) : (
+        recent.map(item => (
+          <div key={item.id} className="glass border border-white/5 rounded-xl p-3 hover:border-white/10 transition cursor-pointer">
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`text-xs px-1.5 py-0.5 rounded-full border capitalize ${
+                item.sentiment === "bullish" ? "text-green-400 bg-green-500/10 border-green-500/20" :
+                item.sentiment === "bearish" ? "text-red-400 bg-red-500/10 border-red-500/20" :
+                "text-white/30 bg-white/5 border-white/10"
+              }`}>{item.sentiment}</span>
+              <span className="text-white/20 text-xs">{item.source}</span>
+              <span className="text-white/20 text-xs ml-auto">
+                {Math.floor((Date.now() - new Date(item.timestamp).getTime()) / 3600000)}h ago
+              </span>
+            </div>
+            <p className="text-white/70 text-xs leading-relaxed line-clamp-2">{item.title}</p>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────
+
+export default function RightPanel() {
+  const [activeTab, setActiveTab] = useState<RightTab>("risk");
+  const [riskScore, setRiskScore] = useState<RiskScore>(() => calculateRiskScore());
+
+  // Recalculate risk score whenever trade state changes.
+  // Keep simple one-argument subscribe because store does not use subscribeWithSelector.
+  useEffect(() => {
+    const unsub = useTradeStore.subscribe(() => {
+      setRiskScore(calculateRiskScore());
+    });
+
+    return unsub;
+}, []);
+
+  const { entries } = useJournalStore();
+  const { news } = useNewsStore();
+
+  const tabs = [
+    { key: "risk" as RightTab, label: `Risk`, badge: riskScore.total > 0 ? riskScore.level : null },
+    { key: "journal" as RightTab, label: `Journal`, badge: entries.length > 0 ? entries.length : null },
+    { key: "news" as RightTab, label: `News`, badge: news.length > 0 ? news.length : null },
+  ];
+
+  return (
+    <div className="glass flex flex-col border-l border-white/5 w-72 shrink-0 overflow-hidden">
+
+      {/* Tab bar */}
+      <div className="flex shrink-0 border-b border-white/5">
+        {tabs.map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            className={`flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-1 transition border-b-2 ${activeTab === tab.key ? "text-green-400 border-green-400" : "text-white/40 border-transparent hover:text-white/60"}`}>
+            {tab.label}
+            {tab.badge && (
+              <span className={`text-xs px-1 rounded-full ${
+                tab.key === "risk" && tab.badge !== 0
+                  ? riskScore.level === "EXTREME" ? "bg-red-500 text-white" :
+                    riskScore.level === "HIGH" ? "bg-orange-500 text-white" :
+                    riskScore.level === "MEDIUM" ? "bg-amber-500 text-black" :
+                    "bg-green-500/20 text-green-400"
+                  : "bg-white/10 text-white/40"
+              }`}>
+                {tab.badge}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto">
+        {activeTab === "risk" && <RiskPanel score={riskScore} />}
+        {activeTab === "journal" && <JournalPanel />}
+        {activeTab === "news" && <NewsPanel />}
+      </div>
     </div>
   );
 }
