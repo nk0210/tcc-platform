@@ -1,16 +1,13 @@
 /**
- * TCC Copy Trading Store
+ * TCC Copy Trading Store — Day 8
  *
  * Two stores:
- *   useMasterRegistryStore — global (shared key tcc:master-registry)
- *     Approved master traders + all applications for admin review
+ *   useMasterRegistryStore — global (tcc:master-registry)
+ *   useCopyTradingStore    — user-scoped (tcc:{userId}:copy-trading)
  *
- *   useCopyTradingStore — user-scoped (tcc:{userId}:copy-trading)
- *     My application, my copy relationships, copy history, fee models
- *
- * NO FAKE DATA. NO FAKE MASTER TRADERS.
- * Paper-copy mode only — no real broker execution.
- * Phase Alpha: replace with PostgreSQL + WebSocket + broker API.
+ * NO FAKE DATA. NO FAKE MASTER TRADERS. NO FAKE WIN RATES.
+ * Paper-copy mode only. No real broker execution.
+ * Phase Alpha: PostgreSQL + WebSocket + broker API.
  */
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
@@ -185,7 +182,7 @@ export interface CopyFeeModel {
   lastCalculatedAt?: string;
 }
 
-// ── Default risk settings ─────────────────────────────────────────────────
+// ── Defaults ──────────────────────────────────────────────────────────────
 
 export const DEFAULT_COPY_RISK_SETTINGS: CopyRiskSettings = {
   maxRiskPerTradePercent: 1,
@@ -205,7 +202,7 @@ export const DEFAULT_COPY_RISK_SETTINGS: CopyRiskSettings = {
   },
 };
 
-// ── Safety check utility ──────────────────────────────────────────────────
+// ── Safety Check Engine ───────────────────────────────────────────────────
 
 export interface CopySafetyParams {
   relationship: CopyRelationship;
@@ -259,7 +256,7 @@ export function runCopySafetyChecks(params: CopySafetyParams): CopySafetyCheckRe
   if (relationship.riskSettings.requireStopLoss) {
     checks.push({
       id: "stop_loss",
-      label: "Stop loss required by risk settings",
+      label: "Stop loss required",
       status: hasStopLoss ? "passed" : "failed",
       message: hasStopLoss
         ? "Stop loss present."
@@ -283,7 +280,7 @@ export function runCopySafetyChecks(params: CopySafetyParams): CopySafetyCheckRe
     label: "Daily loss limit",
     status: todayLossAmount < dailyLossLimit ? "passed" : "failed",
     message: todayLossAmount < dailyLossLimit
-      ? `Daily loss $${todayLossAmount.toFixed(2)} within $${dailyLossLimit.toFixed(2)} limit.`
+      ? `Daily loss $${todayLossAmount.toFixed(2)} within limit.`
       : `Daily loss limit reached ($${todayLossAmount.toFixed(2)}/$${dailyLossLimit.toFixed(2)}).`,
   });
 
@@ -316,7 +313,7 @@ export function runCopySafetyChecks(params: CopySafetyParams): CopySafetyCheckRe
     label: "News filter",
     status: relationship.riskSettings.newsFilterEnabled ? "not_available" : "passed",
     message: relationship.riskSettings.newsFilterEnabled
-      ? "News filter enabled — economic calendar not connected yet. Passing manually."
+      ? "News filter enabled — economic calendar not connected yet."
       : "News filter disabled.",
   });
 
@@ -332,12 +329,11 @@ export function runCopySafetyChecks(params: CopySafetyParams): CopySafetyCheckRe
 }
 
 /**
- * Slippage-adjusted lot size utility — Phase Alpha placeholder.
- *
- * Rules (when broker is connected):
- *   actual <= max              → full lot
- *   actual <= 1.5 × max       → reduced lot = finalLot × (max / actual)
- *   actual > 1.5 × max        → block trade
+ * Slippage-adjusted lot — Phase Alpha placeholder.
+ * Rules (when broker connected):
+ *   actual <= max           → full lot
+ *   actual <= 1.5 × max     → reduced: finalLot × (max / actual)
+ *   actual > 1.5 × max      → block trade
  */
 export function calculateSlippageAdjustedLot(
   finalLot: number,
@@ -356,26 +352,23 @@ export function calculateSlippageAdjustedLot(
 const masterRegistryStorage = {
   getItem: (_: string): string | null => {
     if (typeof window === "undefined") return null;
-    try   { return localStorage.getItem("tcc:master-registry"); }
-    catch { return null; }
+    try { return localStorage.getItem("tcc:master-registry"); } catch { return null; }
   },
   setItem: (_: string, value: string): void => {
     if (typeof window === "undefined") return;
-    try { localStorage.setItem("tcc:master-registry", value); }
-    catch {}
+    try { localStorage.setItem("tcc:master-registry", value); } catch {}
   },
   removeItem: (_: string): void => {
     if (typeof window === "undefined") return;
-    try { localStorage.removeItem("tcc:master-registry"); }
-    catch {}
+    try { localStorage.removeItem("tcc:master-registry"); } catch {}
   },
 };
 
-// ── Master Registry Store — global ────────────────────────────────────────
+// ── Master Registry Store — GLOBAL ────────────────────────────────────────
 
 interface MasterRegistryState {
-  approvedMasters:  ApprovedMasterTrader[];
-  allApplications:  MasterTraderApplication[];
+  approvedMasters: ApprovedMasterTrader[];
+  allApplications: MasterTraderApplication[];
 
   upsertApplication:  (application: MasterTraderApplication) => void;
   approveApplication: (applicationId: string, adminHandle: string) => ApprovedMasterTrader | null;
@@ -386,11 +379,11 @@ interface MasterRegistryState {
   addAdminNote:       (applicationId: string, note: string) => void;
   markUnderReview:    (applicationId: string, adminHandle: string) => void;
 
-  getActiveMasters:          () => ApprovedMasterTrader[];
-  getApplicationByUserId:    (userId: string) => MasterTraderApplication | undefined;
-  getMasterByUserId:          (userId: string) => ApprovedMasterTrader | undefined;
-  getMasterById:              (masterId: string) => ApprovedMasterTrader | undefined;
-  getPendingApplications:    () => MasterTraderApplication[];
+  getActiveMasters:       () => ApprovedMasterTrader[];
+  getApplicationByUserId: (userId: string) => MasterTraderApplication | undefined;
+  getMasterByUserId:      (userId: string) => ApprovedMasterTrader | undefined;
+  getMasterById:          (masterId: string) => ApprovedMasterTrader | undefined;
+  getPendingApplications: () => MasterTraderApplication[];
 }
 
 export const useMasterRegistryStore = create<MasterRegistryState>()(
@@ -437,10 +430,7 @@ export const useMasterRegistryStore = create<MasterRegistryState>()(
         };
         set((state) => ({
           allApplications: state.allApplications.map(a => a.id === applicationId ? updatedApp : a),
-          approvedMasters: [
-            master,
-            ...state.approvedMasters.filter(m => m.userId !== app.userId),
-          ],
+          approvedMasters: [master, ...state.approvedMasters.filter(m => m.userId !== app.userId)],
         }));
         return master;
       },
@@ -478,10 +468,8 @@ export const useMasterRegistryStore = create<MasterRegistryState>()(
           ),
           allApplications: state.allApplications.map(a =>
             master && a.userId !== master.userId ? a : {
-              ...a,
-              status: "suspended" as MasterTraderApplicationStatus,
-              adminNotes: `Suspended by ${adminHandle}: ${reason}`,
-              updatedAt: now,
+              ...a, status: "suspended" as MasterTraderApplicationStatus,
+              adminNotes: `Suspended by ${adminHandle}: ${reason}`, updatedAt: now,
             }
           ),
         }));
@@ -519,26 +507,26 @@ export const useMasterRegistryStore = create<MasterRegistryState>()(
 
       getActiveMasters:       () => get().approvedMasters.filter(m => m.status === "active"),
       getApplicationByUserId: (userId) => get().allApplications.find(a => a.userId === userId),
-      getMasterByUserId:       (userId) => get().approvedMasters.find(m => m.userId === userId),
-      getMasterById:           (id) => get().approvedMasters.find(m => m.id === id),
+      getMasterByUserId:      (userId) => get().approvedMasters.find(m => m.userId === userId),
+      getMasterById:          (id) => get().approvedMasters.find(m => m.id === id),
       getPendingApplications: () => get().allApplications.filter(
         a => a.status === "submitted" || a.status === "under_review" || a.status === "more_info_required"
       ),
     }),
     {
-      name:    "master-registry",
+      name: "master-registry",
       storage: createJSONStorage(() => masterRegistryStorage),
     }
   )
 );
 
-// ── User-scoped copy trading store ────────────────────────────────────────
+// ── User-scoped Copy Trading Store ────────────────────────────────────────
 
 interface CopyTradingState {
   myApplication: MasterTraderApplication | null;
-  relationships:  CopyRelationship[];
-  copyHistory:    CopyTradeHistoryItem[];
-  feeModels:      CopyFeeModel[];
+  relationships: CopyRelationship[];
+  copyHistory:   CopyTradeHistoryItem[];
+  feeModels:     CopyFeeModel[];
 
   submitApplication: (params: {
     userId: string; tccId: string; displayName: string;
@@ -561,10 +549,10 @@ interface CopyTradingState {
     riskSettings: CopyRiskSettings;
   }) => CopyRelationship;
 
-  updateRiskSettings:  (relationshipId: string, settings: Partial<CopyRiskSettings>) => void;
-  pauseRelationship:   (relationshipId: string)                  => void;
-  resumeRelationship:  (relationshipId: string)                  => void;
-  stopRelationship:    (relationshipId: string, reason?: string) => void;
+  updateRiskSettings: (relationshipId: string, settings: Partial<CopyRiskSettings>) => void;
+  pauseRelationship:  (relationshipId: string) => void;
+  resumeRelationship: (relationshipId: string) => void;
+  stopRelationship:   (relationshipId: string, reason?: string) => void;
 
   executePaperCopy: (params: {
     relationshipId: string;
@@ -595,33 +583,33 @@ interface CopyTradingState {
 
   initFeeModel: (relationshipId: string, balance: number, feePercent: number) => void;
 
-  getActiveRelationships:      () => CopyRelationship[];
-  getRelationshipByMaster:     (masterTraderId: string) => CopyRelationship | undefined;
-  getOpenCopiedTradeCount:     (relationshipId: string) => number;
-  getFeeModel:                 (relationshipId: string) => CopyFeeModel | undefined;
+  getActiveRelationships:  () => CopyRelationship[];
+  getRelationshipByMaster: (masterTraderId: string) => CopyRelationship | undefined;
+  getOpenCopiedTradeCount: (relationshipId: string) => number;
+  getFeeModel:             (relationshipId: string) => CopyFeeModel | undefined;
 }
 
 export const useCopyTradingStore = create<CopyTradingState>()(
   persist(
     (set, get) => ({
       myApplication: null,
-      relationships:  [],
-      copyHistory:    [],
-      feeModels:      [],
+      relationships: [],
+      copyHistory:   [],
+      feeModels:     [],
 
       submitApplication: (params) => {
         const now = new Date().toISOString();
         const app: MasterTraderApplication = {
-          id:           `app_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          userId:       params.userId,
-          tccId:        params.tccId,
-          displayName:  params.displayName,
-          status:       "submitted",
+          id:          `app_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          userId:      params.userId,
+          tccId:       params.tccId,
+          displayName: params.displayName,
+          status:      "submitted",
           marketsTraded:  params.marketsTraded,
           strategiesUsed: params.strategiesUsed,
-          experienceSummary:      params.experienceSummary,
-          riskManagementSummary:  params.riskManagementSummary,
-          reasonForApplying:      params.reasonForApplying,
+          experienceSummary:     params.experienceSummary,
+          riskManagementSummary: params.riskManagementSummary,
+          reasonForApplying:     params.reasonForApplying,
           hasAcceptedRiskDisclosure:         params.hasAcceptedRiskDisclosure,
           hasAcceptedPerformanceTruthPolicy: params.hasAcceptedPerformanceTruthPolicy,
           hasAcceptedCopyTradingTerms:       params.hasAcceptedCopyTradingTerms,
@@ -630,7 +618,6 @@ export const useCopyTradingStore = create<CopyTradingState>()(
           updatedAt:   now,
         };
         set({ myApplication: app });
-        // Push to global registry for admin visibility
         useMasterRegistryStore.getState().upsertApplication(app);
         return app;
       },
@@ -640,10 +627,7 @@ export const useCopyTradingStore = create<CopyTradingState>()(
         if (!myApplication) return;
         const now = new Date().toISOString();
         const updated: MasterTraderApplication = {
-          ...myApplication,
-          status: "submitted",
-          submittedAt: now,
-          updatedAt: now,
+          ...myApplication, status: "submitted", submittedAt: now, updatedAt: now,
         };
         set({ myApplication: updated });
         useMasterRegistryStore.getState().upsertApplication(updated);
@@ -652,22 +636,19 @@ export const useCopyTradingStore = create<CopyTradingState>()(
       startCopyRelationship: (params) => {
         const now = new Date().toISOString();
         const relationship: CopyRelationship = {
-          id:                   `rel_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          followerUserId:       params.followerUserId,
-          masterTraderUserId:   params.masterTraderUserId,
-          masterTraderId:       params.masterTraderId,
-          masterDisplayName:    params.masterDisplayName,
-          mode:                 params.mode,
-          status:               "active",
-          riskSettings:         params.riskSettings,
-          startedAt:            now,
-          updatedAt:            now,
+          id:                 `rel_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          followerUserId:     params.followerUserId,
+          masterTraderUserId: params.masterTraderUserId,
+          masterTraderId:     params.masterTraderId,
+          masterDisplayName:  params.masterDisplayName,
+          mode:               params.mode,
+          status:             "active",
+          riskSettings:       params.riskSettings,
+          startedAt:          now,
+          updatedAt:          now,
         };
         set((state) => ({
-          relationships: [
-            relationship,
-            ...state.relationships.filter(r => r.masterTraderId !== params.masterTraderId),
-          ],
+          relationships: [relationship, ...state.relationships.filter(r => r.masterTraderId !== params.masterTraderId)],
         }));
         return relationship;
       },
@@ -676,9 +657,7 @@ export const useCopyTradingStore = create<CopyTradingState>()(
         set((state) => ({
           relationships: state.relationships.map(r =>
             r.id !== relationshipId ? r : {
-              ...r,
-              riskSettings: { ...r.riskSettings, ...settings },
-              updatedAt: new Date().toISOString(),
+              ...r, riskSettings: { ...r.riskSettings, ...settings }, updatedAt: new Date().toISOString(),
             }
           ),
         }));
@@ -687,9 +666,7 @@ export const useCopyTradingStore = create<CopyTradingState>()(
       pauseRelationship: (relationshipId) => {
         set((state) => ({
           relationships: state.relationships.map(r =>
-            r.id !== relationshipId ? r : {
-              ...r, status: "paused" as CopyRelationshipStatus, updatedAt: new Date().toISOString(),
-            }
+            r.id !== relationshipId ? r : { ...r, status: "paused" as CopyRelationshipStatus, updatedAt: new Date().toISOString() }
           ),
         }));
       },
@@ -697,9 +674,7 @@ export const useCopyTradingStore = create<CopyTradingState>()(
       resumeRelationship: (relationshipId) => {
         set((state) => ({
           relationships: state.relationships.map(r =>
-            r.id !== relationshipId ? r : {
-              ...r, status: "active" as CopyRelationshipStatus, updatedAt: new Date().toISOString(),
-            }
+            r.id !== relationshipId ? r : { ...r, status: "active" as CopyRelationshipStatus, updatedAt: new Date().toISOString() }
           ),
         }));
       },
@@ -719,20 +694,20 @@ export const useCopyTradingStore = create<CopyTradingState>()(
       executePaperCopy: (params) => {
         const now = new Date().toISOString();
         const item: CopyTradeHistoryItem = {
-          id:                   `copy_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          relationshipId:       params.relationshipId,
-          masterTraderUserId:   params.masterTraderUserId,
-          masterDisplayName:    params.masterDisplayName,
-          followerUserId:       params.followerUserId,
-          symbol:               params.symbol,
-          displayName:          params.displayName,
-          side:                 params.side,
-          lotSize:              params.lotSize,
-          entryPrice:           params.entryPrice,
-          status:               "copied_paper",
-          mode:                 "paper_copy",
-          riskCheckResult:      params.safetyResult,
-          createdAt:            now,
+          id:                 `copy_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          relationshipId:     params.relationshipId,
+          masterTraderUserId: params.masterTraderUserId,
+          masterDisplayName:  params.masterDisplayName,
+          followerUserId:     params.followerUserId,
+          symbol:             params.symbol,
+          displayName:        params.displayName,
+          side:               params.side,
+          lotSize:            params.lotSize,
+          entryPrice:         params.entryPrice,
+          status:             "copied_paper",
+          mode:               "paper_copy",
+          riskCheckResult:    params.safetyResult,
+          createdAt:          now,
         };
         set((state) => ({ copyHistory: [item, ...state.copyHistory] }));
         return item;
@@ -763,32 +738,20 @@ export const useCopyTradingStore = create<CopyTradingState>()(
       initFeeModel: (relationshipId, balance, feePercent) => {
         if (get().feeModels.find(f => f.relationshipId === relationshipId)) return;
         set((state) => ({
-          feeModels: [
-            ...state.feeModels,
-            {
-              relationshipId,
-              performanceFeePercent:  feePercent,
-              highWaterMark:          balance,
-              currentBalanceSnapshot: balance,
-              totalFeesAccrued:       0,
-            },
-          ],
+          feeModels: [...state.feeModels, {
+            relationshipId,
+            performanceFeePercent:  feePercent,
+            highWaterMark:          balance,
+            currentBalanceSnapshot: balance,
+            totalFeesAccrued:       0,
+          }],
         }));
       },
 
-      getActiveRelationships: () =>
-        get().relationships.filter(r => r.status === "active" || r.status === "paused"),
-
-      getRelationshipByMaster: (masterTraderId) =>
-        get().relationships.find(r => r.masterTraderId === masterTraderId),
-
-      getOpenCopiedTradeCount: (relationshipId) =>
-        get().copyHistory.filter(
-          h => h.relationshipId === relationshipId && h.status === "copied_paper"
-        ).length,
-
-      getFeeModel: (relationshipId) =>
-        get().feeModels.find(f => f.relationshipId === relationshipId),
+      getActiveRelationships:  () => get().relationships.filter(r => r.status === "active" || r.status === "paused"),
+      getRelationshipByMaster: (masterTraderId) => get().relationships.find(r => r.masterTraderId === masterTraderId),
+      getOpenCopiedTradeCount: (relationshipId) => get().copyHistory.filter(h => h.relationshipId === relationshipId && h.status === "copied_paper").length,
+      getFeeModel:             (relationshipId) => get().feeModels.find(f => f.relationshipId === relationshipId),
     }),
     {
       name:    "copy-trading",
