@@ -1145,4 +1145,198 @@ export default function CopyTradingPage() {
                   </p>
                 </div>
                 {activeMasters.length === 0 ? (
-                  <div className="flex flex-
+<div className="flex flex-col items-center justify-center py-16 gap-4">
+                    <p className="text-4xl">📡</p>
+                    <p className="text-white/30 text-sm font-semibold">No approved master traders yet.</p>
+                    <p className="text-white/15 text-xs text-center max-w-sm leading-relaxed">
+                      Master traders are approved through the application process by TCC admin.
+                      Apply using the "Apply as Master" tab to be the first.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {activeMasters.map(master => (
+                      <MasterTraderCard
+                        key={master.id}
+                        master={master}
+                        existingRelationship={getRelationshipByMaster(master.id)}
+                        onStartCopy={() => setCopySetupMaster(master)}
+                      />
+                    ))}
+                  </div>
+                )}
+                <div className="p-4 bg-white/2 border border-white/5 rounded-xl">
+                  <p className="text-white/20 text-xs leading-relaxed">
+                    <strong className="text-white/30">Disclaimer:</strong>{" "}
+                    All master traders shown here are locally approved. Performance data is not verified,
+                    not broker-connected, and not audited. This is paper-copy mode only —
+                    no real money is involved. Phase Alpha will require verified broker data and
+                    independent performance auditing.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* ACTIVE COPIES */}
+            {activeTab === "active" && (
+              <div className="flex flex-col gap-5">
+                <div>
+                  <h2 className="text-lg font-bold text-white mb-1">Active Copy Relationships</h2>
+                  <p className="text-white/30 text-xs">All paper-copy only. No real orders placed.</p>
+                </div>
+
+                {relationships.filter(r => r.status !== "stopped").length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-4">
+                    <p className="text-4xl">⚡</p>
+                    <p className="text-white/30 text-sm">No active copy relationships yet.</p>
+                    <button onClick={() => setActiveTab("discover")}
+                      className="text-green-400/60 text-xs hover:text-green-400 transition">
+                      Browse master traders →
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    {relationships.filter(r => r.status !== "stopped").map(rel => (
+                      <RelationshipCard key={rel.id} rel={rel} balance={balance} userId={user.id} />
+                    ))}
+                  </div>
+                )}
+
+                {relationships.filter(r => r.status === "stopped").length > 0 && (
+                  <div>
+                    <p className="text-white/30 text-xs uppercase tracking-wider mb-3">Stopped Relationships</p>
+                    {relationships.filter(r => r.status === "stopped").map(rel => (
+                      <div key={rel.id} className="glass border border-white/5 rounded-xl p-4 flex items-center gap-3 mb-2">
+                        <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/30 font-bold text-sm">
+                          {rel.masterDisplayName[0]?.toUpperCase()}
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-white/40 text-sm">{rel.masterDisplayName}</p>
+                          <p className="text-white/20 text-xs">
+                            Stopped {rel.stoppedAt ? timeAgo(rel.stoppedAt) : "—"}
+                            {rel.stopReason && ` · ${rel.stopReason}`}
+                          </p>
+                        </div>
+                        <span className="text-xs text-white/20 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">Stopped</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* HISTORY */}
+            {activeTab === "history" && (
+              <div className="flex flex-col gap-5">
+                <div>
+                  <h2 className="text-lg font-bold text-white mb-1">Copy History</h2>
+                  <p className="text-white/30 text-xs">Local paper-copy events only. No real trades.</p>
+                </div>
+
+                {copyHistory.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-4">
+                    <p className="text-4xl">📋</p>
+                    <p className="text-white/30 text-sm">No copy history yet.</p>
+                    <p className="text-white/15 text-xs text-center">
+                      Start a copy relationship and use "Test Signal" to generate history.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="glass border border-white/5 rounded-xl overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-white/5 bg-white/2">
+                          <th className="text-left px-4 py-3 text-white/40">Master</th>
+                          <th className="text-left px-4 py-3 text-white/40">Symbol</th>
+                          <th className="text-left px-4 py-3 text-white/40">Side</th>
+                          <th className="text-right px-4 py-3 text-white/40">Lots</th>
+                          <th className="text-left px-4 py-3 text-white/40">Status</th>
+                          <th className="text-left px-4 py-3 text-white/40">Mode</th>
+                          <th className="text-left px-4 py-3 text-white/40">Note</th>
+                          <th className="text-right px-4 py-3 text-white/40">Time</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {copyHistory.map(item => (
+                          <tr key={item.id} className="border-b border-white/5 hover:bg-white/2">
+                            <td className="px-4 py-3 text-white/60">{item.masterDisplayName}</td>
+                            <td className="px-4 py-3 text-white font-medium">{item.displayName}</td>
+                            <td className={`px-4 py-3 font-semibold ${item.side === "BUY" ? "text-green-400" : "text-red-400"}`}>
+                              {item.side}
+                            </td>
+                            <td className="px-4 py-3 text-right text-white/60">{item.lotSize}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-0.5 rounded-full text-xs ${
+                                item.status === "copied_paper" ? "text-green-400 bg-green-500/10"
+                                : item.status === "blocked"     ? "text-red-400 bg-red-500/10"
+                                : item.status === "skipped"     ? "text-amber-400 bg-amber-500/10"
+                                : "text-white/30 bg-white/5"
+                              }`}>
+                                {item.status === "copied_paper" ? "✓ Paper-Copied"
+                                 : item.status === "blocked"     ? "⛔ Blocked"
+                                 : item.status === "skipped"     ? "⏭ Skipped"
+                                 : item.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-white/30 italic text-xs">Paper-copy only</td>
+                            <td className="px-4 py-3 text-white/30 text-xs max-w-[120px] truncate">
+                              {item.reason ?? "—"}
+                            </td>
+                            <td className="px-4 py-3 text-right text-white/30">{timeAgo(item.createdAt)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* APPLY */}
+            {activeTab === "apply" && (
+              <div className="flex flex-col gap-5 max-w-2xl">
+                <div>
+                  <h2 className="text-lg font-bold text-white mb-1">Apply as Master Trader</h2>
+                  <p className="text-white/30 text-xs">
+                    Local application only. Admin review required. Approval does not guarantee performance or income.
+                  </p>
+                </div>
+
+                {myApp && myApp.status !== "rejected" ? (
+                  <ApplicationStatusCard app={myApp} />
+                ) : (
+                  <ApplicationForm
+                    userId={user.id}
+                    tccId={user.tccId ?? "TCC-GL-TRD-XXXXXXXX"}
+                    displayName={user.handle ?? user.email}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* ADMIN REVIEW */}
+            {activeTab === "admin" && isAdminUser && (
+              <div className="flex flex-col gap-5">
+                <div>
+                  <h2 className="text-lg font-bold text-white mb-1">Admin: Master Trader Applications</h2>
+                  <p className="text-white/30 text-xs">Review applications. Approve / reject / request more info / suspend.</p>
+                </div>
+                <AdminPanel adminHandle={user.handle ?? "admin"} />
+              </div>
+            )}
+
+          </div>
+        </div>
+      </div>
+
+      {copySetupMaster && (
+        <CopySetupModal
+          master={copySetupMaster}
+          followerUserId={user.id}
+          onClose={() => setCopySetupMaster(null)}
+          onStart={handleStartCopy}
+        />
+      )}
+    </div>
+  );
+}
