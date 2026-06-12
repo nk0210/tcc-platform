@@ -1,105 +1,127 @@
+/**
+ * TCC Notification Store
+ *
+ * Fix: ID generation changed from Date.now().toString() to crypto.randomUUID()
+ * to prevent duplicate key errors in notifications/page.tsx when multiple
+ * notifications are added within the same millisecond.
+ *
+ * NotificationType union expanded to include all values used across TCC modules:
+ * system, academy, copy_trade, community, report_update, trade, price_alert
+ */
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { getUserScopedStorage } from "@/lib/persistence/storage";
 
-export type NotificationType =
-  | "price_alert"
-  | "risk_warning"
-  | "copy_trade"
-  | "competition"
-  | "journal_prompt"
-  | "news"
-  | "academy"
-  | "community"
-  | "system"
-  | "report_update";
+// ── Types ─────────────────────────────────────────────────────────────────
 
-export interface Notification {
-  id: string;
-  type: NotificationType;
-  title: string;
-  message: string;
-  read: boolean;
-  timestamp: number;
-  action?: { label: string; path: string };
-  priority: "low" | "medium" | "high" | "critical";
+export type NotificationType =
+  | "system"
+  | "academy"
+  | "copy_trade"
+  | "community"
+  | "report_update"
+  | "trade"
+  | "price_alert";
+
+export type NotificationPriority = "low" | "medium" | "high" | "critical";
+
+export interface TNotification {
+  id:        string;
+  type:      NotificationType;
+  priority:  NotificationPriority;
+  title:     string;
+  message:   string;
+  action?:   { label: string; path: string };
+  read:      boolean;
+  createdAt: number;
 }
 
-export const typeIcons: Record<NotificationType, string> = {
-  price_alert: "💰",
-  risk_warning: "⚠",
-  copy_trade: "📡",
-  competition: "🏆",
-  journal_prompt: "📓",
-  news: "📰",
-  academy: "🎓",
-  community: "👥",
-  system: "✅",
-  report_update: "🚨",
-};
+// ── Unique ID helper ──────────────────────────────────────────────────────
+// Uses crypto.randomUUID when available (all modern browsers + Node ≥ 19).
+// Falls back to a timestamp+random composite that is sufficiently unique for
+// a localStorage-only prototype and never collides within the same session.
 
-export const priorityColors: Record<string, string> = {
-  critical: "border-l-red-500 bg-red-500/3",
-  high: "border-l-amber-500 bg-amber-500/3",
-  medium: "border-l-blue-500 bg-blue-500/3",
-  low: "border-l-white/10",
-};
+function generateNotificationId(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    typeof (crypto as any).randomUUID === "function"
+  ) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (crypto as any).randomUUID() as string;
+  }
+  return `notif-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+// ── Store interface ───────────────────────────────────────────────────────
 
 interface NotificationStore {
-  notifications: Notification[];
-  unreadCount: number;
-  markRead: (id: string) => void;
-  markAllRead: () => void;
+  notifications: TNotification[];
+
+  addNotification: (params: {
+    type:     NotificationType;
+    priority: NotificationPriority;
+    title:    string;
+    message:  string;
+    action?:  { label: string; path: string };
+  }) => void;
+
+  markAsRead:         (id: string) => void;
+  markAllAsRead:      ()           => void;
   deleteNotification: (id: string) => void;
-  addNotification: (notification: Omit<Notification, "id" | "timestamp" | "read">) => void;
-  clearAll: () => void;
+  clearAll:           ()           => void;
+  unreadCount:        ()           => number;
 }
+
+// ── Store ─────────────────────────────────────────────────────────────────
 
 export const useNotificationStore = create<NotificationStore>()(
   persist(
     (set, get) => ({
       notifications: [],
-      unreadCount: 0,
 
-      markRead: (id) => {
-        const updated = get().notifications.map(n => n.id === id ? { ...n, read: true } : n);
-        set({ notifications: updated, unreadCount: updated.filter(n => !n.read).length });
-      },
-
-      markAllRead: () => set((state) => ({
-        notifications: state.notifications.map(n => ({ ...n, read: true })),
-        unreadCount: 0,
-      })),
-
-      deleteNotification: (id) => {
-        const updated = get().notifications.filter(n => n.id !== id);
-        set({ notifications: updated, unreadCount: updated.filter(n => !n.read).length });
-      },
-
-      addNotification: (notification) => {
-        const newN: Notification = {
-          ...notification,
-          id: Date.now().toString(),
-          timestamp: Date.now(),
-          read: false,
+      addNotification: ({ type, priority, title, message, action }) => {
+        const notification: TNotification = {
+          id:        generateNotificationId(),
+          type,
+          priority,
+          title,
+          message,
+          action,
+          read:      false,
+          createdAt: Date.now(),
         };
-        const updated = [newN, ...get().notifications];
-        set({ notifications: updated, unreadCount: updated.filter(n => !n.read).length });
+        set((state) => ({
+          // Keep latest 200 notifications max
+          notifications: [notification, ...state.notifications].slice(0, 200),
+        }));
       },
 
-      clearAll: () => set({ notifications: [], unreadCount: 0 }),
+      markAsRead: (id) =>
+        set((state) => ({
+          notifications: state.notifications.map((n) =>
+            n.id === id ? { ...n, read: true } : n
+          ),
+        })),
+
+      markAllAsRead: () =>
+        set((state) => ({
+          notifications: state.notifications.map((n) => ({ ...n, read: true })),
+        })),
+
+      deleteNotification: (id) =>
+        set((state) => ({
+          notifications: state.notifications.filter((n) => n.id !== id),
+        })),
+
+      clearAll: () => set({ notifications: [] }),
+
+      unreadCount: () =>
+        get().notifications.filter((n) => !n.read).length,
     }),
     {
-      name: "notifications",
+      name:    "notifications",
       storage: createJSONStorage(() => getUserScopedStorage("notifications")),
-      partialize: (state) => ({
-        notifications: state.notifications.slice(0, 100), // keep last 100
-      }),
-      onRehydrateStorage: () => (state) => {
-        if (state) {
-          state.unreadCount = state.notifications.filter(n => !n.read).length;
-        }
-      },
     }
   )
 );

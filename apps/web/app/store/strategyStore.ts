@@ -1,21 +1,17 @@
 /**
  * TCC Strategy Store
  *
- * Strategy types:
- * - educational_template: Famous strategies for learning reference only.
- *   No verified performance claims. Free. For paper trading education.
- * - creator_published: Strategies published by community members.
- *   Performance is self-reported — not independently verified.
- * - official: TCC-curated frameworks (placeholder for future).
- *
- * Performance status:
- * - unverified: No performance data (educational templates)
- * - self_reported: Creator-claimed performance, not independently verified
- * - verified: Independently verified (not yet implemented in Beta)
- *
- * No fake win rates for educational templates.
- * No fake "10,000 students bought this."
- * No guaranteed profit claims.
+ * Canonical types (aligned with actual codebase):
+ *   StrategyRisk:    "LOW" | "MEDIUM" | "HIGH"
+ *   StrategyPricing: "free" | "one-time" | "subscription"
+ *   assetCategory:   replaces "assetClass"
+ *   riskManagement:  replaces "riskManagementRules"
+ *   disclaimer:      replaces "performanceDisclaimer"
+ *   linkedCourseId:  replaces "linkedAcademyCourseId"
+ *   pricingModel:    replaces "isPaid"
+ *   StrategyReview uses "handle" (not authorHandle) and "timestamp" (not createdAt)
+ *   UserStrategyRecord: { strategyId, savedAt?, savedToPlaybook, active }
+ *   userStrategies: UserStrategyRecord[] — NOT Strategy[]
  */
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
@@ -23,823 +19,695 @@ import { getUserScopedStorage } from "@/lib/persistence/storage";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
-export type StrategyType       = "official" | "educational_template" | "creator_published";
-export type PerformanceStatus  = "unverified" | "self_reported" | "verified";
-export type StrategyRisk       = "LOW" | "MEDIUM" | "HIGH";
-export type StrategyPricing    = "free" | "one-time" | "subscription";
+export type StrategyType      = "official" | "educational_template" | "creator_published";
+export type PerformanceStatus = "unverified" | "self_reported" | "verified";
+export type StrategyRisk      = "LOW" | "MEDIUM" | "HIGH";
+export type StrategyPricing   = "free" | "one-time" | "subscription";
 
 export interface StrategyReview {
-  id: string;
-  handle: string;
-  rating: number;       // 1-5
-  comment: string;
+  id:        string;
+  handle:    string;
+  rating:    number;
+  comment:   string;
   timestamp: number;
 }
 
 export interface Strategy {
-  id: string;
-  title: string;
-  description: string;
-  type: StrategyType;
-  authorHandle: string;
-  authorTccId?: string;
-  asset: string;
-  assetCategory: "crypto" | "forex" | "commodity" | "index" | "all";
-  timeframe: string;
-  riskLevel: StrategyRisk;
-  pricingModel: StrategyPricing;
-  price: number;
-  isFeatured: boolean;
+  id:                string;
+  title:             string;
+  description:       string;
+  type:              StrategyType;
+  authorHandle:      string;
+  authorTccId?:      string;
+  asset:             string;
+  assetCategory:     string;   // "all" | "crypto" | "forex" | "commodity" | "index"
+  timeframe:         string;   // "M1" | "M5" | "M15" | "M30" | "H1" | "H4" | "D1" | "W1" | "any"
+  riskLevel:         StrategyRisk;
+  pricingModel:      StrategyPricing;
+  price:             number;
+  isFeatured:        boolean;
   performanceStatus: PerformanceStatus;
-  // Performance metrics — ONLY shown if performanceStatus is "self_reported" or "verified"
-  // For "unverified" (educational templates): these are undefined
-  winRate?: number;
-  profitFactor?: number;
-  maxDrawdown?: number;
-  totalTrades?: number;
-  avgRR?: number;
-  monthlyReturn?: number;
-  rules: string[];
-  entryConditions: string[];
-  exitConditions: string[];
-  riskManagement: string[];
-  tags: string[];
-  reviews: StrategyReview[];
-  verified: boolean;
-  version: string;
-  disclaimer: string;             // Shown on all strategies
-  linkedCourseId?: string;        // Cross-link to Academy
-  createdAt: number;
-  updatedAt: number;
+  winRate?:          number;
+  profitFactor?:     number;
+  maxDrawdown?:      number;
+  totalTrades?:      number;
+  avgRR?:            number;
+  monthlyReturn?:    number;
+  rules:             string[];
+  entryConditions:   string[];
+  exitConditions:    string[];
+  riskManagement:    string[];
+  tags:              string[];
+  reviews:           StrategyReview[];
+  verified:          boolean;
+  version:           string;
+  disclaimer:        string;
+  linkedCourseId?:   string;
+  createdAt:         number;
+  updatedAt:         number;
 }
 
 export interface UserStrategyRecord {
-  strategyId: string;
-  savedAt?: number;
+  strategyId:      string;
+  savedAt?:        number;
   savedToPlaybook: boolean;
-  active: boolean;
+  active:          boolean;
 }
 
-// ── Educational disclaimer (reused) ───────────────────────────────────────
-const EDU_DISCLAIMER =
-  "Educational template only. For learning and reference. No verified performance data. " +
-  "Past results (if shown as examples) do not predict future performance. Not financial advice. " +
-  "Always use proper risk management when paper trading.";
+// ── Static catalog ────────────────────────────────────────────────────────
+// Always starts here; reviews and creator-published strategies are persisted
+// on top of this catalog via onRehydrateStorage.
 
-const CREATOR_DISCLAIMER =
-  "Creator-published strategy. Performance data is self-reported by the creator and has NOT been " +
-  "independently verified by TCC. Use for educational purposes. Paper trade before committing real capital. Not financial advice.";
-
-// ── Strategy data ─────────────────────────────────────────────────────────
-
-const TCC_STRATEGIES: Strategy[] = [
-
-  // ══════════════════════════════════════════════════════════════════════
-  //  EDUCATIONAL TEMPLATES — Famous strategies for learning reference
-  //  No performance claims. Free. Educational only.
-  // ══════════════════════════════════════════════════════════════════════
+const STRATEGY_CATALOG: Strategy[] = [
+  // ── OFFICIAL TCC ─────────────────────────────────────────────────────
 
   {
-    id: "edu_ma_cross",
-    title: "Moving Average Crossover",
-    description: "One of the most widely known technical analysis frameworks. Uses two moving averages of different periods to identify potential trend direction changes. This is an educational reference template — not a guaranteed trading system.",
-    type: "educational_template",
-    authorHandle: "TCC Academy",
-    asset: "All Markets",
-    assetCategory: "all",
-    timeframe: "H1 / H4",
-    riskLevel: "LOW",
-    pricingModel: "free",
-    price: 0,
-    isFeatured: false,
+    id:               "official-risk-template",
+    title:            "TCC Risk Management Template",
+    description:
+      "The official TCC risk management framework. Use this as the foundation for any strategy. Defines lot sizing, stop loss rules, daily loss limits, and position management principles.",
+    type:             "official",
+    authorHandle:     "TCC",
+    asset:            "All",
+    assetCategory:    "all",
+    timeframe:        "any",
+    riskLevel:        "LOW",
+    pricingModel:     "free",
+    price:            0,
+    isFeatured:       true,
     performanceStatus: "unverified",
     rules: [
-      "Use a fast MA (e.g., 9 EMA) and a slow MA (e.g., 21 EMA)",
-      "Only trade BUY when fast MA crosses above slow MA",
-      "Only trade SELL when fast MA crosses below slow MA",
-      "Wait for candle close above/below both MAs before entering",
-      "Place stop loss below/above the most recent swing high or low",
-      "Maximum 1-2% risk per trade regardless of signal",
+      "Never risk more than 1% of your account per trade",
+      "Set a stop loss on every single trade — no exceptions",
+      "Maximum 3% total risk across all open positions",
+      "Stop trading for the day after hitting 2% daily loss",
+      "Minimum 1:1.5 risk-to-reward before entering a trade",
+      "Never move stop loss to a worse position",
     ],
     entryConditions: [
-      "Fast MA has crossed slow MA within the last 3 candles",
-      "Price is above both MAs (for BUY) or below both MAs (for SELL)",
-      "Not in extreme overbought/oversold territory (check RSI optionally)",
+      "Risk:reward ratio is at least 1:1.5",
+      "Stop loss placement is logical (below structure, not arbitrary)",
+      "Position size is calculated correctly before entry",
+      "Daily loss limit has not been hit",
     ],
     exitConditions: [
-      "Take profit at 2x the distance of your stop loss (minimum)",
-      "Exit if MA crossover reverses in the opposite direction",
-      "Trail stop loss as price moves in your favor",
+      "Price hits your pre-defined stop loss",
+      "Price hits your pre-defined take profit",
+      "Setup is invalidated by new price action",
     ],
     riskManagement: [
-      "Maximum 1-2% account risk per trade",
-      "Stop loss mandatory — no exceptions",
+      "Calculate lot size using: account × 1% ÷ SL distance",
+      "Use TCC paper trading to practise position sizing first",
+      "Journal every trade and review weekly",
+    ],
+    tags:          ["risk management", "official", "foundation", "must-read"],
+    reviews:       [],
+    verified:      false,
+    version:       "1.0",
+    disclaimer:
+      "This is a risk management framework, not a trade signal system. Following this does not guarantee profits.",
+    linkedCourseId: "tcc-risk-101",
+    createdAt:     1700000000000,
+    updatedAt:     1700000000000,
+  },
+
+  {
+    id:               "official-pre-trade",
+    title:            "TCC Pre-Trade Checklist",
+    description:
+      "A systematic pre-trade checklist to run through before opening any paper trade on TCC. Covers bias, structure, risk, session, and psychological state. Use this before every single trade.",
+    type:             "official",
+    authorHandle:     "TCC",
+    asset:            "All",
+    assetCategory:    "all",
+    timeframe:        "any",
+    riskLevel:        "LOW",
+    pricingModel:     "free",
+    price:            0,
+    isFeatured:       true,
+    performanceStatus: "unverified",
+    rules: [
+      "Complete ALL items before entering a trade",
+      "If any item fails, do not trade",
+    ],
+    entryConditions: [
+      "✅ HTF (daily/H4) bias is clear",
+      "✅ Entry timeframe aligns with HTF bias",
+      "✅ Key level or zone identified for entry",
+      "✅ Stop loss placed at logical structural level",
+      "✅ Risk:reward is at least 1:1.5",
+      "✅ Position size is calculated",
+      "✅ Not trading within 30 minutes of high-impact news",
+      "✅ Emotional state is calm and neutral",
+      "✅ Daily loss limit not reached",
+    ],
+    exitConditions: [
+      "Trade triggers according to plan",
+      "Do not adjust the plan after entry without valid reason",
+    ],
+    riskManagement: [
+      "Journal the checklist adherence in your TCC journal after closing",
+      "Review adherence weekly in the Behavior analytics tab",
+    ],
+    tags:          ["checklist", "official", "discipline", "pre-trade"],
+    reviews:       [],
+    verified:      false,
+    version:       "1.0",
+    disclaimer:
+      "A checklist aids discipline but does not guarantee trade outcomes.",
+    linkedCourseId: "tcc-101",
+    createdAt:     1700000001000,
+    updatedAt:     1700000001000,
+  },
+
+  // ── EDUCATIONAL TEMPLATES ─────────────────────────────────────────────
+
+  {
+    id:               "strat-ma-crossover",
+    title:            "Moving Average Crossover",
+    description:
+      "A classic educational strategy using two Exponential Moving Averages (EMA 20 and EMA 50). When the fast EMA crosses above the slow EMA, it suggests bullish momentum. For educational and paper trading learning only.",
+    type:             "educational_template",
+    authorHandle:     "TCC",
+    asset:            "All",
+    assetCategory:    "all",
+    timeframe:        "H1",
+    riskLevel:        "MEDIUM",
+    pricingModel:     "free",
+    price:            0,
+    isFeatured:       false,
+    performanceStatus: "unverified",
+    rules: [
+      "Use EMA 20 (fast) and EMA 50 (slow) on H1 chart",
+      "Only trade in the direction of the crossover",
+      "Do not trade in choppy or ranging markets",
+      "Always use a stop loss below the most recent swing low (BUY) or above swing high (SELL)",
+      "Risk maximum 1% per trade",
+    ],
+    entryConditions: [
+      "EMA 20 crosses above EMA 50 → potential BUY setup",
+      "EMA 20 crosses below EMA 50 → potential SELL setup",
+      "Price is clearly trending (not sideways/choppy)",
+    ],
+    exitConditions: [
+      "Take profit at next significant resistance (BUY) or support (SELL)",
+      "Exit if EMA crossover reverses in opposite direction",
+      "Stop loss below swing low for BUY / above swing high for SELL",
+    ],
+    riskManagement: [
+      "Do not enter after a large move has already occurred",
+      "Filter signals using HTF trend direction",
+    ],
+    tags:          ["EMA", "moving average", "crossover", "trend following", "beginner"],
+    reviews:       [],
+    verified:      false,
+    version:       "1.0",
+    disclaimer:
+      "Educational template only. Moving average crossovers are lagging indicators. No verified performance data. Paper trade only.",
+    linkedCourseId: "res-ma-crossover",
+    createdAt:     1700000002000,
+    updatedAt:     1700000002000,
+  },
+
+  {
+    id:               "strat-support-resistance",
+    title:            "Support & Resistance Breakout",
+    description:
+      "One of the most fundamental approaches in technical analysis. Trade the breakout of a significant support or resistance level, or the bounce from it. An educational framework for understanding how price interacts with key levels.",
+    type:             "educational_template",
+    authorHandle:     "TCC",
+    asset:            "All",
+    assetCategory:    "all",
+    timeframe:        "H1",
+    riskLevel:        "MEDIUM",
+    pricingModel:     "free",
+    price:            0,
+    isFeatured:       false,
+    performanceStatus: "unverified",
+    rules: [
+      "Only trade levels with at least 2 previous touches",
+      "Wait for confirmation before entering (close above/below the level)",
+      "Set stop loss on the other side of the level",
+      "Target the next key level for take profit",
+      "Do not force trades at weak or unclear levels",
+    ],
+    entryConditions: [
+      "Price has touched the level at least twice previously",
+      "For breakout: candle closes convincingly above resistance / below support",
+      "For bounce: price approaches level with momentum, shows rejection candle",
+    ],
+    exitConditions: [
+      "Take profit at the next major support or resistance level",
+      "Stop loss on the wrong side of the breached level",
+      "Exit if breakout reverses back through the level (false breakout)",
+    ],
+    riskManagement: [
+      "Wait for candle close confirmation, not just a wick",
+      "Be aware of false breakouts — they are very common",
+    ],
+    tags:          ["support", "resistance", "breakout", "bounce", "technical analysis"],
+    reviews:       [],
+    verified:      false,
+    version:       "1.0",
+    disclaimer:
+      "Educational template only. False breakouts are common. No verified performance data. Paper trade this extensively before considering real capital.",
+    linkedCourseId: "res-support-resistance",
+    createdAt:     1700000003000,
+    updatedAt:     1700000003000,
+  },
+
+  {
+    id:               "strat-fibonacci",
+    title:            "Fibonacci Pullback",
+    description:
+      "An educational strategy using Fibonacci retracement levels as potential entry zones during a pullback within an established trend. The 38.2%, 50%, and 61.8% levels are most commonly used. For learning only.",
+    type:             "educational_template",
+    authorHandle:     "TCC",
+    asset:            "All",
+    assetCategory:    "all",
+    timeframe:        "H4",
+    riskLevel:        "MEDIUM",
+    pricingModel:     "free",
+    price:            0,
+    isFeatured:       false,
+    performanceStatus: "unverified",
+    rules: [
+      "Only trade in the direction of the dominant trend",
+      "Draw Fibonacci from swing low to swing high for uptrend (reverse for downtrend)",
+      "Look for entry confirmation at key Fibonacci levels",
+      "Target the 100% extension (previous swing high) for take profit",
+    ],
+    entryConditions: [
+      "Clear trend established on H4 or higher timeframe",
+      "Price pulls back to 38.2%, 50%, or 61.8% Fibonacci level",
+      "Rejection candle or SMC confirmation at the Fibonacci level",
+    ],
+    exitConditions: [
+      "Take profit at 100% extension (previous swing high/low)",
+      "Partial exit at 50% extension for partial profit management",
+      "Stop loss below 78.6% level (invalidation of Fibonacci thesis)",
+    ],
+    riskManagement: [
+      "Fibonacci levels work better with additional confluence",
       "Avoid during high-impact news events",
-      "This strategy suffers in sideways/choppy markets",
     ],
-    tags: ["Moving Average", "Trend Following", "Beginner", "Educational"],
-    reviews: [],
-    verified: false,
-    version: "edu-1.0",
-    disclaimer: EDU_DISCLAIMER,
-    linkedCourseId: "c_tech_analysis",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    tags:          ["fibonacci", "pullback", "retracement", "trend", "intermediate"],
+    reviews:       [],
+    verified:      false,
+    version:       "1.0",
+    disclaimer:
+      "Educational template only. Fibonacci levels are areas of interest, not guaranteed reversal points. No verified performance data.",
+    linkedCourseId: "res-fibonacci",
+    createdAt:     1700000004000,
+    updatedAt:     1700000004000,
   },
 
   {
-    id: "edu_sr",
-    title: "Support & Resistance Trading",
-    description: "The most foundational price action approach. Identifies key horizontal levels where price has historically reacted and uses them for trade entries and exits. Educational reference template.",
-    type: "educational_template",
-    authorHandle: "TCC Academy",
-    asset: "All Markets",
-    assetCategory: "all",
-    timeframe: "H1 / H4 / D1",
-    riskLevel: "MEDIUM",
-    pricingModel: "free",
-    price: 0,
-    isFeatured: false,
+    id:               "strat-trend-following",
+    title:            "Trend Following (EMA Ribbon)",
+    description:
+      "An educational approach to trend following using multiple EMAs (20, 50, 100, 200). When shorter EMAs are above longer EMAs, the trend is bullish. Trade pullbacks to the ribbon.",
+    type:             "educational_template",
+    authorHandle:     "TCC",
+    asset:            "All",
+    assetCategory:    "all",
+    timeframe:        "D1",
+    riskLevel:        "LOW",
+    pricingModel:     "free",
+    price:            0,
+    isFeatured:       false,
     performanceStatus: "unverified",
     rules: [
-      "Identify key S&R levels using swing highs and lows on H4 or D1",
-      "Wait for price to reach the level, not chase it",
-      "Look for a rejection candle (pin bar, engulfing) as confirmation",
-      "Trade in the direction of the higher timeframe trend",
-      "Never buy resistance in a strong downtrend",
-      "Never sell support in a strong uptrend",
+      "Trade on D1 or H4 timeframe only",
+      "Only trade when all EMAs (20, 50, 100, 200) are in alignment",
+      "Enter on pullbacks to the EMA ribbon, not at the extreme",
+      "Trail stop loss below previous swing low as trend develops",
     ],
     entryConditions: [
-      "Price has touched a key S&R level",
-      "Rejection candlestick pattern confirmed (not anticipated)",
-      "Level has been tested 2+ times historically",
-      "Higher timeframe trend aligns with the trade direction",
+      "EMA 20 > EMA 50 > EMA 100 > EMA 200 (bullish alignment)",
+      "EMA 20 < EMA 50 < EMA 100 < EMA 200 (bearish alignment)",
+      "Price pulls back to touch EMA 20 or EMA 50",
+      "Bullish rejection candle at the EMA for long / bearish for short",
     ],
     exitConditions: [
-      "TP at next major S&R level in trade direction",
-      "SL just beyond the S&R level (if breached, setup is invalid)",
-      "Exit if price closes through the level with strong momentum",
+      "Stop loss below EMA 50 or previous swing low",
+      "Trail stop as trade develops",
+      "Exit when EMAs begin to lose alignment",
     ],
     riskManagement: [
-      "Maximum 1-2% risk per trade",
-      "SL placed beyond the S&R level, not at it",
-      "Wider levels need smaller lot sizes",
-      "False breakouts are common — always use SL",
+      "Trend following requires patience — do not rush entries",
+      "Drawdowns in between trends are normal and expected",
     ],
-    tags: ["Price Action", "Support", "Resistance", "Educational", "Beginner"],
-    reviews: [],
-    verified: false,
-    version: "edu-1.0",
-    disclaimer: EDU_DISCLAIMER,
-    linkedCourseId: "c_tech_analysis",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    tags:          ["trend following", "EMA ribbon", "pullback", "daily", "swing trading"],
+    reviews:       [],
+    verified:      false,
+    version:       "1.0",
+    disclaimer:
+      "Educational template only. Trend following strategies perform well in trending markets and poorly in ranging ones. No verified performance data.",
+    createdAt:     1700000005000,
+    updatedAt:     1700000005000,
   },
 
   {
-    id: "edu_breakout",
-    title: "Breakout Trading",
-    description: "Trading price breaks above key resistance or below key support, ideally with volume confirmation. Educational reference — false breakouts are common and must be managed with strict stops.",
-    type: "educational_template",
-    authorHandle: "TCC Academy",
-    asset: "All Markets",
-    assetCategory: "all",
-    timeframe: "H1 / H4",
-    riskLevel: "MEDIUM",
-    pricingModel: "free",
-    price: 0,
-    isFeatured: false,
+    id:               "strat-mean-reversion",
+    title:            "Mean Reversion (Bollinger Bands)",
+    description:
+      "An educational mean reversion approach using Bollinger Bands. When price extends significantly from the mean (middle band), it tends to revert. Trade the return to the mean. Works best in ranging markets.",
+    type:             "educational_template",
+    authorHandle:     "TCC",
+    asset:            "All",
+    assetCategory:    "all",
+    timeframe:        "H1",
+    riskLevel:        "HIGH",
+    pricingModel:     "free",
+    price:            0,
+    isFeatured:       false,
     performanceStatus: "unverified",
     rules: [
-      "Identify consolidation range or key resistance level first",
-      "Wait for a candle to close above resistance (not just wick through)",
-      "Enter on the first pullback after breakout — not the initial spike",
-      "Stop loss below the breakout level",
-      "Risk-reward minimum 1:2 before entering",
+      "Only use in clearly ranging (non-trending) markets",
+      "Look for price touching or piercing the outer Bollinger Band",
+      "Require a reversal candle before entry",
+      "Target the middle band as take profit",
+      "Strict stop loss on the other side of the outer band",
     ],
     entryConditions: [
-      "Candle has closed convincingly beyond the key level",
-      "Price pulls back toward the broken level (now support/resistance flip)",
-      "Momentum indicators support the direction",
+      "Market is clearly ranging (price oscillating between support and resistance)",
+      "Price has touched or pierced the upper band (short) or lower band (long)",
+      "A pin bar, doji, or engulfing candle signals reversal at the band",
     ],
     exitConditions: [
-      "TP at measured move: height of consolidation = target",
-      "Exit if price closes back inside the range (false breakout)",
-      "Trail stop after 1:1 is achieved",
+      "Take profit at the middle Bollinger Band (20 EMA)",
+      "Stop loss outside the Bollinger Band extreme",
+      "Exit immediately if trend starts forming",
     ],
     riskManagement: [
-      "False breakouts are very common — always use SL",
-      "Avoid breakout trades during news events",
-      "Volume confirmation is stronger signal (crypto markets)",
-      "1-2% risk maximum",
+      "NEVER use in trending markets — this is the biggest risk of mean reversion",
+      "Reduce position size compared to trend strategies due to higher risk",
     ],
-    tags: ["Breakout", "Momentum", "Volume", "Educational", "Intermediate"],
-    reviews: [],
-    verified: false,
-    version: "edu-1.0",
-    disclaimer: EDU_DISCLAIMER,
-    linkedCourseId: "c_tech_analysis",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    tags:          ["mean reversion", "Bollinger Bands", "ranging", "contrarian", "intermediate"],
+    reviews:       [],
+    verified:      false,
+    version:       "1.0",
+    disclaimer:
+      "Educational template only. Mean reversion strategies can experience large losses in strongly trending markets. High risk rating. No verified performance data.",
+    createdAt:     1700000006000,
+    updatedAt:     1700000006000,
   },
 
   {
-    id: "edu_fib",
-    title: "Fibonacci Pullback",
-    description: "Using Fibonacci retracement levels (38.2%, 50%, 61.8%) to identify pullback entry zones in trending markets. Works best in clearly trending conditions. Educational reference template.",
-    type: "educational_template",
-    authorHandle: "TCC Academy",
-    asset: "All Markets",
-    assetCategory: "all",
-    timeframe: "H1 / H4",
-    riskLevel: "MEDIUM",
-    pricingModel: "free",
-    price: 0,
-    isFeatured: false,
+    id:               "strat-smc-template",
+    title:            "SMC Order Block Approach (Educational)",
+    description:
+      "An educational template for Smart Money Concepts (SMC) trading. Identifies order blocks after a Break of Structure (BOS) and enters on price return to the order block zone. Complex — requires significant screen time.",
+    type:             "educational_template",
+    authorHandle:     "TCC",
+    asset:            "All",
+    assetCategory:    "all",
+    timeframe:        "H1",
+    riskLevel:        "MEDIUM",
+    pricingModel:     "free",
+    price:            0,
+    isFeatured:       false,
     performanceStatus: "unverified",
     rules: [
-      "First confirm a clear trend with higher highs/lows or structure",
-      "Draw Fibonacci from the most recent significant swing low to swing high (for uptrend)",
-      "Wait for price to pull back to the 38.2%, 50%, or 61.8% zone",
-      "Look for rejection candlestick confirmation at the zone",
-      "Stop loss below the 78.6% level or swing low",
+      "Identify HTF (D1/H4) bias first",
+      "Identify a Break of Structure (BOS) on H1",
+      "Mark the order block (last opposing candle before BOS)",
+      "Wait for price to return to the order block",
+      "Enter on OB touch with a small risk",
+      "SL: just below/above the order block",
+      "TP: next liquidity pool or previous high/low",
     ],
     entryConditions: [
-      "Clear uptrend or downtrend established on H4 or D1",
-      "Price has pulled back to a Fibonacci cluster zone",
-      "Rejection candle confirmed (not anticipated)",
-      "Zone aligns with other confluence (S&R, order block, etc.)",
+      "HTF trend is established and clear",
+      "BOS confirmed on entry timeframe (H1)",
+      "Valid order block identified (institutional candle before BOS)",
+      "Price pulls back to the OB zone",
+      "Rejection candle or FVG mitigated within OB",
     ],
     exitConditions: [
-      "TP at the previous high (uptrend) or previous low (downtrend)",
-      "TP at Fibonacci extensions: 127.2%, 161.8%",
-      "Exit if price closes below SL level",
+      "TP at the next liquidity pool or equal highs/lows",
+      "SL just below/above the order block with small buffer",
+      "Invalidation: price closes significantly through the order block",
     ],
     riskManagement: [
-      "Fibonacci alone is not enough — always combine with price action",
-      "61.8% is the strongest retracement level (Fibonacci 'golden ratio')",
-      "If 61.8% breaks, trend may have reversed — exit",
-      "1-2% max risk per trade",
+      "Minimum 1:2 risk-to-reward",
+      "Do not force OB entries — be selective",
+      "Mark levels BEFORE price arrives, not after",
     ],
-    tags: ["Fibonacci", "Pullback", "Trend", "Educational", "Intermediate"],
-    reviews: [],
-    verified: false,
-    version: "edu-1.0",
-    disclaimer: EDU_DISCLAIMER,
-    linkedCourseId: "c_advanced",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    tags:          ["SMC", "order blocks", "BOS", "liquidity", "price action"],
+    reviews:       [],
+    verified:      false,
+    version:       "1.0",
+    disclaimer:
+      "Educational template only. SMC concepts require significant screen time and practice to apply correctly. No verified performance data. High learning curve.",
+    linkedCourseId: "tcc-smc-201",
+    createdAt:     1700000007000,
+    updatedAt:     1700000007000,
   },
 
   {
-    id: "edu_trend",
-    title: "Trend Following System",
-    description: "A systematic approach to identifying and following established trends across multiple timeframes. Mechanical rules reduce emotion. Works best in trending markets, struggles in ranges.",
-    type: "educational_template",
-    authorHandle: "TCC Academy",
-    asset: "All Markets",
-    assetCategory: "all",
-    timeframe: "H4 / D1",
-    riskLevel: "LOW",
-    pricingModel: "free",
-    price: 0,
-    isFeatured: false,
+    id:               "strat-price-action",
+    title:            "Price Action & Candlestick Patterns",
+    description:
+      "An educational strategy using pure price action — no indicators. Read candlestick formations, key levels, and market structure to find high-probability entry zones.",
+    type:             "educational_template",
+    authorHandle:     "TCC",
+    asset:            "All",
+    assetCategory:    "all",
+    timeframe:        "H4",
+    riskLevel:        "MEDIUM",
+    pricingModel:     "free",
+    price:            0,
+    isFeatured:       false,
     performanceStatus: "unverified",
     rules: [
-      "Trade only in the direction of the D1 trend",
-      "D1 uptrend = only BUY entries on H4",
-      "D1 downtrend = only SELL entries on H4",
-      "Entry on pullback to 20 EMA on entry timeframe",
-      "Trail stop loss using 50 EMA on entry timeframe",
-      "Stay out of the market when DI trend is unclear or ranging",
+      "Use no indicators — price and levels only",
+      "Identify key support and resistance levels first",
+      "Look for strong rejection candles at key levels",
+      "Trade with the dominant trend direction where possible",
     ],
     entryConditions: [
-      "D1 shows clear trend with 3+ consecutive structure points",
-      "Price pulls back to 20 EMA without breaking structure",
-      "RSI pulls back from extreme and begins turning in trend direction",
+      "Price has reached a key structural level",
+      "A rejection candlestick pattern forms at the level (pin bar, engulfing, hammer)",
+      "The pattern is on H4 or higher timeframe for higher reliability",
+      "Level has been tested at least twice before",
     ],
     exitConditions: [
-      "Exit when price closes below 50 EMA in an uptrend",
-      "Exit when structure is broken (lower low in uptrend)",
-      "Trail stop to protect profits — let winners run",
+      "Stop loss behind the tail of the rejection candle",
+      "Take profit at the next key level",
+      "Exit if a new rejection candle forms against the position",
     ],
     riskManagement: [
-      "Never fight the D1 trend",
-      "Trend following has many small losses, few large wins — be patient",
-      "Missing entries is fine — there will always be another",
-      "1% risk per trade — wide stops are normal with trend following",
+      "Context is everything — a pin bar in a trend is different from one in a range",
+      "Confluence of level + pattern + trend increases probability",
     ],
-    tags: ["Trend Following", "Multi-Timeframe", "Systematic", "Educational", "Intermediate"],
-    reviews: [],
-    verified: false,
-    version: "edu-1.0",
-    disclaimer: EDU_DISCLAIMER,
-    linkedCourseId: "c_advanced",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    tags:          ["price action", "candlesticks", "pin bar", "engulfing", "no indicators"],
+    reviews:       [],
+    verified:      false,
+    version:       "1.0",
+    disclaimer:
+      "Educational template only. Price action is subjective and requires significant practice. No verified performance data.",
+    linkedCourseId: "tcc-price-action-101",
+    createdAt:     1700000008000,
+    updatedAt:     1700000008000,
   },
 
   {
-    id: "edu_mr",
-    title: "Mean Reversion (Advanced)",
-    description: "Counter-trend approach trading the hypothesis that price tends to revert to its statistical mean. Higher risk — goes against the trend. Educational reference for advanced traders only.",
-    type: "educational_template",
-    authorHandle: "TCC Academy",
-    asset: "All Markets",
-    assetCategory: "all",
-    timeframe: "H1",
-    riskLevel: "HIGH",
-    pricingModel: "free",
-    price: 0,
-    isFeatured: false,
+    id:               "strat-breakout-momentum",
+    title:            "Breakout & Momentum Strategy",
+    description:
+      "An educational approach to trading price breakouts with momentum confirmation. When price breaks through a significant level with strong momentum, it often continues in that direction. For educational purposes only.",
+    type:             "educational_template",
+    authorHandle:     "TCC",
+    asset:            "All",
+    assetCategory:    "all",
+    timeframe:        "H1",
+    riskLevel:        "HIGH",
+    pricingModel:     "free",
+    price:            0,
+    isFeatured:       false,
     performanceStatus: "unverified",
     rules: [
-      "ONLY use in clearly ranging, sideways markets — NOT in trends",
-      "RSI must be above 75 for short or below 25 for long",
-      "Price must be touching upper or lower Bollinger Band (2 std dev)",
-      "Enter against the short-term move ONLY at extremes",
-      "Tight stop loss — mean reversion has many losing trades",
-      "Smaller position size than trend trades",
+      "Only trade breakouts from well-defined levels (not arbitrary price points)",
+      "Wait for candle close ABOVE/BELOW the level — no anticipation",
+      "Volume should be above average at the breakout candle",
+      "Look for a brief retest of the broken level before entry — safer",
     ],
     entryConditions: [
-      "Market is in defined range on H4 (not trending)",
-      "RSI extreme reading at band touch",
-      "No high-impact news in next 4 hours",
-      "Previous mean reversion at this extreme has worked recently",
+      "Price breaks through a clear, tested resistance or support level",
+      "Breakout candle closes beyond the level with strong body",
+      "No major opposing level within 1:1.5 RR distance",
     ],
     exitConditions: [
-      "TP at the middle Bollinger Band (20 SMA)",
-      "Exit immediately if price continues beyond the band",
-      "Do not hold mean reversion trades overnight in trending conditions",
+      "Stop loss just below the broken level (for long breakout)",
+      "Take profit at the next significant resistance",
+      "If price returns back below the level — exit immediately (false breakout)",
     ],
     riskManagement: [
-      "THIS IS A HIGH-RISK APPROACH — only advanced traders",
-      "Going against the trend means you can be right on direction but wrong on timing",
-      "Reduce position size by 50% vs normal trades",
-      "Accept 60%+ losing trades — the winners need to be much larger",
+      "False breakouts are extremely common — risk management is critical",
+      "Reduce position size vs standard setups due to higher false positive rate",
     ],
-    tags: ["Mean Reversion", "Counter-Trend", "Advanced", "High Risk", "Educational"],
-    reviews: [],
-    verified: false,
-    version: "edu-1.0",
-    disclaimer: EDU_DISCLAIMER,
-    linkedCourseId: "c_advanced",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-
-  {
-    id: "edu_smc",
-    title: "SMC Educational Framework",
-    description: "Educational introduction to Smart Money Concepts. Order blocks, liquidity pools, BOS, CHOCH, and FVG explained as a learning framework. Not a trading signal service.",
-    type: "educational_template",
-    authorHandle: "TCC Academy",
-    asset: "XAUUSD, Forex, Crypto",
-    assetCategory: "all",
-    timeframe: "H1 / H4",
-    riskLevel: "MEDIUM",
-    pricingModel: "free",
-    price: 0,
-    isFeatured: true,
-    performanceStatus: "unverified",
-    rules: [
-      "Start with D1 bias: is price in discount or premium?",
-      "Identify the most recent BOS or CHOCH on H4",
-      "Drop to H1 for order block identification",
-      "Wait for liquidity sweep before entry",
-      "Enter on rejection from order block only after sweep",
-      "SL below/above order block with buffer",
-    ],
-    entryConditions: [
-      "HTF BOS/CHOCH aligned with trade direction",
-      "Liquidity pool swept (stop hunt confirmed)",
-      "Price has returned to a valid order block",
-      "Fair value gap present between swing and entry zone",
-    ],
-    exitConditions: [
-      "TP at next liquidity pool (equal highs/lows above/below)",
-      "TP at opposite premium/discount zone",
-      "Exit if order block is fully violated (3+ candle closes through it)",
-    ],
-    riskManagement: [
-      "Maximum 1% risk per trade",
-      "Not every OB will hold — SL is non-negotiable",
-      "SMC requires significant screen time to develop eye for structure",
-      "Paper trade SMC setups for minimum 3 months before real capital",
-    ],
-    tags: ["SMC", "Order Blocks", "Liquidity", "XAUUSD", "Educational", "Intermediate"],
-    reviews: [],
-    verified: false,
-    version: "edu-1.0",
-    disclaimer: EDU_DISCLAIMER,
-    linkedCourseId: "c1",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-
-  {
-    id: "edu_rm",
-    title: "Risk Management Framework",
-    description: "Not a trading strategy — a risk management system. Position sizing formulas, stop loss placement logic, daily loss limits, and risk-reward requirements. Apply this to any strategy.",
-    type: "educational_template",
-    authorHandle: "TCC Academy",
-    asset: "All Markets",
-    assetCategory: "all",
-    timeframe: "All Timeframes",
-    riskLevel: "LOW",
-    pricingModel: "free",
-    price: 0,
-    isFeatured: true,
-    performanceStatus: "unverified",
-    rules: [
-      "Maximum 1-2% account risk per trade — never exceed this",
-      "Calculate lot size BEFORE entering: Risk $ ÷ (SL pips × pip value)",
-      "Minimum 1:2 risk-reward ratio before entering any trade",
-      "Daily loss limit: 3-5% of account — stop trading when hit",
-      "Maximum 3 open positions simultaneously",
-      "Never add to a losing position",
-    ],
-    entryConditions: [
-      "Risk-reward is at least 1:2",
-      "Stop loss level is logical (beyond structure, not arbitrary)",
-      "Daily loss limit not yet reached",
-      "Not trading against D1 trend without strong reason",
-    ],
-    exitConditions: [
-      "Exit at predefined TP — do not move it further",
-      "Do not remove SL — ever",
-      "Trail SL after 1:1 is achieved to protect capital",
-    ],
-    riskManagement: [
-      "This IS the risk management framework",
-      "Apply these rules to every other strategy you use",
-      "Risk management > strategy selection in determining long-term results",
-      "No profitable strategy survives poor risk management",
-    ],
-    tags: ["Risk Management", "Position Sizing", "All Markets", "Educational", "Beginner"],
-    reviews: [],
-    verified: false,
-    version: "edu-1.0",
-    disclaimer: EDU_DISCLAIMER,
-    linkedCourseId: "c_risk",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-
-  {
-    id: "edu_pa",
-    title: "Price Action Basics",
-    description: "Reading raw candlestick charts without indicators. Understanding what buyers and sellers are doing at each candle. The foundation of all discretionary trading approaches.",
-    type: "educational_template",
-    authorHandle: "TCC Academy",
-    asset: "All Markets",
-    assetCategory: "all",
-    timeframe: "H1 / H4",
-    riskLevel: "MEDIUM",
-    pricingModel: "free",
-    price: 0,
-    isFeatured: false,
-    performanceStatus: "unverified",
-    rules: [
-      "Understand what each candlestick communicates about supply/demand",
-      "Look for confluence: candle pattern + key level + trend direction",
-      "Rejection wicks show where price was rejected from — pay attention",
-      "Body size matters: large body = strong momentum",
-      "Wait for the candle to CLOSE before making decisions",
-    ],
-    entryConditions: [
-      "Strong rejection candle at a key level",
-      "Candle close confirms the rejection (not just a wick)",
-      "Multiple timeframe alignment present",
-      "Previous candle context supports the direction",
-    ],
-    exitConditions: [
-      "TP at the next major price action resistance/support",
-      "Exit if a strong opposing candle closes against your position",
-      "SL behind the rejection candle with buffer",
-    ],
-    riskManagement: [
-      "1-2% risk per trade",
-      "Price action is discretionary — subjectivity is a challenge",
-      "Journal all your price action reads to identify your biases",
-      "Paper trade extensively before relying on PA in real trading",
-    ],
-    tags: ["Price Action", "Candlesticks", "No Indicators", "Educational", "Beginner"],
-    reviews: [],
-    verified: false,
-    version: "edu-1.0",
-    disclaimer: EDU_DISCLAIMER,
-    linkedCourseId: "c_tech_analysis",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-
-  {
-    id: "edu_rsi_div",
-    title: "RSI Divergence",
-    description: "Using RSI divergence (price and momentum disagreement) to identify potential trend weakness or reversal. Educational reference — divergence alone is not a complete strategy.",
-    type: "educational_template",
-    authorHandle: "TCC Academy",
-    asset: "All Markets",
-    assetCategory: "all",
-    timeframe: "H1",
-    riskLevel: "MEDIUM",
-    pricingModel: "free",
-    price: 0,
-    isFeatured: false,
-    performanceStatus: "unverified",
-    rules: [
-      "Bearish divergence: price makes higher high, RSI makes lower high",
-      "Bullish divergence: price makes lower low, RSI makes higher low",
-      "Only use divergence with other confluence — not in isolation",
-      "Wait for price action confirmation before entering",
-      "Divergence signals momentum weakening, not reversal guarantee",
-    ],
-    entryConditions: [
-      "Clear RSI divergence on H1 at a key S&R or order block level",
-      "Price action confirmation: rejection candle at the divergence level",
-      "HTF trend not strongly opposing the trade",
-    ],
-    exitConditions: [
-      "TP at next S&R level or Fibonacci target",
-      "SL beyond the divergence swing (high/low)",
-      "Exit if divergence resolves without reversal (extended divergence)",
-    ],
-    riskManagement: [
-      "Divergence alone has low reliability — always combine with confluence",
-      "1-2% risk maximum",
-      "Hidden divergence (trend continuation) vs regular divergence (reversal) — learn the difference",
-    ],
-    tags: ["RSI", "Divergence", "Momentum", "Educational", "Intermediate"],
-    reviews: [],
-    verified: false,
-    version: "edu-1.0",
-    disclaimer: EDU_DISCLAIMER,
-    linkedCourseId: "c_tech_analysis",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-
-  // ══════════════════════════════════════════════════════════════════════
-  //  CREATOR-PUBLISHED STRATEGIES — Self-reported performance
-  //  Not independently verified. Use with caution.
-  // ══════════════════════════════════════════════════════════════════════
-
-  {
-    id: "s1",
-    title: "SMC Gold Sniper — XAUUSD",
-    description: "Creator-published SMC-based strategy for XAUUSD specifically. Uses order blocks, liquidity sweeps, and BOS confirmation for entries. Performance data is self-reported.",
-    type: "creator_published",
-    authorHandle: "goldsniper_fx",
-    authorTccId: "TCC-GL-TRD-00000001",
-    asset: "XAUUSD",
-    assetCategory: "commodity",
-    timeframe: "H1",
-    riskLevel: "MEDIUM",
-    pricingModel: "subscription",
-    price: 29,
-    isFeatured: false,
-    performanceStatus: "self_reported",
-    winRate: 68.4,
-    profitFactor: 2.8,
-    maxDrawdown: 4.2,
-    totalTrades: 342,
-    avgRR: 2.1,
-    monthlyReturn: 8.5,
-    rules: [
-      "Only trade during London or NY session",
-      "Minimum 1:2 risk-reward required",
-      "Max 1% risk per trade",
-      "No trading 30 min before/after major news",
-    ],
-    entryConditions: [
-      "Price sweeps liquidity on H4",
-      "BOS confirmed on H1",
-      "Order block identified on M15",
-      "Price returns to OB zone with rejection",
-    ],
-    exitConditions: [
-      "TP at next liquidity pool",
-      "SL below OB with 10-pip buffer",
-    ],
-    riskManagement: [
-      "1% max risk",
-      "No trade without SL",
-      "Stop after 2 consecutive losses",
-    ],
-    tags: ["SMC", "XAUUSD", "Order Blocks", "London Session"],
-    reviews: [],
-    verified: false,
-    version: "v2.1",
-    disclaimer: CREATOR_DISCLAIMER,
-    linkedCourseId: "c1",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-
-  {
-    id: "s2",
-    title: "Risk-First EMA Pullback",
-    description: "Creator-published disciplined EMA pullback strategy with strict risk rules. Works on any major forex pair according to the creator. Performance is self-reported, not verified.",
-    type: "creator_published",
-    authorHandle: "risk_master_99",
-    authorTccId: "TCC-GL-TRD-00000004",
-    asset: "All Forex Majors",
-    assetCategory: "forex",
-    timeframe: "H4",
-    riskLevel: "LOW",
-    pricingModel: "free",
-    price: 0,
-    isFeatured: false,
-    performanceStatus: "self_reported",
-    winRate: 62.1,
-    profitFactor: 2.1,
-    maxDrawdown: 2.8,
-    totalTrades: 198,
-    avgRR: 1.8,
-    monthlyReturn: 4.2,
-    rules: [
-      "20 EMA must be above 50 EMA for bullish bias",
-      "RSI between 40-60 for pullback entries",
-      "Max 0.5% risk per trade on this strategy",
-      "Only major forex pairs: EUR/USD, GBP/USD, AUD/USD",
-    ],
-    entryConditions: [
-      "HTF trend aligned with EMA structure",
-      "Price pulls back to 20 EMA",
-      "RSI between 40-55 on pullback (not at extreme)",
-    ],
-    exitConditions: [
-      "TP at previous swing high/low",
-      "SL below 50 EMA",
-    ],
-    riskManagement: [
-      "0.5% max risk (conservative)",
-      "No trade if daily 3% loss limit reached",
-    ],
-    tags: ["EMA", "Pullback", "Low Risk", "Forex", "Conservative"],
-    reviews: [],
-    verified: false,
-    version: "v1.3",
-    disclaimer: CREATOR_DISCLAIMER,
-    linkedCourseId: "c_tech_analysis",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-
-  {
-    id: "s3",
-    title: "BTC Breakout Machine",
-    description: "Creator-published crypto-specific breakout strategy for BTCUSDT. Volume confirmation required. High risk — breakouts can fail. Performance data is self-reported by the creator.",
-    type: "creator_published",
-    authorHandle: "btc_beast",
-    authorTccId: "TCC-GL-TRD-00000002",
-    asset: "BTCUSDT",
-    assetCategory: "crypto",
-    timeframe: "H1",
-    riskLevel: "HIGH",
-    pricingModel: "one-time",
-    price: 49,
-    isFeatured: false,
-    performanceStatus: "self_reported",
-    winRate: 58.3,
-    profitFactor: 2.4,
-    maxDrawdown: 8.1,
-    totalTrades: 124,
-    avgRR: 2.8,
-    monthlyReturn: 11.2,
-    rules: [
-      "Only trade confirmed breakouts with volume",
-      "Volume must be above 20-period average on breakout candle",
-      "Enter on first pullback after breakout — not initial move",
-      "High risk tolerance required — 8%+ drawdown is possible",
-    ],
-    entryConditions: [
-      "Price breaks key resistance with strong volume",
-      "RSI above 60 on breakout confirmation",
-      "First pullback to broken resistance (now support)",
-    ],
-    exitConditions: [
-      "TP at 2x breakout candle size measured move",
-      "SL below breakout candle low with buffer",
-    ],
-    riskManagement: [
-      "1-2% max risk per trade",
-      "False breakouts are common in crypto — SL always active",
-      "Reduce size on weekends (lower crypto liquidity)",
-    ],
-    tags: ["Bitcoin", "Breakout", "Crypto", "Volume", "High Risk"],
-    reviews: [],
-    verified: false,
-    version: "v1.0",
-    disclaimer: CREATOR_DISCLAIMER,
-    linkedCourseId: "c4",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    tags:          ["breakout", "momentum", "volume", "continuation", "high risk"],
+    reviews:       [],
+    verified:      false,
+    version:       "1.0",
+    disclaimer:
+      "Educational template only. Breakout strategies have a high false breakout rate. No verified performance data. High risk rating.",
+    createdAt:     1700000009000,
+    updatedAt:     1700000009000,
   },
 ];
 
-// ── Store ─────────────────────────────────────────────────────────────────
+// ── Store interface ───────────────────────────────────────────────────────
 
 interface StrategyStore {
-  strategies: Strategy[];
+  strategies:     Strategy[];
   userStrategies: UserStrategyRecord[];
 
-  saveStrategy:        (strategyId: string) => void;
-  unsaveStrategy:      (strategyId: string) => void;
-  togglePlaybook:      (strategyId: string) => void;
-  isSaved:             (strategyId: string) => boolean;
-  isInPlaybook:        (strategyId: string) => boolean;
-  addReview:           (strategyId: string, review: Omit<StrategyReview, "id" | "timestamp">) => void;
-  publishStrategy:     (strategy: Omit<Strategy, "id" | "reviews" | "createdAt" | "updatedAt">) => void;
+  saveStrategy:    (strategyId: string) => void;
+  unsaveStrategy:  (strategyId: string) => void;
+  togglePlaybook:  (strategyId: string) => void;
+  isSaved:         (strategyId: string) => boolean;
+  isInPlaybook:    (strategyId: string) => boolean;
 
-  // Legacy compatibility
-  purchaseStrategy:    (strategyId: string) => void;
+  addReview: (
+    strategyId: string,
+    review: Omit<StrategyReview, "id" | "timestamp">
+  ) => void;
+
+  publishStrategy: (
+    strategy: Omit<Strategy, "id" | "reviews" | "createdAt" | "updatedAt">
+  ) => void;
+
+  updateStrategyNotes: (strategyId: string, notes: string) => void;
+
+  // Convenience: returns strategies + user-published (all in strategies[])
+  getAllStrategies: () => Strategy[];
 }
+
+// ── Store ─────────────────────────────────────────────────────────────────
 
 export const useStrategyStore = create<StrategyStore>()(
   persist(
     (set, get) => ({
-      strategies:     TCC_STRATEGIES,
+      strategies:     STRATEGY_CATALOG,
       userStrategies: [],
 
       saveStrategy: (strategyId) => {
-        const existing = get().userStrategies.find(u => u.strategyId === strategyId);
-        if (existing) return;
-        set(state => ({
+        if (get().userStrategies.find((r) => r.strategyId === strategyId)) return;
+        set((state) => ({
           userStrategies: [
             ...state.userStrategies,
-            { strategyId, savedAt: Date.now(), savedToPlaybook: false, active: true },
+            {
+              strategyId,
+              savedAt:         Date.now(),
+              savedToPlaybook: false,
+              active:          false,
+            },
           ],
         }));
       },
 
-      unsaveStrategy: (strategyId) => {
-        set(state => ({
-          userStrategies: state.userStrategies.filter(u => u.strategyId !== strategyId),
-        }));
-      },
+      unsaveStrategy: (strategyId) =>
+        set((state) => ({
+          userStrategies: state.userStrategies.filter(
+            (r) => r.strategyId !== strategyId
+          ),
+        })),
 
-      togglePlaybook: (strategyId) => {
-        const existing = get().userStrategies.find(u => u.strategyId === strategyId);
-        if (!existing) {
-          // Auto-save when adding to playbook
-          set(state => ({
-            userStrategies: [
-              ...state.userStrategies,
-              { strategyId, savedAt: Date.now(), savedToPlaybook: true, active: true },
-            ],
-          }));
-        } else {
-          set(state => ({
-            userStrategies: state.userStrategies.map(u =>
-              u.strategyId !== strategyId ? u : { ...u, savedToPlaybook: !u.savedToPlaybook }
-            ),
-          }));
-        }
-      },
+      togglePlaybook: (strategyId) =>
+        set((state) => ({
+          userStrategies: state.userStrategies.map((r) =>
+            r.strategyId !== strategyId
+              ? r
+              : { ...r, savedToPlaybook: !r.savedToPlaybook }
+          ),
+        })),
 
-      isSaved: (strategyId) => {
-        return !!get().userStrategies.find(u => u.strategyId === strategyId);
-      },
+      isSaved: (strategyId) =>
+        !!get().userStrategies.find((r) => r.strategyId === strategyId),
 
-      isInPlaybook: (strategyId) => {
-        return !!get().userStrategies.find(u => u.strategyId === strategyId && u.savedToPlaybook);
-      },
+      isInPlaybook: (strategyId) =>
+        !!get().userStrategies.find(
+          (r) => r.strategyId === strategyId && r.savedToPlaybook
+        ),
 
-      addReview: (strategyId, review) => {
-        set(state => ({
-          strategies: state.strategies.map(s =>
-            s.id !== strategyId ? s : {
-              ...s,
-              reviews: [
-                ...s.reviews,
-                { ...review, id: Date.now().toString(), timestamp: Date.now() },
-              ],
-              updatedAt: Date.now(),
-            }
+      addReview: (strategyId, reviewInput) => {
+        const review: StrategyReview = {
+          id:        `rev_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          handle:    reviewInput.handle,
+          rating:    reviewInput.rating,
+          comment:   reviewInput.comment,
+          timestamp: Date.now(),
+        };
+        set((state) => ({
+          strategies: state.strategies.map((s) =>
+            s.id !== strategyId
+              ? s
+              : { ...s, reviews: [review, ...s.reviews], updatedAt: Date.now() }
           ),
         }));
       },
 
-      publishStrategy: (strategy) => {
-        const newS: Strategy = {
-          ...strategy,
-          id:       `creator_${Date.now()}`,
-          reviews:  [],
+      publishStrategy: (strategyData) => {
+        const newStrategy: Strategy = {
+          ...strategyData,
+          id:        `creator_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          reviews:   [],
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
-        set(state => ({ strategies: [newS, ...state.strategies] }));
+        set((state) => ({
+          strategies: [newStrategy, ...state.strategies],
+        }));
       },
 
-      // Legacy: purchase = save
-      purchaseStrategy: (strategyId) => get().saveStrategy(strategyId),
+      updateStrategyNotes: (_strategyId, _notes) => {
+        // Notes stored in UserStrategyRecord — extend UserStrategyRecord if needed
+        // Currently a no-op placeholder for future notes field
+      },
+
+      getAllStrategies: () => get().strategies,
     }),
     {
-      name:       "strategy",
-      storage:    createJSONStorage(() => getUserScopedStorage("strategy")),
-      partialize: (state) => ({ userStrategies: state.userStrategies }),
+      name:    "strategy",
+      storage: createJSONStorage(() => getUserScopedStorage("strategy")),
+      partialize: (state) => ({
+        // Persist only user records + published strategies + reviews
+        userStrategies: state.userStrategies,
+        // Persist creator_published strategies + review patches for catalog
+        strategies: state.strategies.map((s) =>
+          s.type === "creator_published"
+            ? s  // persist full creator strategy
+            : { id: s.id, reviews: s.reviews }  // persist only reviews for catalog
+        ),
+      }),
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+
+        // Rebuild strategies from catalog + persisted reviews + creator strategies
+        const reviewMap: Record<string, StrategyReview[]> = {};
+        const creatorStrategies: Strategy[] = [];
+
+        if (Array.isArray(state.strategies)) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          state.strategies.forEach((s: any) => {
+            if (s.id && s.reviews) reviewMap[s.id] = s.reviews;
+            if (s.type === "creator_published" && s.title) {
+              creatorStrategies.push(s as Strategy);
+            }
+          });
+        }
+
+        state.strategies = [
+          ...STRATEGY_CATALOG.map((s) => ({
+            ...s,
+            reviews: reviewMap[s.id] ?? [],
+          })),
+          ...creatorStrategies,
+        ];
+      },
     }
   )
 );
