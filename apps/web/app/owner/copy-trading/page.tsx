@@ -5,7 +5,7 @@
  *
  * Full admin review queue for master trader applications.
  * Reads from useMasterRegistryStore (global shared store).
- * All actions logged to adminActionLogStore + notificationStore.
+ * All actions logged with correct AdminActionType values.
  * Zero fake data.
  */
 import { useState } from "react";
@@ -13,6 +13,8 @@ import { useMasterRegistryStore } from "@/store/copyTradingStore";
 import { useAdminActionLogStore } from "@/store/adminActionLogStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useAuthStore } from "@/store/authStore";
+
+// ── Helpers ───────────────────────────────────────────────────────────────
 
 function timeAgo(iso: string): string {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -37,6 +39,8 @@ const STATUS_ICONS: Record<string, string> = {
   approved: "✅", rejected: "❌", more_info_required: "❓", suspended: "🚫",
 };
 
+// ── Page ──────────────────────────────────────────────────────────────────
+
 export default function OwnerCopyTradingPage() {
   const { user } = useAuthStore();
   const {
@@ -52,6 +56,7 @@ export default function OwnerCopyTradingPage() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
 
   const adminHandle = user?.handle ?? "admin";
+  const adminUserId = user?.id ?? adminHandle;
 
   const filtered = filterStatus === "all"
     ? allApplications
@@ -69,11 +74,30 @@ export default function OwnerCopyTradingPage() {
     suspended:    approvedMasters.filter(m => m.status === "suspended").length,
   };
 
-  const doApprove = () => {
+  // ── Action helpers — each uses the correct AdminActionType ────────────
+
+  const handleMarkUnderReview = () => {
+    if (!selected) return;
+    markUnderReview(selected.id, adminHandle);
+    addNotification({
+      type: "system", priority: "low",
+      title: "🔍 Marked Under Review",
+      message: `${selected.displayName}'s application is under review.`,
+    });
+    // "report_reviewed" is the closest existing type for "review started"
+    addLog({
+      actorUserId: adminUserId, actorHandle: adminHandle, actorRole: "admin",
+      actionType: "report_reviewed",
+      targetType: "copy_trading_application", targetId: selected.id,
+      description: `Marked under review: ${selected.displayName}`,
+    });
+  };
+
+  const handleApprove = () => {
     if (!selected) return;
     const master = approveApplication(selected.id, adminHandle);
     addLog({
-      actorUserId: user?.id ?? adminHandle, actorHandle: adminHandle, actorRole: "admin",
+      actorUserId: adminUserId, actorHandle: adminHandle, actorRole: "admin",
       actionType: "copy_trading_approved",
       targetType: "copy_trading_application", targetId: selected.id,
       description: `Approved master trader application for ${selected.displayName}`,
@@ -88,11 +112,11 @@ export default function OwnerCopyTradingPage() {
     setActionNote("");
   };
 
-  const doReject = () => {
+  const handleReject = () => {
     if (!selected || !actionNote.trim()) return;
     rejectApplication(selected.id, adminHandle, actionNote);
     addLog({
-      actorUserId: user?.id ?? adminHandle, actorHandle: adminHandle, actorRole: "admin",
+      actorUserId: adminUserId, actorHandle: adminHandle, actorRole: "admin",
       actionType: "copy_trading_rejected",
       targetType: "copy_trading_application", targetId: selected.id,
       description: `Rejected: ${actionNote}`,
@@ -106,9 +130,16 @@ export default function OwnerCopyTradingPage() {
     setActionNote("");
   };
 
-  const doMoreInfo = () => {
+  const handleMoreInfo = () => {
     if (!selected || !actionNote.trim()) return;
     requestMoreInfo(selected.id, adminHandle, actionNote);
+    // Use "system_note" — requesting info is an internal admin note action
+    addLog({
+      actorUserId: adminUserId, actorHandle: adminHandle, actorRole: "admin",
+      actionType: "system_note",
+      targetType: "copy_trading_application", targetId: selected.id,
+      description: `More info requested: ${actionNote}`,
+    });
     addNotification({
       type: "system", priority: "medium",
       title: "❓ More Info Requested",
@@ -118,15 +149,58 @@ export default function OwnerCopyTradingPage() {
     setActionNote("");
   };
 
-  const doNote = () => {
+  const handleSaveNote = () => {
     if (!selected || !actionNote.trim()) return;
     addAdminNote(selected.id, actionNote);
+    addLog({
+      actorUserId: adminUserId, actorHandle: adminHandle, actorRole: "admin",
+      actionType: "system_note",
+      targetType: "copy_trading_application", targetId: selected.id,
+      description: `Admin note: ${actionNote}`,
+    });
     setActionNote("");
   };
 
+  const handleSuspendMaster = (masterId: string, masterDisplayName: string) => {
+    const reason = prompt("Suspension reason:");
+    if (!reason) return;
+    suspendMaster(masterId, adminHandle, reason);
+    addLog({
+      actorUserId: adminUserId, actorHandle: adminHandle, actorRole: "admin",
+      actionType: "user_suspended",
+      targetType: "master_trader", targetId: masterId,
+      description: `Suspended master trader ${masterDisplayName}: ${reason}`,
+    });
+    addNotification({
+      type: "system", priority: "high",
+      title: "🚫 Master Trader Suspended",
+      message: `${masterDisplayName} has been suspended. Reason: ${reason}`,
+    });
+  };
+
+  const handleRemoveMaster = (masterId: string, masterDisplayName: string) => {
+    if (!confirm(`Remove ${masterDisplayName} permanently from approved masters?`)) return;
+    removeMaster(masterId);
+    // "user_suspended" is the correct type for a disabling/removal action in this store
+    addLog({
+      actorUserId: adminUserId, actorHandle: adminHandle, actorRole: "admin",
+      actionType: "user_suspended",
+      targetType: "master_trader", targetId: masterId,
+      description: `Permanently removed master trader: ${masterDisplayName}`,
+    });
+    addNotification({
+      type: "system", priority: "high",
+      title: "🗑 Master Trader Removed",
+      message: `${masterDisplayName} has been removed from the approved master traders list.`,
+    });
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────
+
   return (
     <div className="p-6">
-      {/* Page header */}
+
+      {/* Header */}
       <div className="mb-6">
         <h1 className="text-xl font-bold text-white">📡 Copy Trading Applications</h1>
         <p className="text-white/30 text-xs mt-1">
@@ -138,10 +212,10 @@ export default function OwnerCopyTradingPage() {
       {/* Summary stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {[
-          { label: "Submitted",      count: counts.submitted,    color: "text-blue-400"   },
-          { label: "Under Review",   count: counts.under_review, color: "text-amber-400"  },
-          { label: "Active Masters", count: counts.approved,     color: "text-green-400"  },
-          { label: "Rejected",       count: counts.rejected,     color: "text-red-400"    },
+          { label: "Submitted",      count: counts.submitted,    color: "text-blue-400"  },
+          { label: "Under Review",   count: counts.under_review, color: "text-amber-400" },
+          { label: "Active Masters", count: counts.approved,     color: "text-green-400" },
+          { label: "Rejected",       count: counts.rejected,     color: "text-red-400"   },
         ].map(item => (
           <div key={item.label} className="bg-white/2 border border-white/5 rounded-xl p-4">
             <p className="text-white/30 text-xs mb-1">{item.label}</p>
@@ -153,12 +227,12 @@ export default function OwnerCopyTradingPage() {
       {/* Filter tabs */}
       <div className="flex gap-1 bg-white/5 rounded-lg p-1 mb-5 overflow-x-auto">
         {[
-          { key: "all",                 label: `All (${counts.all})`             },
-          { key: "submitted",           label: `Submitted (${counts.submitted})` },
+          { key: "all",                 label: `All (${counts.all})`              },
+          { key: "submitted",           label: `Submitted (${counts.submitted})`  },
           { key: "under_review",        label: `Reviewing (${counts.under_review})` },
-          { key: "more_info_required",  label: `Info (${counts.more_info})`      },
-          { key: "approved",            label: `Approved (${counts.approved})`   },
-          { key: "rejected",            label: `Rejected (${counts.rejected})`   },
+          { key: "more_info_required",  label: `Info (${counts.more_info})`       },
+          { key: "approved",            label: `Approved (${counts.approved})`    },
+          { key: "rejected",            label: `Rejected (${counts.rejected})`    },
         ].map(tab => (
           <button key={tab.key} onClick={() => setFilterStatus(tab.key)}
             className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition ${
@@ -169,7 +243,7 @@ export default function OwnerCopyTradingPage() {
         ))}
       </div>
 
-      {/* Three-column layout: list | detail | active masters */}
+      {/* Three-column layout */}
       <div className="flex gap-5">
 
         {/* Application list */}
@@ -196,7 +270,7 @@ export default function OwnerCopyTradingPage() {
                   <span className={`text-xs px-2 py-0.5 rounded-full border capitalize ${
                     STATUS_COLORS[app.status] ?? STATUS_COLORS.draft
                   }`}>
-                    {STATUS_ICONS[app.status]} {app.status.replace(/_/g, " ")}
+                    {STATUS_ICONS[app.status] ?? "📝"} {app.status.replace(/_/g, " ")}
                   </span>
                 </div>
                 <div className="flex items-center gap-4 text-xs text-white/30">
@@ -212,18 +286,26 @@ export default function OwnerCopyTradingPage() {
         {selected && (
           <div className="w-80 shrink-0">
             <div className="bg-white/2 border border-white/10 rounded-xl p-5 sticky top-0 max-h-[calc(100vh-12rem)] overflow-y-auto">
+
               <div className="flex items-center justify-between mb-4">
                 <p className="text-white font-semibold text-sm">{selected.displayName}</p>
-                <button onClick={() => setSelectedId(null)} className="text-white/30 hover:text-white text-lg leading-none">✕</button>
+                <button
+                  onClick={() => setSelectedId(null)}
+                  className="text-white/30 hover:text-white text-lg leading-none">
+                  ✕
+                </button>
               </div>
 
+              {/* Application fields */}
               <div className="flex flex-col gap-1.5 text-xs mb-4">
                 {[
-                  { l: "TCC ID",       v: selected.tccId },
-                  { l: "Status",       v: selected.status.replace(/_/g," ") },
-                  { l: "User ID",      v: selected.userId },
-                  { l: "Submitted",    v: selected.submittedAt ? new Date(selected.submittedAt).toLocaleString() : "—" },
-                  { l: "Markets",      v: selected.marketsTraded.join(", ")  || "—" },
+                  { l: "TCC ID",       v: selected.tccId                             },
+                  { l: "Status",       v: selected.status.replace(/_/g, " ")         },
+                  { l: "User ID",      v: selected.userId                            },
+                  { l: "Submitted",    v: selected.submittedAt
+                      ? new Date(selected.submittedAt).toLocaleString()
+                      : "—"                                                           },
+                  { l: "Markets",      v: selected.marketsTraded.join(", ") || "—"  },
                   { l: "Strategies",   v: selected.strategiesUsed.join(", ") || "—" },
                   { l: "Risk disc.",   v: selected.hasAcceptedRiskDisclosure         ? "✅ Yes" : "❌ No" },
                   { l: "Honesty pol.", v: selected.hasAcceptedPerformanceTruthPolicy ? "✅ Yes" : "❌ No" },
@@ -236,6 +318,7 @@ export default function OwnerCopyTradingPage() {
                 ))}
               </div>
 
+              {/* Experience summary */}
               {selected.experienceSummary && (
                 <div className="bg-white/3 border border-white/5 rounded-lg p-3 mb-2">
                   <p className="text-white/30 text-xs mb-1">Experience Summary</p>
@@ -243,6 +326,7 @@ export default function OwnerCopyTradingPage() {
                 </div>
               )}
 
+              {/* Risk management */}
               {selected.riskManagementSummary && (
                 <div className="bg-white/3 border border-white/5 rounded-lg p-3 mb-2">
                   <p className="text-white/30 text-xs mb-1">Risk Management</p>
@@ -250,6 +334,7 @@ export default function OwnerCopyTradingPage() {
                 </div>
               )}
 
+              {/* Reason for applying */}
               {selected.reasonForApplying && (
                 <div className="bg-white/3 border border-white/5 rounded-lg p-3 mb-3">
                   <p className="text-white/30 text-xs mb-1">Reason for Applying</p>
@@ -257,6 +342,7 @@ export default function OwnerCopyTradingPage() {
                 </div>
               )}
 
+              {/* Admin note (existing) */}
               {selected.adminNotes && (
                 <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-lg p-3 mb-2">
                   <p className="text-indigo-400 text-xs font-semibold mb-1">Admin Note</p>
@@ -264,6 +350,7 @@ export default function OwnerCopyTradingPage() {
                 </div>
               )}
 
+              {/* Rejection reason (existing) */}
               {selected.rejectionReason && (
                 <div className="bg-red-500/5 border border-red-500/10 rounded-lg p-3 mb-2">
                   <p className="text-red-400 text-xs font-semibold mb-1">Rejection Reason</p>
@@ -271,6 +358,7 @@ export default function OwnerCopyTradingPage() {
                 </div>
               )}
 
+              {/* More info request (existing) */}
               {selected.moreInfoRequest && (
                 <div className="bg-orange-500/5 border border-orange-500/10 rounded-lg p-3 mb-3">
                   <p className="text-orange-400 text-xs font-semibold mb-1">Info Requested</p>
@@ -278,39 +366,47 @@ export default function OwnerCopyTradingPage() {
                 </div>
               )}
 
-              {/* Action note textarea */}
-              <textarea value={actionNote} onChange={e => setActionNote(e.target.value)}
+              {/* Action note input */}
+              <textarea
+                value={actionNote}
+                onChange={e => setActionNote(e.target.value)}
                 placeholder="Admin note / rejection reason / info request..."
                 rows={3}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white text-xs resize-none focus:outline-none mb-3" />
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white text-xs resize-none focus:outline-none mb-3"
+              />
 
               {/* Action buttons — only for actionable statuses */}
-              {(selected.status === "submitted" ||
-                selected.status === "under_review" ||
+              {(selected.status === "submitted"          ||
+                selected.status === "under_review"       ||
                 selected.status === "more_info_required") && (
                 <div className="flex flex-col gap-2">
                   {selected.status !== "under_review" && (
-                    <button onClick={() => {
-                      markUnderReview(selected.id, adminHandle);
-                      addNotification({ type: "system", priority: "low", title: "🔍 Marked Under Review", message: `${selected.displayName}'s application is under review.` });
-                    }}
+                    <button
+                      onClick={handleMarkUnderReview}
                       className="w-full bg-blue-500/20 text-blue-400 border border-blue-500/30 py-2 rounded-lg text-xs font-semibold transition hover:bg-blue-500/30">
                       🔍 Mark Under Review
                     </button>
                   )}
-                  <button onClick={doApprove}
+                  <button
+                    onClick={handleApprove}
                     className="w-full bg-green-500/20 text-green-400 border border-green-500/30 py-2 rounded-lg text-xs font-semibold transition hover:bg-green-500/30">
                     ✅ Approve
                   </button>
-                  <button onClick={doReject} disabled={!actionNote.trim()}
+                  <button
+                    onClick={handleReject}
+                    disabled={!actionNote.trim()}
                     className="w-full bg-red-500/10 text-red-400 border border-red-500/20 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-40 hover:bg-red-500/20">
                     ❌ Reject (requires note)
                   </button>
-                  <button onClick={doMoreInfo} disabled={!actionNote.trim()}
+                  <button
+                    onClick={handleMoreInfo}
+                    disabled={!actionNote.trim()}
                     className="w-full bg-orange-500/10 text-orange-400 border border-orange-500/20 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-40 hover:bg-orange-500/20">
                     ❓ Request More Info (requires note)
                   </button>
-                  <button onClick={doNote} disabled={!actionNote.trim()}
+                  <button
+                    onClick={handleSaveNote}
+                    disabled={!actionNote.trim()}
                     className="w-full bg-white/5 text-white/40 border border-white/10 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-40 hover:bg-white/10">
                     📝 Save Admin Note
                   </button>
@@ -337,29 +433,13 @@ export default function OwnerCopyTradingPage() {
                   Trust: {master.trustScoreStatus.replace(/_/g, " ")}
                 </p>
                 <div className="flex gap-1.5 mt-3">
-                  <button onClick={() => {
-                    const reason = prompt("Suspension reason:");
-                    if (!reason) return;
-                    suspendMaster(master.id, adminHandle, reason);
-                    addLog({
-                      actorUserId: user?.id ?? adminHandle, actorHandle: adminHandle, actorRole: "admin",
-                      actionType: "user_suspended", targetType: "master_trader", targetId: master.id,
-                      description: `Suspended: ${reason}`,
-                    });
-                    addNotification({ type: "system", priority: "high", title: "🚫 Master Suspended", message: `${master.displayName}: ${reason}` });
-                  }}
+                  <button
+                    onClick={() => handleSuspendMaster(master.id, master.displayName)}
                     className="flex-1 text-xs text-red-400/60 hover:text-red-400 bg-red-500/5 border border-red-500/10 px-2 py-1 rounded-lg transition">
                     Suspend
                   </button>
-                  <button onClick={() => {
-                    if (!confirm(`Remove ${master.displayName} permanently?`)) return;
-                    removeMaster(master.id);
-                    addLog({
-                      actorUserId: user?.id ?? adminHandle, actorHandle: adminHandle, actorRole: "admin",
-                      actionType: "post_hidden", targetType: "master_trader", targetId: master.id,
-                      description: `Removed master trader ${master.displayName}`,
-                    });
-                  }}
+                  <button
+                    onClick={() => handleRemoveMaster(master.id, master.displayName)}
                     className="flex-1 text-xs text-white/20 hover:text-white/50 bg-white/3 border border-white/8 px-2 py-1 rounded-lg transition">
                     Remove
                   </button>
