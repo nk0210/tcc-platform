@@ -1,13 +1,24 @@
 "use client";
 /**
- * TCC Trader Profile Page — /profile
+ * TCC Trader Profile — /profile
+ * Day-9: Complete implementation
  *
- * Day-8 fix (strategy type): userStrategies is UserStrategyRecord[], NOT Strategy[].
- * publishedStrategies is now derived from strategies[] filtered by type + authorHandle.
- * savedStrategyCount comes from userStrategies.length (records count only).
+ * 7 tabs: Overview / Portfolio / Posts / Strategies / Academy / Copy Trading / Settings
+ *
+ * All data from real local stores only.
+ * No fake data. Paper trading only. Local-only.
+ * Visibility enforced locally — backend enforcement in Phase Alpha.
+ *
+ * Fixed:
+ * - Combined split code segments into one full file.
+ * - Fixed broken social link <a> tags.
+ * - Removed course.certificateStatus usage because Course type does not contain it.
  */
-import { useState, useEffect, useMemo } from "react";
+
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+
+// ── Stores ─────────────────────────────────────────────────────────────────
 import { useAuthStore } from "@/store/authStore";
 import {
   useProfileStore,
@@ -22,12 +33,18 @@ import { useTradeStore } from "@/store/tradeStore";
 import { useJournalStore } from "@/store/journalStore";
 import { useAcademyStore, type Course } from "@/store/academyStore";
 import { useStrategyStore, type Strategy } from "@/store/strategyStore";
-import { useCommunityStore } from "@/store/communityStore";
+import {
+  useCommunityStore,
+  type CommunityPost,
+  type CommunityPostType,
+} from "@/store/communityStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import {
   useMasterRegistryStore,
   useCopyTradingStore,
 } from "@/store/copyTradingStore";
+
+// ── Analytics ──────────────────────────────────────────────────────────────
 import {
   calculatePerformanceOverview,
   calculateDisciplineScore,
@@ -37,10 +54,14 @@ import {
   PAPER_INITIAL_BALANCE,
 } from "@/lib/analytics/performance";
 import { TCC_SYMBOL_MAP } from "@/lib/markets/symbols";
+
+// ── Layout ─────────────────────────────────────────────────────────────────
 import Topbar from "@/components/Topbar";
 import Sidebar from "@/components/Sidebar";
 
-// ── Tab types ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// TAB CONFIG
+// ─────────────────────────────────────────────────────────────────────────
 
 type ProfileTab =
   | "overview"
@@ -51,29 +72,31 @@ type ProfileTab =
   | "copy_trading"
   | "settings";
 
-const PROFILE_TABS: { key: ProfileTab; label: string }[] = [
-  { key: "overview", label: "Overview" },
-  { key: "portfolio", label: "Portfolio" },
-  { key: "posts", label: "Posts" },
-  { key: "strategies", label: "Strategies" },
-  { key: "academy", label: "Academy" },
-  { key: "copy_trading", label: "Copy Trading" },
-  { key: "settings", label: "Settings" },
+const TABS: { key: ProfileTab; label: string }[] = [
+  { key: "overview", label: "📊 Overview" },
+  { key: "portfolio", label: "💼 Portfolio" },
+  { key: "posts", label: "💬 Posts" },
+  { key: "strategies", label: "📋 Strategies" },
+  { key: "academy", label: "🎓 Academy" },
+  { key: "copy_trading", label: "📡 Copy Trading" },
+  { key: "settings", label: "⚙ Settings" },
 ];
 
-// ── Display helpers ───────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// DISPLAY CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────
 
-const ROLE_LABELS: Record<TCCUserRole, string> = {
+const ROLE_LABEL: Record<TCCUserRole, string> = {
   normal_user: "Trader",
   follower_trader: "Follower",
-  verified_trader: "Verified Trader",
+  verified_trader: "Verified",
   master_trader: "Master Trader",
   mentor: "Mentor",
   admin: "Admin",
   owner: "Owner",
 };
 
-const ROLE_COLORS: Record<TCCUserRole, string> = {
+const ROLE_CLASS: Record<TCCUserRole, string> = {
   normal_user: "text-white/50 bg-white/5 border-white/10",
   follower_trader: "text-blue-400 bg-blue-500/10 border-blue-500/20",
   verified_trader: "text-green-400 bg-green-500/10 border-green-500/20",
@@ -83,13 +106,32 @@ const ROLE_COLORS: Record<TCCUserRole, string> = {
   owner: "text-red-400 bg-red-500/15 border-red-500/30",
 };
 
-const VIS_ICONS: Record<string, string> = {
+const VIS_ICON: Record<string, string> = {
   public: "🌐",
   private: "🔒",
   followers_only: "👥",
 };
 
-function pnlColor(v: number): string {
+const VIS_LABEL: Record<string, string> = {
+  public: "Public",
+  private: "Private",
+  followers_only: "Followers Only",
+};
+
+const POST_TYPE_LABEL: Record<CommunityPostType, string> = {
+  text: "💬 Text",
+  trade_idea: "💡 Trade Idea",
+  shared_trade: "📊 Shared Trade",
+  academy_completion: "🎓 Academy",
+  strategy_share: "📋 Strategy",
+  competition_update: "🏆 Competition",
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// UTILITY
+// ─────────────────────────────────────────────────────────────────────────
+
+function pnlClass(v: number): string {
   return v > 0.01
     ? "text-green-400"
     : v < -0.01
@@ -97,7 +139,48 @@ function pnlColor(v: number): string {
       : "text-white/40";
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// MICRO COMPONENTS
+// ─────────────────────────────────────────────────────────────────────────
+
+function Avatar({
+  name,
+  size = "xl",
+}: {
+  name: string;
+  size?: "sm" | "md" | "lg" | "xl";
+}) {
+  const sz: Record<string, string> = {
+    sm: "w-8 h-8 text-sm",
+    md: "w-12 h-12 text-base",
+    lg: "w-16 h-16 text-xl",
+    xl: "w-24 h-24 text-4xl",
+  };
+
+  return (
+    <div
+      className={`${sz[size]} rounded-2xl bg-gradient-to-br from-green-500/25 to-green-700/15 border-2 border-green-500/30 flex items-center justify-center text-green-300 font-bold shrink-0 select-none`}
+    >
+      {name?.[0]?.toUpperCase() ?? "?"}
+    </div>
+  );
+}
+
+function Chip({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center text-xs px-2.5 py-0.5 rounded-full border whitespace-nowrap ${className}`}
+    >
+      {children}
+    </span>
+  );
+}
 
 function StatCard({
   label,
@@ -112,7 +195,7 @@ function StatCard({
 }) {
   return (
     <div className="glass border border-white/5 rounded-xl p-4">
-      <p className="text-white/40 text-xs mb-1 truncate">{label}</p>
+      <p className="text-white/40 text-xs truncate mb-1">{label}</p>
       <p className={`text-xl font-bold truncate ${color}`}>{value}</p>
       {sub && (
         <p className="text-white/25 text-xs mt-0.5 leading-tight">{sub}</p>
@@ -121,96 +204,57 @@ function StatCard({
   );
 }
 
-function EmptyCard({ message, sub }: { message: string; sub?: string }) {
-  return (
-    <div className="glass border border-white/5 rounded-xl p-8 text-center">
-      <p className="text-white/30 text-sm">{message}</p>
-      {sub && <p className="text-white/15 text-xs mt-1 leading-relaxed">{sub}</p>}
-    </div>
-  );
-}
-
-function Avatar({
-  name,
-  size = "xl",
+function EmptyState({
+  icon,
+  title,
+  sub,
 }: {
-  name: string;
-  size?: "sm" | "md" | "lg" | "xl";
+  icon: string;
+  title: string;
+  sub?: string;
 }) {
-  const sizes: Record<string, string> = {
-    sm: "w-8 h-8 text-sm",
-    md: "w-12 h-12 text-lg",
-    lg: "w-16 h-16 text-2xl",
-    xl: "w-24 h-24 text-4xl",
-  };
-
   return (
-    <div
-      className={`${sizes[size]} rounded-2xl bg-green-500/20 border-2 border-green-500/30 flex items-center justify-center text-green-400 font-bold shrink-0`}
-    >
-      {name?.[0]?.toUpperCase() ?? "?"}
+    <div className="flex flex-col items-center justify-center py-14 gap-3 text-center">
+      <span className="text-4xl">{icon}</span>
+      <p className="text-white/30 text-sm font-medium">{title}</p>
+      {sub && (
+        <p className="text-white/15 text-xs max-w-xs leading-relaxed">{sub}</p>
+      )}
     </div>
   );
 }
 
-// ── Post card ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// POST CARD
+// ─────────────────────────────────────────────────────────────────────────
 
-type CommunityPostType =
-  | "text"
-  | "trade_idea"
-  | "shared_trade"
-  | "academy_completion"
-  | "strategy_share"
-  | "competition_update";
-
-interface MiniPost {
-  id: string;
-  type: CommunityPostType;
-  content: string;
-  createdAt: string;
-  likes: string[];
-  comments: unknown[];
-  savedBy: string[];
-  tradeSnapshot?: {
-    side: "BUY" | "SELL";
-    displayName: string;
-    netPnl: number;
-  } | null;
-}
-
-const POST_TYPE_LABELS: Record<CommunityPostType, string> = {
-  text: "💬 Text",
-  trade_idea: "💡 Idea",
-  shared_trade: "📊 Trade",
-  academy_completion: "🎓 Academy",
-  strategy_share: "📋 Strategy",
-  competition_update: "🏆 Competition",
-};
-
-function MiniPostCard({ post }: { post: MiniPost }) {
+function PostCard({ post }: { post: CommunityPost }) {
   return (
-    <div className="glass border border-white/5 rounded-xl p-4">
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <span className="text-xs text-white/40 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-          {POST_TYPE_LABELS[post.type] ?? post.type}
-        </span>
+    <div className="glass border border-white/5 rounded-xl p-4 hover:border-white/10 transition">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <Chip className="text-white/40 bg-white/5 border-white/10">
+          {POST_TYPE_LABEL[post.type]}
+        </Chip>
         <span className="text-white/20 text-xs shrink-0">
-          {new Date(post.createdAt).toLocaleDateString()}
+          {new Date(post.createdAt).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+          })}
         </span>
       </div>
 
-      <p className="text-white/70 text-sm leading-relaxed line-clamp-3">
+      <p className="text-white/70 text-sm leading-relaxed line-clamp-3 mb-3">
         {post.content}
       </p>
 
       {post.tradeSnapshot && (
-        <div className="mt-2 p-2 bg-white/3 border border-white/5 rounded-lg flex items-center gap-3 text-xs">
+        <div className="flex items-center gap-3 bg-white/3 border border-white/5 rounded-lg px-3 py-2 mb-3 text-xs">
           <span
-            className={
+            className={`font-semibold ${
               post.tradeSnapshot.side === "BUY"
                 ? "text-green-400"
                 : "text-red-400"
-            }
+            }`}
           >
             {post.tradeSnapshot.side}
           </span>
@@ -218,7 +262,7 @@ function MiniPostCard({ post }: { post: MiniPost }) {
             {post.tradeSnapshot.displayName}
           </span>
           <span
-            className={`font-bold ml-auto ${pnlColor(
+            className={`ml-auto font-bold ${pnlClass(
               post.tradeSnapshot.netPnl
             )}`}
           >
@@ -228,293 +272,29 @@ function MiniPostCard({ post }: { post: MiniPost }) {
         </div>
       )}
 
-      <div className="flex items-center gap-4 mt-3 text-xs text-white/30">
+      <div className="flex items-center gap-4 text-xs text-white/25">
         <span>❤ {post.likes.length}</span>
-        <span>💬 {(post.comments as unknown[]).length}</span>
+        <span>💬 {post.comments.length}</span>
         <span>🔖 {post.savedBy.length}</span>
+        <span
+          className={`ml-auto ${
+            post.visibility === "public"
+              ? "text-green-400/40"
+              : post.visibility === "followers_only"
+                ? "text-amber-400/40"
+                : "text-red-400/40"
+          }`}
+        >
+          {VIS_ICON[post.visibility]}
+        </span>
       </div>
     </div>
   );
 }
 
-// ── Settings Tab ──────────────────────────────────────────────────────────
-
-function SettingsTab({
-  profile,
-  onSave,
-}: {
-  profile: TCCUserProfile;
-  onSave: (updates: Partial<TCCUserProfile>) => void;
-}) {
-  const [form, setForm] = useState({
-    displayName: profile.displayName,
-    bio: profile.bio,
-    location: profile.location,
-    profileVisibility: profile.profileVisibility as ProfileVisibility,
-    portfolioVisibility: profile.portfolioVisibility as PortfolioVisibility,
-    experienceLevel: profile.tradingIdentity.experienceLevel as
-      | ExperienceLevel
-      | "",
-    marketsTraded: profile.tradingIdentity.marketsTraded.join(", "),
-    strategiesUsed: profile.tradingIdentity.strategiesUsed.join(", "),
-    preferredSessions: profile.tradingIdentity.preferredSessions.join(", "),
-    website: profile.socialLinks.website ?? "",
-    x: profile.socialLinks.x ?? "",
-    linkedin: profile.socialLinks.linkedin ?? "",
-    youtube: profile.socialLinks.youtube ?? "",
-  });
-
-  const [saved, setSaved] = useState(false);
-
-  const handleSave = () => {
-    const tradingIdentity: TCCTradingIdentity = {
-      marketsTraded: form.marketsTraded
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      symbolsTraded: profile.tradingIdentity.symbolsTraded,
-      strategiesUsed: form.strategiesUsed
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      preferredSessions: form.preferredSessions
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      experienceLevel: form.experienceLevel,
-    };
-
-    onSave({
-      displayName: form.displayName,
-      bio: form.bio,
-      location: form.location,
-      profileVisibility: form.profileVisibility,
-      portfolioVisibility: form.portfolioVisibility,
-      tradingIdentity,
-      socialLinks: {
-        website: form.website || undefined,
-        x: form.x || undefined,
-        linkedin: form.linkedin || undefined,
-        youtube: form.youtube || undefined,
-      },
-    });
-
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  return (
-    <div className="flex flex-col gap-5 max-w-2xl">
-      {/* Basic info */}
-      <div className="glass border border-white/5 rounded-xl p-5">
-        <p className="text-white/50 text-xs uppercase tracking-wider mb-4">
-          Basic Information
-        </p>
-
-        <div className="flex flex-col gap-3">
-          <div>
-            <p className="text-white/40 text-xs mb-1">Display Name</p>
-            <input
-              value={form.displayName}
-              onChange={(e) =>
-                setForm({ ...form, displayName: e.target.value })
-              }
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-white/25"
-            />
-          </div>
-
-          <div>
-            <p className="text-white/40 text-xs mb-1">Bio</p>
-            <textarea
-              value={form.bio}
-              rows={3}
-              onChange={(e) => setForm({ ...form, bio: e.target.value })}
-              placeholder="Tell other traders about yourself..."
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm resize-none focus:outline-none focus:border-white/25 placeholder-white/20"
-            />
-          </div>
-
-          <div>
-            <p className="text-white/40 text-xs mb-1">Location</p>
-            <input
-              value={form.location}
-              onChange={(e) =>
-                setForm({ ...form, location: e.target.value })
-              }
-              placeholder="e.g. London, UK"
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-white/25 placeholder-white/20"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Visibility */}
-      <div className="glass border border-white/5 rounded-xl p-5">
-        <p className="text-white/50 text-xs uppercase tracking-wider mb-4">
-          Privacy & Visibility
-        </p>
-
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            {
-              label: "Profile Visibility",
-              key: "profileVisibility" as const,
-              opts: ["public", "followers_only", "private"] as ProfileVisibility[],
-            },
-            {
-              label: "Portfolio Visibility",
-              key: "portfolioVisibility" as const,
-              opts: ["public", "followers_only", "private"] as PortfolioVisibility[],
-            },
-          ].map((field) => (
-            <div key={field.key}>
-              <p className="text-white/40 text-xs mb-1.5">{field.label}</p>
-
-              {field.opts.map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setForm({ ...form, [field.key]: v })}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-xs border mb-1 transition ${
-                    form[field.key] === v
-                      ? "bg-green-500/20 text-green-400 border-green-500/30"
-                      : "bg-white/5 text-white/50 border-white/10 hover:border-white/20"
-                  }`}
-                >
-                  {VIS_ICONS[v]} {v.replace(/_/g, " ")}
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Trading identity */}
-      <div className="glass border border-white/5 rounded-xl p-5">
-        <p className="text-white/50 text-xs uppercase tracking-wider mb-4">
-          Trading Identity
-        </p>
-
-        <p className="text-white/20 text-xs mb-4 leading-relaxed">
-          Your identity is flexible — trade multiple markets, use multiple
-          strategies, operate in multiple sessions.
-        </p>
-
-        <div className="flex flex-col gap-3">
-          <div>
-            <p className="text-white/40 text-xs mb-1.5">Experience Level</p>
-
-            <div className="flex gap-2 flex-wrap">
-              {(
-                ["", "beginner", "intermediate", "advanced", "professional"] as const
-              ).map((level) => (
-                <button
-                  key={level}
-                  onClick={() => setForm({ ...form, experienceLevel: level })}
-                  className={`px-3 py-1.5 rounded-lg text-xs border capitalize transition ${
-                    form.experienceLevel === level
-                      ? "bg-green-500/20 text-green-400 border-green-500/30"
-                      : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"
-                  }`}
-                >
-                  {level === "" ? "Not set" : level}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {[
-            {
-              label: "Markets Traded",
-              key: "marketsTraded" as const,
-              placeholder: "e.g. Crypto, Forex, Gold",
-            },
-            {
-              label: "Strategies Used",
-              key: "strategiesUsed" as const,
-              placeholder: "e.g. SMC, Price Action, EMA",
-            },
-            {
-              label: "Preferred Sessions",
-              key: "preferredSessions" as const,
-              placeholder: "e.g. London, New York",
-            },
-          ].map((f) => (
-            <div key={f.key}>
-              <p className="text-white/40 text-xs mb-1">
-                {f.label}{" "}
-                <span className="text-white/20">(comma separated)</span>
-              </p>
-
-              <input
-                value={form[f.key]}
-                onChange={(e) =>
-                  setForm({ ...form, [f.key]: e.target.value })
-                }
-                placeholder={f.placeholder}
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-white/25 placeholder-white/20"
-              />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Social links */}
-      <div className="glass border border-white/5 rounded-xl p-5">
-        <p className="text-white/50 text-xs uppercase tracking-wider mb-4">
-          Social Links{" "}
-          <span className="text-white/20 normal-case">(optional)</span>
-        </p>
-
-        <div className="flex flex-col gap-3">
-          {[
-            {
-              label: "Website",
-              key: "website" as const,
-              placeholder: "https://yoursite.com",
-            },
-            {
-              label: "X/Twitter",
-              key: "x" as const,
-              placeholder: "@handle",
-            },
-            {
-              label: "LinkedIn",
-              key: "linkedin" as const,
-              placeholder: "linkedin.com/in/handle",
-            },
-            {
-              label: "YouTube",
-              key: "youtube" as const,
-              placeholder: "youtube.com/@channel",
-            },
-          ].map((f) => (
-            <div key={f.key}>
-              <p className="text-white/40 text-xs mb-1">{f.label}</p>
-
-              <input
-                value={form[f.key]}
-                onChange={(e) =>
-                  setForm({ ...form, [f.key]: e.target.value })
-                }
-                placeholder={f.placeholder}
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-white/25 placeholder-white/20"
-              />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <button
-        onClick={handleSave}
-        className="bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 py-3 rounded-xl text-sm font-semibold transition"
-      >
-        {saved ? "✓ Saved!" : "Save Changes"}
-      </button>
-    </div>
-  );
-}
-
-// ── Copy Trading Tab ──────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// COPY TRADING TAB
+// ─────────────────────────────────────────────────────────────────────────
 
 function CopyTradingTab({
   userId,
@@ -533,66 +313,67 @@ function CopyTradingTab({
   const isMasterSuspended = myMasterProfile?.status === "suspended";
   const isFollower = activeRels.length > 0;
 
-  const statusLabel =
-    isMasterActive
-      ? "🏆 Master Trader"
-      : isMasterSuspended
-        ? "🚫 Master Trader (Suspended)"
-        : isFollower
-          ? `📡 Active Follower (${activeRels.length} copy ${
-              activeRels.length === 1 ? "relationship" : "relationships"
-            })`
-          : myApplication?.status === "submitted"
-            ? "📬 Application Submitted"
-            : myApplication?.status === "under_review"
-              ? "🔍 Application Under Review"
-              : myApplication?.status === "more_info_required"
-                ? "❓ More Info Requested"
-                : myApplication?.status === "rejected"
-                  ? "❌ Application Rejected"
-                  : "👤 Not Participating";
+  let bannerTitle = "👤 Not Participating";
+  let bannerDesc = "You are not currently participating in copy trading.";
+  let bannerCls = "border-white/5";
 
-  const statusDesc =
-    isMasterActive
-      ? "You are an approved master trader. Paper-copy only — broker integration pending."
-      : isMasterSuspended
-        ? "Your master trader status is suspended. Contact TCC admin."
-        : isFollower
-          ? "Copying master traders in paper-copy mode. No real broker execution."
-          : myApplication
-            ? `Application status: ${myApplication.status.replace(/_/g, " ")}.`
-            : "You are not currently participating in copy trading.";
-
-  const bannerClass =
-    isMasterActive
-      ? "border-amber-500/20 bg-amber-500/3"
-      : isMasterSuspended
-        ? "border-red-500/20 bg-red-500/3"
-        : isFollower
-          ? "border-green-500/15 bg-green-500/3"
-          : myApplication && myApplication.status !== "rejected"
-            ? "border-blue-500/15 bg-blue-500/3"
-            : "border-white/5";
+  if (isMasterActive) {
+    bannerTitle = "🏆 Master Trader";
+    bannerDesc =
+      "You are an approved master trader. Paper-copy only — no live broker execution.";
+    bannerCls = "border-amber-500/20 bg-amber-500/3";
+  } else if (isMasterSuspended) {
+    bannerTitle = "🚫 Master Trader (Suspended)";
+    bannerDesc = "Your master trader status is suspended. Contact TCC admin.";
+    bannerCls = "border-red-500/20 bg-red-500/3";
+  } else if (isFollower) {
+    bannerTitle = `📡 Active Follower — ${activeRels.length} copy relationship${
+      activeRels.length > 1 ? "s" : ""
+    }`;
+    bannerDesc =
+      "Copying master traders in paper-copy mode. No real broker execution.";
+    bannerCls = "border-green-500/15 bg-green-500/3";
+  } else if (myApplication) {
+    const statusLabel: Record<string, string> = {
+      draft: "📝 Draft Application",
+      submitted: "📬 Application Submitted",
+      under_review: "🔍 Under Review",
+      more_info_required: "❓ More Info Requested",
+      approved: "✅ Approved",
+      rejected: "❌ Application Rejected",
+      suspended: "🚫 Suspended",
+    };
+    bannerTitle = statusLabel[myApplication.status] ?? myApplication.status;
+    bannerDesc = `Application status: ${myApplication.status.replace(
+      /_/g,
+      " "
+    )}.`;
+    bannerCls =
+      myApplication.status === "submitted" ||
+      myApplication.status === "under_review"
+        ? "border-blue-500/15 bg-blue-500/3"
+        : "border-white/5";
+  }
 
   return (
     <div className="flex flex-col gap-5">
       {/* Status banner */}
-      <div className={`glass border rounded-xl p-5 ${bannerClass}`}>
+      <div className={`glass border rounded-xl p-5 ${bannerCls}`}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-white font-semibold text-sm mb-1">
-              {statusLabel}
+              {bannerTitle}
             </p>
             <p className="text-white/40 text-xs leading-relaxed">
-              {statusDesc}
+              {bannerDesc}
             </p>
           </div>
-
           <button
+            type="button"
             onClick={() => onNavigate("/copy-trading")}
             className="bg-white/5 hover:bg-white/10 text-white/50 border border-white/10 px-4 py-1.5 rounded-lg text-xs font-semibold transition shrink-0"
           >
-            Open Copy Trading →
+            Open →
           </button>
         </div>
       </div>
@@ -603,8 +384,7 @@ function CopyTradingTab({
           <p className="text-white/40 text-xs uppercase tracking-wider mb-3">
             Master Trader Profile
           </p>
-
-          <div className="flex flex-col gap-1.5 text-xs">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs mb-4">
             {[
               { l: "TCC ID", v: myMasterProfile.tccId },
               { l: "Status", v: myMasterProfile.status },
@@ -633,73 +413,67 @@ function CopyTradingTab({
               </div>
             ))}
           </div>
-
-          <div className="mt-4 bg-amber-500/5 border border-amber-500/10 rounded-lg p-3">
+          <div className="bg-amber-500/5 border border-amber-500/10 rounded-lg p-3">
             <p className="text-amber-400/70 text-xs leading-relaxed">
-              ⚠ Master trader approval is local only. Performance not verified.
-              Paper-copy mode only.
+              ⚠ Local approval only. Performance not verified. Broker not
+              connected. Paper-copy mode only until Phase Alpha.
             </p>
           </div>
         </div>
       )}
 
-      {/* Application status */}
+      {/* Application status detail */}
       {myApplication && !myMasterProfile && (
         <div className="glass border border-white/5 rounded-xl p-5">
           <p className="text-white/40 text-xs uppercase tracking-wider mb-3">
-            Application Status
+            Application Details
           </p>
-
-          <div className="flex flex-col gap-1.5 text-xs">
-            <div className="flex gap-2 items-center">
-              <span className="text-white/30 w-24 shrink-0">Status</span>
-
-              <span
-                className={`capitalize px-2 py-0.5 rounded-full border text-xs ${
-                  myApplication.status === "submitted"
-                    ? "text-blue-400 bg-blue-500/10 border-blue-500/20"
-                    : myApplication.status === "under_review"
-                      ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
-                      : myApplication.status === "more_info_required"
-                        ? "text-orange-400 bg-orange-500/10 border-orange-500/20"
-                        : myApplication.status === "rejected"
-                          ? "text-red-400 bg-red-500/10 border-red-500/20"
-                          : "text-white/40 bg-white/5 border-white/10"
-                }`}
-              >
-                {myApplication.status.replace(/_/g, " ")}
-              </span>
-            </div>
-
-            {myApplication.submittedAt && (
-              <div className="flex gap-2">
-                <span className="text-white/30 w-24 shrink-0">Submitted</span>
-                <span className="text-white/60">
-                  {new Date(myApplication.submittedAt).toLocaleString()}
-                </span>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs mb-3">
+            {[
+              { l: "TCC ID", v: myApplication.tccId },
+              {
+                l: "Status",
+                v: myApplication.status.replace(/_/g, " "),
+              },
+              {
+                l: "Markets",
+                v: myApplication.marketsTraded.join(", ") || "—",
+              },
+              {
+                l: "Submitted",
+                v: myApplication.submittedAt
+                  ? new Date(myApplication.submittedAt).toLocaleDateString()
+                  : "—",
+              },
+            ].map((item) => (
+              <div key={item.l} className="flex gap-2">
+                <span className="text-white/30 w-24 shrink-0">{item.l}</span>
+                <span className="text-white/60 capitalize">{item.v}</span>
               </div>
-            )}
-
-            {myApplication.rejectionReason && (
-              <div className="flex gap-2 items-start">
-                <span className="text-white/30 w-24 shrink-0">Reason</span>
-                <span className="text-red-400/70 leading-relaxed">
-                  {myApplication.rejectionReason}
-                </span>
-              </div>
-            )}
-
-            {myApplication.moreInfoRequest && (
-              <div className="flex gap-2 items-start">
-                <span className="text-white/30 w-24 shrink-0">
-                  Info needed
-                </span>
-                <span className="text-orange-400/70 leading-relaxed">
-                  {myApplication.moreInfoRequest}
-                </span>
-              </div>
-            )}
+            ))}
           </div>
+
+          {myApplication.rejectionReason && (
+            <div className="bg-red-500/5 border border-red-500/10 rounded-lg p-3 mt-2">
+              <p className="text-red-400 text-xs font-semibold mb-1">
+                Rejection Reason
+              </p>
+              <p className="text-white/50 text-xs">
+                {myApplication.rejectionReason}
+              </p>
+            </div>
+          )}
+
+          {myApplication.moreInfoRequest && (
+            <div className="bg-orange-500/5 border border-orange-500/10 rounded-lg p-3 mt-2">
+              <p className="text-orange-400 text-xs font-semibold mb-1">
+                Info Requested
+              </p>
+              <p className="text-white/50 text-xs">
+                {myApplication.moreInfoRequest}
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -720,54 +494,380 @@ function CopyTradingTab({
                   {rel.masterDisplayName}
                 </p>
                 <p className="text-white/30 text-xs">
-                  Paper-copy · {rel.mode.replace(/_/g, " ")} · {rel.status}
+                  {rel.mode.replace(/_/g, " ")} · {rel.status}
                 </p>
               </div>
-
-              <span
-                className={`text-xs px-2 py-0.5 rounded-full border ${
+              <Chip
+                className={
                   rel.status === "active"
                     ? "text-green-400 bg-green-500/10 border-green-500/20"
                     : rel.status === "paused"
                       ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
                       : "text-white/30 bg-white/5 border-white/10"
-                }`}
+                }
               >
                 {rel.status}
-              </span>
+              </Chip>
             </div>
           ))}
 
           <p className="text-white/15 text-xs mt-3">
-            All copy relationships are paper-copy only. No real orders placed.
+            All copy relationships are paper-copy only. No real broker orders
+            placed.
           </p>
         </div>
       )}
 
-      {/* Empty */}
-      {!isMasterActive && !isMasterSuspended && !isFollower && !myApplication && (
-        <EmptyCard
-          message="Not participating in copy trading yet."
-          sub="Apply to become a master trader, or discover master traders to start paper-copy following."
-        />
-      )}
+      {/* Empty state — not participating at all */}
+      {!isMasterActive &&
+        !isMasterSuspended &&
+        !isFollower &&
+        !myApplication && (
+          <EmptyState
+            icon="📡"
+            title="Not participating in copy trading yet."
+            sub="Apply to become a master trader, or discover master traders to start paper-copy following. Paper-copy mode only."
+          />
+        )}
 
       <div className="p-3 bg-white/2 border border-white/5 rounded-xl">
         <p className="text-white/15 text-xs leading-relaxed">
           Copy trading is paper-copy mode only. No real money involved. All data
-          is local to this browser.
+          is local to this browser. Phase Alpha will require verified broker
+          connections and real-time execution.
         </p>
       </div>
     </div>
   );
 }
 
-// ── Main Profile Page ─────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// SETTINGS TAB
+// ─────────────────────────────────────────────────────────────────────────
+
+function SettingsTab({
+  profile,
+  onSave,
+}: {
+  profile: TCCUserProfile;
+  onSave: (updates: Partial<TCCUserProfile>) => void;
+}) {
+  const [displayName, setDisplayName] = useState(profile.displayName);
+  const [bio, setBio] = useState(profile.bio);
+  const [location, setLocation] = useState(profile.location);
+  const [profileVisibility, setProfileVisibility] =
+    useState<ProfileVisibility>(profile.profileVisibility);
+  const [portfolioVisibility, setPortfolioVisibility] =
+    useState<PortfolioVisibility>(profile.portfolioVisibility);
+  const [experienceLevel, setExperienceLevel] = useState<
+    ExperienceLevel | ""
+  >(profile.tradingIdentity.experienceLevel);
+  const [marketsTraded, setMarketsTraded] = useState(
+    profile.tradingIdentity.marketsTraded.join(", ")
+  );
+  const [symbolsTraded, setSymbolsTraded] = useState(
+    profile.tradingIdentity.symbolsTraded.join(", ")
+  );
+  const [strategiesUsed, setStrategiesUsed] = useState(
+    profile.tradingIdentity.strategiesUsed.join(", ")
+  );
+  const [preferredSessions, setPreferredSessions] = useState(
+    profile.tradingIdentity.preferredSessions.join(", ")
+  );
+  const [website, setWebsite] = useState(profile.socialLinks.website ?? "");
+  const [xHandle, setXHandle] = useState(profile.socialLinks.x ?? "");
+  const [linkedin, setLinkedin] = useState(
+    profile.socialLinks.linkedin ?? ""
+  );
+  const [youtube, setYoutube] = useState(profile.socialLinks.youtube ?? "");
+  const [saved, setSaved] = useState(false);
+
+  const split = (raw: string) =>
+    raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+  const handleSave = () => {
+    const tradingIdentity: TCCTradingIdentity = {
+      marketsTraded: split(marketsTraded),
+      symbolsTraded: split(symbolsTraded),
+      strategiesUsed: split(strategiesUsed),
+      preferredSessions: split(preferredSessions),
+      experienceLevel,
+    };
+
+    onSave({
+      displayName,
+      bio,
+      location,
+      profileVisibility,
+      portfolioVisibility,
+      tradingIdentity,
+      socialLinks: {
+        website: website || undefined,
+        x: xHandle || undefined,
+        linkedin: linkedin || undefined,
+        youtube: youtube || undefined,
+      },
+    });
+
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
+
+  const inputCls =
+    "w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-white/30 placeholder-white/20 transition";
+
+  const sectionCls = "glass border border-white/5 rounded-xl p-5";
+
+  const VisOption = ({
+    value,
+    current,
+    onChange,
+  }: {
+    value: ProfileVisibility | PortfolioVisibility;
+    current: string;
+    onChange: (v: string) => void;
+  }) => (
+    <button
+      type="button"
+      onClick={() => onChange(value)}
+      className={`w-full text-left px-3 py-2 rounded-lg text-xs border mb-1 transition ${
+        current === value
+          ? "bg-green-500/20 text-green-400 border-green-500/30"
+          : "bg-white/5 text-white/50 border-white/10 hover:border-white/20"
+      }`}
+    >
+      {VIS_ICON[value]} {VIS_LABEL[value]}
+    </button>
+  );
+
+  return (
+    <div className="flex flex-col gap-5 max-w-2xl">
+      {/* ── Basic info ── */}
+      <div className={sectionCls}>
+        <p className="text-white/50 text-xs uppercase tracking-wider mb-4">
+          Basic Information
+        </p>
+        <div className="flex flex-col gap-3">
+          <div>
+            <p className="text-white/40 text-xs mb-1">Display Name</p>
+            <input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <p className="text-white/40 text-xs mb-1">Bio</p>
+            <textarea
+              value={bio}
+              rows={3}
+              onChange={(e) => setBio(e.target.value)}
+              placeholder="Tell other traders about yourself..."
+              className={`${inputCls} resize-none`}
+            />
+          </div>
+
+          <div>
+            <p className="text-white/40 text-xs mb-1">Location</p>
+            <input
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="e.g. London, UK"
+              className={inputCls}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Visibility ── */}
+      <div className={sectionCls}>
+        <p className="text-white/50 text-xs uppercase tracking-wider mb-4">
+          Privacy & Visibility
+          <span className="text-white/20 ml-2 normal-case">
+            (locally enforced — backend in Phase Alpha)
+          </span>
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <p className="text-white/40 text-xs mb-1.5">Profile</p>
+            {(["public", "followers_only", "private"] as ProfileVisibility[]).map(
+              (v) => (
+                <VisOption
+                  key={v}
+                  value={v}
+                  current={profileVisibility}
+                  onChange={(x) => setProfileVisibility(x as ProfileVisibility)}
+                />
+              )
+            )}
+          </div>
+
+          <div>
+            <p className="text-white/40 text-xs mb-1.5">Portfolio</p>
+            {(["public", "followers_only", "private"] as PortfolioVisibility[]).map(
+              (v) => (
+                <VisOption
+                  key={v}
+                  value={v}
+                  current={portfolioVisibility}
+                  onChange={(x) =>
+                    setPortfolioVisibility(x as PortfolioVisibility)
+                  }
+                />
+              )
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Trading identity ── */}
+      <div className={sectionCls}>
+        <p className="text-white/50 text-xs uppercase tracking-wider mb-1">
+          Trading Identity
+        </p>
+        <p className="text-white/20 text-xs mb-4 leading-relaxed">
+          Flexible — list as many markets, symbols, strategies, or sessions as
+          you trade. Use comma-separated values.
+        </p>
+
+        <div className="flex flex-col gap-3">
+          <div>
+            <p className="text-white/40 text-xs mb-1.5">Experience Level</p>
+            <div className="flex flex-wrap gap-1.5">
+              {(
+                ["", "beginner", "intermediate", "advanced", "professional"] as const
+              ).map((lvl) => (
+                <button
+                  key={lvl}
+                  type="button"
+                  onClick={() => setExperienceLevel(lvl)}
+                  className={`px-3 py-1.5 rounded-lg text-xs border capitalize transition ${
+                    experienceLevel === lvl
+                      ? "bg-green-500/20 text-green-400 border-green-500/30"
+                      : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"
+                  }`}
+                >
+                  {lvl === "" ? "Not set" : lvl}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {[
+            {
+              label: "Markets Traded",
+              value: marketsTraded,
+              set: setMarketsTraded,
+              ph: "e.g. Crypto, Forex, Gold",
+            },
+            {
+              label: "Symbols Traded",
+              value: symbolsTraded,
+              set: setSymbolsTraded,
+              ph: "e.g. BTCUSDT, XAUUSD, EURUSD",
+            },
+            {
+              label: "Strategies Used",
+              value: strategiesUsed,
+              set: setStrategiesUsed,
+              ph: "e.g. SMC, Price Action, EMA Cross",
+            },
+            {
+              label: "Preferred Sessions",
+              value: preferredSessions,
+              set: setPreferredSessions,
+              ph: "e.g. London, New York, Asian",
+            },
+          ].map(({ label, value, set, ph }) => (
+            <div key={label}>
+              <p className="text-white/40 text-xs mb-1">
+                {label}
+                <span className="text-white/20 ml-1">(comma separated)</span>
+              </p>
+              <input
+                value={value}
+                onChange={(e) => set(e.target.value)}
+                placeholder={ph}
+                className={inputCls}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Social links ── */}
+      <div className={sectionCls}>
+        <p className="text-white/50 text-xs uppercase tracking-wider mb-4">
+          Social Links{" "}
+          <span className="text-white/20 normal-case">(optional)</span>
+        </p>
+
+        <div className="flex flex-col gap-3">
+          {[
+            {
+              label: "Website",
+              value: website,
+              set: setWebsite,
+              ph: "https://yoursite.com",
+            },
+            {
+              label: "X/Twitter",
+              value: xHandle,
+              set: setXHandle,
+              ph: "@handle",
+            },
+            {
+              label: "LinkedIn",
+              value: linkedin,
+              set: setLinkedin,
+              ph: "linkedin.com/in/handle",
+            },
+            {
+              label: "YouTube",
+              value: youtube,
+              set: setYoutube,
+              ph: "youtube.com/@channel",
+            },
+          ].map(({ label, value, set, ph }) => (
+            <div key={label}>
+              <p className="text-white/40 text-xs mb-1">{label}</p>
+              <input
+                value={value}
+                onChange={(e) => set(e.target.value)}
+                placeholder={ph}
+                className={inputCls}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleSave}
+        className="bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 py-3 rounded-xl text-sm font-semibold transition"
+      >
+        {saved ? "✓ Saved!" : "Save Changes"}
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// MAIN PAGE
+// ─────────────────────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
   const router = useRouter();
+
+  // ── Auth ────────────────────────────────────────────────────────────────
   const { user } = useAuthStore();
 
+  // ── Profile ─────────────────────────────────────────────────────────────
   const {
     myProfile,
     initProfile,
@@ -776,37 +876,56 @@ export default function ProfilePage() {
     getFollowing,
   } = useProfileStore();
 
+  // ── Trading data ─────────────────────────────────────────────────────────
   const { closedTrades, positions, balance, equity, floatingPnl } =
     useTradeStore();
-
   const { entries } = useJournalStore();
+
+  // ── Academy ─────────────────────────────────────────────────────────────
   const { courses, userProgress } = useAcademyStore();
 
-  // ── STRATEGY FIX: Use strategies (Strategy[]) not userStrategies (UserStrategyRecord[]) ──
-  // strategies contains all Strategy objects (catalog + user-published)
-  // userStrategies contains UserStrategyRecord[] — save/playbook records only
+  // ── Strategies — userStrategies is UserStrategyRecord[], NOT Strategy[] ──
   const { strategies, userStrategies } = useStrategyStore();
 
-  const { getUserPosts } = useCommunityStore();
+  // ── Community posts ──────────────────────────────────────────────────────
+  const allPosts = useCommunityStore((state) => state.posts);
+
+  // ── Notifications ────────────────────────────────────────────────────────
   const { addNotification } = useNotificationStore();
 
-  const [activeTab, setActiveTab] = useState<ProfileTab>("overview");
+  // ── Hydration guard ──────────────────────────────────────────────────────
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (user) {
+    setMounted(true);
+  }, []);
+
+  // ── Active tab ───────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<ProfileTab>("overview");
+
+  // ── Init profile from auth user ──────────────────────────────────────────
+  useEffect(() => {
+    if (!mounted) return;
+
+    if (user && !myProfile) {
       initProfile(
         user.id,
         user.tccId ?? "TCC-GL-TRD-XXXXXXXX",
         user.handle ?? user.email
       );
     }
-  }, [user, initProfile]);
+  }, [mounted, user, myProfile, initProfile]);
 
+  // ── Redirect if not logged in ────────────────────────────────────────────
   useEffect(() => {
-    if (!user) router.push("/login");
-  }, [user, router]);
+    if (mounted && !user) {
+      router.push("/login");
+    }
+  }, [mounted, user, router]);
 
-  // ── Analytics ─────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // DERIVED DATA — all memoised
+  // ─────────────────────────────────────────────────────────────────────────
 
   const perf = useMemo(() => {
     if (closedTrades.length === 0) return null;
@@ -835,63 +954,89 @@ export default function ProfilePage() {
     [entries]
   );
 
-  // ── Derived counts ─────────────────────────────────────────────────────
+  const myFollowers = useMemo(
+    () => (user ? getFollowers(user.id) : []),
+    [user, getFollowers]
+  );
 
-  const myPosts = user ? getUserPosts(user.id) : [];
-  const myFollowers = user ? getFollowers(user.id) : [];
-  const myFollowing = user ? getFollowing(user.id) : [];
-  const enrolledCourses = Object.keys(userProgress);
+  const myFollowing = useMemo(
+    () => (user ? getFollowing(user.id) : []),
+    [user, getFollowing]
+  );
+
+  const myPosts = useMemo(
+    () =>
+      user
+        ? allPosts
+            .filter((p) => p.authorId === user.id && !p.isHiddenByAdmin)
+            .sort(
+              (a, b) =>
+                new Date(b.createdAt).getTime() -
+                new Date(a.createdAt).getTime()
+            )
+        : [],
+    [allPosts, user]
+  );
+
+  const publishedStrategies = useMemo<Strategy[]>(
+    () =>
+      user
+        ? strategies.filter(
+            (s: Strategy) =>
+              s.type === "creator_published" &&
+              s.authorHandle === (user.handle ?? user.email ?? "")
+          )
+        : [],
+    [strategies, user]
+  );
+
+  const savedStrategyCount = userStrategies.length;
+
+  const enrolledCourseIds = Object.keys(userProgress);
 
   const completedCourses = courses.filter((c: Course) => {
     const p = userProgress[c.id];
     return p && p.completedLessons.length >= c.lessons.length;
   });
 
-  // ── Strategy counts — CORRECT derivation ──────────────────────────────
-  // publishedStrategies: derive from strategies (Strategy[]) by type + authorHandle
-  // Do NOT use userStrategies as Strategy[] — it is UserStrategyRecord[]
-  const publishedStrategies: Strategy[] = useMemo(
+  const bestSymbol = useMemo(
     () =>
-      strategies.filter(
-        (s: Strategy) =>
-          s.type === "creator_published" &&
-          (user ? s.authorHandle === (user.handle ?? user.email ?? "") : false)
-      ),
-    [strategies, user]
+      symbolStats.length > 0
+        ? symbolStats.reduce(
+            (best, s) => (s.netPnl > best.netPnl ? s : best),
+            symbolStats[0]
+          )
+        : null,
+    [symbolStats]
   );
 
-  const publishedStrategyCount = publishedStrategies.length;
+  const mostTraded = useMemo(
+    () =>
+      symbolStats.length > 0
+        ? symbolStats.reduce(
+            (most, s) => (s.trades > most.trades ? s : most),
+            symbolStats[0]
+          )
+        : null,
+    [symbolStats]
+  );
 
-  // userStrategies.length counts save/playbook records, not Strategy objects
-  const savedStrategyCount = userStrategies.length;
+  const bestSession = useMemo(
+    () =>
+      sessionStats.length > 0
+        ? sessionStats.reduce(
+            (best, s) => (s.netPnl > best.netPnl ? s : best),
+            sessionStats[0]
+          )
+        : null,
+    [sessionStats]
+  );
 
-  const bestSymbol =
-    symbolStats.length > 0
-      ? symbolStats.reduce(
-          (b, s) => (s.netPnl > b.netPnl ? s : b),
-          symbolStats[0]
-        )
-      : null;
+  // ─────────────────────────────────────────────────────────────────────────
+  // LOADING / GUARD
+  // ─────────────────────────────────────────────────────────────────────────
 
-  const mostTraded =
-    symbolStats.length > 0
-      ? symbolStats.reduce(
-          (m, s) => (s.trades > m.trades ? s : m),
-          symbolStats[0]
-        )
-      : null;
-
-  const bestSession =
-    sessionStats.length > 0
-      ? sessionStats.reduce(
-          (b, s) => (s.netPnl > b.netPnl ? s : b),
-          sessionStats[0]
-        )
-      : null;
-
-  // ── Guard ─────────────────────────────────────────────────────────────
-
-  if (!user || !myProfile) {
+  if (!mounted || !user || !myProfile) {
     return (
       <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
         <Topbar />
@@ -899,7 +1044,7 @@ export default function ProfilePage() {
           <Sidebar />
           <div className="flex-1 flex items-center justify-center">
             <p className="text-white/30 text-sm animate-pulse">
-              Loading profile...
+              {!user ? "Redirecting to login..." : "Loading profile..."}
             </p>
           </div>
         </div>
@@ -907,35 +1052,45 @@ export default function ProfilePage() {
     );
   }
 
-  // ── Render ────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const ti = myProfile.tradingIdentity;
+
+  const hasIdentity =
+    ti.marketsTraded.length > 0 ||
+    ti.symbolsTraded.length > 0 ||
+    ti.strategiesUsed.length > 0 ||
+    ti.preferredSessions.length > 0 ||
+    !!ti.experienceLevel;
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
       <Topbar />
-
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
-
         <div className="flex-1 overflow-y-auto">
-          {/* ── Profile header ─────────────────────────────────────────── */}
-          <div className="glass border-b border-white/5 p-6">
-            <div className="flex items-start gap-6">
+          {/* ════════════════════════════════════════════════
+              PROFILE HEADER
+          ════════════════════════════════════════════════ */}
+          <div className="glass border-b border-white/5 px-6 py-5">
+            <div className="flex items-start gap-6 flex-wrap">
               <Avatar
                 name={myProfile.displayName || myProfile.username}
                 size="xl"
               />
 
-              <div className="flex-1">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="flex-1 min-w-0">
+                {/* Name row */}
+                <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
                   <div>
-                    <h1 className="text-2xl font-bold text-white">
+                    <h1 className="text-2xl font-bold text-white leading-tight">
                       {myProfile.displayName || myProfile.username}
                     </h1>
-
-                    <p className="text-white/40 text-sm mt-0.5">
+                    <p className="text-white/40 text-sm">
                       @{myProfile.username}
                     </p>
-
                     {myProfile.tccId && (
                       <p className="text-green-400/60 font-mono text-xs mt-0.5">
                         {myProfile.tccId}
@@ -944,20 +1099,21 @@ export default function ProfilePage() {
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                    <Chip
+                      className={`${
                         myProfile.profileVisibility === "public"
-                          ? "text-green-400/60 border-green-500/20"
+                          ? "text-green-400/70 border-green-500/20"
                           : myProfile.profileVisibility === "private"
                             ? "text-red-400/60 border-red-500/20"
                             : "text-amber-400/60 border-amber-500/20"
-                      }`}
+                      } bg-transparent`}
                     >
-                      {VIS_ICONS[myProfile.profileVisibility]} Profile{" "}
-                      {myProfile.profileVisibility.replace(/_/g, " ")}
-                    </span>
+                      {VIS_ICON[myProfile.profileVisibility]} Profile{" "}
+                      {VIS_LABEL[myProfile.profileVisibility]}
+                    </Chip>
 
                     <button
+                      type="button"
                       onClick={() => setActiveTab("settings")}
                       className="bg-white/5 hover:bg-white/10 text-white/60 border border-white/10 px-4 py-1.5 rounded-lg text-xs font-semibold transition"
                     >
@@ -966,17 +1122,19 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
+                {/* Bio */}
                 {myProfile.bio ? (
-                  <p className="text-white/60 text-sm mt-3 leading-relaxed max-w-2xl">
+                  <p className="text-white/55 text-sm mt-2 leading-relaxed max-w-2xl">
                     {myProfile.bio}
                   </p>
                 ) : (
-                  <p className="text-white/20 text-sm mt-3 italic">
+                  <p className="text-white/20 text-sm mt-2 italic">
                     No bio yet — add one in Settings
                   </p>
                 )}
 
-                <div className="flex flex-wrap gap-4 mt-3 text-xs text-white/40">
+                {/* Meta row */}
+                <div className="flex flex-wrap gap-4 mt-2 text-xs text-white/40">
                   {myProfile.location && <span>📍 {myProfile.location}</span>}
 
                   <span>
@@ -990,7 +1148,6 @@ export default function ProfilePage() {
                     )}
                   </span>
 
-                  {/* X / Twitter link */}
                   {myProfile.socialLinks.x && (
                     <a
                       href={`https://x.com/${myProfile.socialLinks.x.replace(
@@ -999,7 +1156,7 @@ export default function ProfilePage() {
                       )}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-blue-400/60 hover:text-blue-400 transition"
+                      className="hover:text-blue-400 transition"
                     >
                       𝕏 {myProfile.socialLinks.x}
                     </a>
@@ -1010,41 +1167,72 @@ export default function ProfilePage() {
                       href={myProfile.socialLinks.website}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-white/50 hover:text-white transition"
+                      className="hover:text-white transition"
                     >
                       🌐 Website
                     </a>
                   )}
+
+                  {myProfile.socialLinks.linkedin && (
+                    <a
+                      href={
+                        myProfile.socialLinks.linkedin.startsWith("http")
+                          ? myProfile.socialLinks.linkedin
+                          : `https://linkedin.com/in/${myProfile.socialLinks.linkedin}`
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hover:text-blue-400 transition"
+                    >
+                      LinkedIn
+                    </a>
+                  )}
+
+                  {myProfile.socialLinks.youtube && (
+                    <a
+                      href={
+                        myProfile.socialLinks.youtube.startsWith("http")
+                          ? myProfile.socialLinks.youtube
+                          : `https://youtube.com/@${myProfile.socialLinks.youtube.replace(
+                              /^@/,
+                              ""
+                            )}`
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hover:text-red-400 transition"
+                    >
+                      YouTube
+                    </a>
+                  )}
                 </div>
 
-                <div className="flex items-center gap-4 mt-4 flex-wrap">
+                {/* Role badges + social counts */}
+                <div className="flex items-center gap-3 mt-3 flex-wrap">
                   {myProfile.roles.map((role) => (
-                    <span
-                      key={role}
-                      className={`text-xs px-2 py-0.5 rounded-full border ${ROLE_COLORS[role]}`}
-                    >
-                      {ROLE_LABELS[role]}
-                    </span>
+                    <Chip key={role} className={ROLE_CLASS[role]}>
+                      {ROLE_LABEL[role]}
+                    </Chip>
                   ))}
 
-                  <div className="h-4 w-px bg-white/10" />
+                  <div className="h-4 w-px bg-white/10 mx-1" />
 
-                  <div className="flex gap-4 text-xs">
-                    <span className="text-white/60">
+                  <div className="flex gap-4 text-xs text-white/50">
+                    <span>
                       <span className="text-white font-bold">
                         {myFollowers.length}
                       </span>{" "}
                       followers
                     </span>
 
-                    <span className="text-white/60">
+                    <span>
                       <span className="text-white font-bold">
                         {myFollowing.length}
                       </span>{" "}
                       following
                     </span>
 
-                    <span className="text-white/60">
+                    <span>
                       <span className="text-white font-bold">
                         {myPosts.length}
                       </span>{" "}
@@ -1056,10 +1244,11 @@ export default function ProfilePage() {
             </div>
 
             {/* Tab bar */}
-            <div className="flex gap-0.5 mt-5 overflow-x-auto">
-              {PROFILE_TABS.map((tab) => (
+            <div className="flex gap-0.5 mt-5 overflow-x-auto pb-0.5">
+              {TABS.map((tab) => (
                 <button
                   key={tab.key}
+                  type="button"
                   onClick={() => setActiveTab(tab.key)}
                   className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                     activeTab === tab.key
@@ -1073,9 +1262,11 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* ── Tab content ─────────────────────────────────────────────── */}
+          {/* ════════════════════════════════════════════════
+              TAB CONTENT
+          ════════════════════════════════════════════════ */}
           <div className="p-6">
-            {/* ══ OVERVIEW ══════════════════════════════════════════════ */}
+            {/* ══════════════ OVERVIEW ══════════════════════ */}
             {activeTab === "overview" && (
               <div className="flex flex-col gap-6">
                 {/* Trading identity */}
@@ -1084,13 +1275,11 @@ export default function ProfilePage() {
                     Trading Identity
                   </p>
 
-                  {myProfile.tradingIdentity.marketsTraded.length === 0 &&
-                  myProfile.tradingIdentity.strategiesUsed.length === 0 &&
-                  myProfile.tradingIdentity.preferredSessions.length === 0 &&
-                  !myProfile.tradingIdentity.experienceLevel ? (
+                  {!hasIdentity ? (
                     <p className="text-white/20 text-sm">
                       No trading identity set yet.{" "}
                       <button
+                        type="button"
                         onClick={() => setActiveTab("settings")}
                         className="text-green-400/60 hover:text-green-400 underline transition"
                       >
@@ -1098,91 +1287,55 @@ export default function ProfilePage() {
                       </button>
                     </p>
                   ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {myProfile.tradingIdentity.experienceLevel && (
-                        <div>
-                          <p className="text-white/30 text-xs mb-2">
+                    <div className="flex flex-col gap-3">
+                      {ti.experienceLevel && (
+                        <div className="flex items-start gap-3">
+                          <span className="text-white/30 text-xs w-28 shrink-0 pt-0.5">
                             Experience
-                          </p>
-                          <span className="text-xs px-2 py-1 rounded-full border text-white/70 bg-white/5 border-white/10 capitalize">
-                            {myProfile.tradingIdentity.experienceLevel}
                           </span>
+                          <Chip className="text-white/70 bg-white/5 border-white/10 capitalize">
+                            {ti.experienceLevel}
+                          </Chip>
                         </div>
                       )}
 
-                      {myProfile.tradingIdentity.marketsTraded.length > 0 && (
-                        <div>
-                          <p className="text-white/30 text-xs mb-2">Markets</p>
-
-                          <div className="flex flex-wrap gap-1">
-                            {myProfile.tradingIdentity.marketsTraded.map(
-                              (m) => (
-                                <span
-                                  key={m}
-                                  className="text-xs bg-blue-500/10 text-blue-400/80 border border-blue-500/20 px-2 py-0.5 rounded-full"
+                      {[
+                        { label: "Markets", items: ti.marketsTraded },
+                        { label: "Symbols", items: ti.symbolsTraded },
+                        { label: "Strategies", items: ti.strategiesUsed },
+                        { label: "Sessions", items: ti.preferredSessions },
+                      ]
+                        .filter(({ items }) => items.length > 0)
+                        .map(({ label, items }) => (
+                          <div key={label} className="flex items-start gap-3">
+                            <span className="text-white/30 text-xs w-28 shrink-0 pt-0.5">
+                              {label}
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {items.map((item) => (
+                                <Chip
+                                  key={item}
+                                  className="text-white/60 bg-white/5 border-white/10 capitalize"
                                 >
-                                  {m}
-                                </span>
-                              )
-                            )}
+                                  {item}
+                                </Chip>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
-
-                      {myProfile.tradingIdentity.strategiesUsed.length > 0 && (
-                        <div>
-                          <p className="text-white/30 text-xs mb-2">
-                            Strategies
-                          </p>
-
-                          <div className="flex flex-wrap gap-1">
-                            {myProfile.tradingIdentity.strategiesUsed.map(
-                              (s) => (
-                                <span
-                                  key={s}
-                                  className="text-xs bg-indigo-500/10 text-indigo-400/80 border border-indigo-500/20 px-2 py-0.5 rounded-full"
-                                >
-                                  {s}
-                                </span>
-                              )
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {myProfile.tradingIdentity.preferredSessions.length >
-                        0 && (
-                        <div>
-                          <p className="text-white/30 text-xs mb-2">
-                            Sessions
-                          </p>
-
-                          <div className="flex flex-wrap gap-1">
-                            {myProfile.tradingIdentity.preferredSessions.map(
-                              (sess) => (
-                                <span
-                                  key={sess}
-                                  className="text-xs bg-amber-500/10 text-amber-400/80 border border-amber-500/20 px-2 py-0.5 rounded-full capitalize"
-                                >
-                                  {sess}
-                                </span>
-                              )
-                            )}
-                          </div>
-                        </div>
-                      )}
+                        ))}
                     </div>
                   )}
                 </div>
 
-                {/* Stat cards */}
+                {/* Performance stats */}
                 {closedTrades.length === 0 ? (
-                  <EmptyCard
-                    message="No paper trading data yet."
-                    sub="Open the Dashboard, place and close paper trades to see your stats here."
+                  <EmptyState
+                    icon="📊"
+                    title="No paper trading data yet."
+                    sub="Open the Dashboard, place and close paper trades to see performance stats here."
                   />
                 ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
                     <StatCard
                       label="Closed Trades"
                       value={closedTrades.length}
@@ -1254,7 +1407,7 @@ export default function ProfilePage() {
                   </div>
                 )}
 
-                {/* Derived insights */}
+                {/* Insight cards */}
                 {closedTrades.length > 0 && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {bestSymbol && (
@@ -1262,11 +1415,9 @@ export default function ProfilePage() {
                         <p className="text-white/40 text-xs mb-2">
                           Best Symbol (Paper)
                         </p>
-
                         <p className="text-white font-semibold">
                           {bestSymbol.displayName}
                         </p>
-
                         <p
                           className={`text-sm font-bold mt-1 ${
                             bestSymbol.netPnl >= 0
@@ -1286,13 +1437,12 @@ export default function ProfilePage() {
                         <p className="text-white/40 text-xs mb-2">
                           Most Traded
                         </p>
-
                         <p className="text-white font-semibold">
                           {mostTraded.displayName}
                         </p>
-
                         <p className="text-white/50 text-sm mt-1">
-                          {mostTraded.trades} trades
+                          {mostTraded.trades} trade
+                          {mostTraded.trades !== 1 ? "s" : ""}
                         </p>
                       </div>
                     )}
@@ -1302,11 +1452,9 @@ export default function ProfilePage() {
                         <p className="text-white/40 text-xs mb-2">
                           Best Session (Paper)
                         </p>
-
                         <p className="text-white font-semibold capitalize">
                           {bestSession.session}
                         </p>
-
                         <p
                           className={`text-sm font-bold mt-1 ${
                             bestSession.netPnl >= 0
@@ -1323,157 +1471,190 @@ export default function ProfilePage() {
                   </div>
                 )}
 
-                {/* Academy + strategies summary */}
+                {/* Academy + strategy summary */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="glass border border-white/5 rounded-xl p-4">
-                    <p className="text-white/40 text-xs mb-3">
-                      Academy Progress
-                    </p>
+                    <p className="text-white/40 text-xs mb-2">Academy</p>
 
-                    {enrolledCourses.length === 0 ? (
+                    {enrolledCourseIds.length === 0 ? (
                       <p className="text-white/20 text-sm">
                         Not enrolled in any courses yet.
                       </p>
                     ) : (
-                      <div>
+                      <>
                         <p className="text-white text-sm">
-                          {completedCourses.length}/{enrolledCourses.length}{" "}
+                          {completedCourses.length}/{enrolledCourseIds.length}{" "}
                           courses completed
                         </p>
-
-                        <p className="text-white/30 text-xs mt-1">
+                        <p className="text-white/30 text-xs mt-0.5">
                           Certificates coming soon
                         </p>
-                      </div>
+                      </>
                     )}
                   </div>
 
                   <div className="glass border border-white/5 rounded-xl p-4">
-                    <p className="text-white/40 text-xs mb-3">Strategies</p>
+                    <p className="text-white/40 text-xs mb-2">Strategies</p>
 
-                    {publishedStrategyCount === 0 &&
+                    {publishedStrategies.length === 0 &&
                     savedStrategyCount === 0 ? (
                       <p className="text-white/20 text-sm">
                         No strategies saved or published yet.
                       </p>
                     ) : (
-                      <div>
+                      <>
                         <p className="text-white text-sm">
-                          {publishedStrategyCount} published ·{" "}
+                          {publishedStrategies.length} published ·{" "}
                           {savedStrategyCount} saved
                         </p>
-
-                        <p className="text-white/30 text-xs mt-1">
-                          Local-only until backend connected
+                        <p className="text-white/30 text-xs mt-0.5">
+                          Local-only
                         </p>
-                      </div>
+                      </>
                     )}
                   </div>
                 </div>
 
+                {/* Disclaimer */}
                 <div className="p-3 bg-white/2 border border-white/5 rounded-xl">
                   <p className="text-white/15 text-xs leading-relaxed">
                     All stats are derived from local paper trading data only.
-                    Not verified. Not broker-connected.
+                    Not verified. Not broker-connected. Phase Beta — local only.
                   </p>
                 </div>
               </div>
             )}
 
-            {/* ══ PORTFOLIO ══════════════════════════════════════════════ */}
+            {/* ══════════════ PORTFOLIO ══════════════════════ */}
             {activeTab === "portfolio" && (
               <div className="flex flex-col gap-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-bold text-white">
-                      Portfolio
-                    </h2>
+                    <h2 className="text-lg font-bold text-white">Portfolio</h2>
                     <p className="text-white/30 text-xs mt-0.5">
                       Paper trading performance · Local data only
                     </p>
                   </div>
 
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                  <Chip
+                    className={`${
                       myProfile.portfolioVisibility === "public"
-                        ? "text-green-400/60 border-green-500/20"
+                        ? "text-green-400/70 border-green-500/20"
                         : myProfile.portfolioVisibility === "private"
                           ? "text-red-400/60 border-red-500/20"
                           : "text-amber-400/60 border-amber-500/20"
-                    }`}
+                    } bg-transparent`}
                   >
-                    {VIS_ICONS[myProfile.portfolioVisibility]}{" "}
-                    {myProfile.portfolioVisibility.replace(/_/g, " ")}
-                  </span>
+                    {VIS_ICON[myProfile.portfolioVisibility]} Portfolio{" "}
+                    {VIS_LABEL[myProfile.portfolioVisibility]}
+                  </Chip>
                 </div>
 
                 {closedTrades.length === 0 ? (
-                  <EmptyCard
-                    message="No closed paper trades yet."
-                    sub="Close trades from the Dashboard."
+                  <EmptyState
+                    icon="💼"
+                    title="No closed paper trades yet."
+                    sub="Close trades from the Dashboard. Portfolio analytics appear here automatically."
                   />
                 ) : perf ? (
                   <>
                     <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
-                      <StatCard label="Total Trades" value={perf.totalTrades} />
-
-                      <StatCard
-                        label="Win Rate"
-                        value={`${perf.winRate}%`}
-                        color={
-                          perf.winRate >= 50
-                            ? "text-green-400"
-                            : "text-red-400"
-                        }
-                        sub={`${perf.wins}W · ${perf.losses}L`}
-                      />
-
-                      <StatCard
-                        label="Net P&L"
-                        value={`${perf.netPnl >= 0 ? "+" : ""}$${
-                          perf.netPnl
-                        }`}
-                        color={
-                          perf.netPnl >= 0
-                            ? "text-green-400"
-                            : "text-red-400"
-                        }
-                        sub="after 0.01% commission"
-                      />
-
-                      <StatCard
-                        label="ROI"
-                        value={`${perf.roiPercent >= 0 ? "+" : ""}${
-                          perf.roiPercent
-                        }%`}
-                        color={
-                          perf.roiPercent >= 0
-                            ? "text-green-400"
-                            : "text-red-400"
-                        }
-                        sub={`from $${PAPER_INITIAL_BALANCE.toLocaleString()}`}
-                      />
-
-                      <StatCard
-                        label="Profit Factor"
-                        value={
-                          perf.profitFactor === 999
-                            ? "∞"
-                            : perf.profitFactor
-                        }
-                        color={
-                          perf.profitFactor >= 1.5
-                            ? "text-green-400"
-                            : perf.profitFactor >= 1
-                              ? "text-amber-400"
-                              : "text-red-400"
-                        }
-                      />
-
-                      <StatCard
-                        label="Avg Duration"
-                        value={formatDuration(perf.avgDurationMs)}
-                      />
+                      {[
+                        {
+                          label: "Total Trades",
+                          value: perf.totalTrades,
+                          color: "text-white",
+                        },
+                        {
+                          label: "Win Rate",
+                          value: `${perf.winRate}%`,
+                          color:
+                            perf.winRate >= 50
+                              ? "text-green-400"
+                              : "text-red-400",
+                          sub: `${perf.wins}W · ${perf.losses}L`,
+                        },
+                        {
+                          label: "Net P&L",
+                          value: `${perf.netPnl >= 0 ? "+" : ""}$${
+                            perf.netPnl
+                          }`,
+                          color:
+                            perf.netPnl >= 0
+                              ? "text-green-400"
+                              : "text-red-400",
+                          sub: "after 0.01% commission",
+                        },
+                        {
+                          label: "ROI",
+                          value: `${perf.roiPercent >= 0 ? "+" : ""}${
+                            perf.roiPercent
+                          }%`,
+                          color:
+                            perf.roiPercent >= 0
+                              ? "text-green-400"
+                              : "text-red-400",
+                          sub: `from $${PAPER_INITIAL_BALANCE.toLocaleString()}`,
+                        },
+                        {
+                          label: "Profit Factor",
+                          value:
+                            perf.profitFactor === 999
+                              ? "∞"
+                              : perf.profitFactor,
+                          color:
+                            perf.profitFactor >= 1.5
+                              ? "text-green-400"
+                              : perf.profitFactor >= 1
+                                ? "text-amber-400"
+                                : "text-red-400",
+                        },
+                        {
+                          label: "Avg Duration",
+                          value: formatDuration(perf.avgDurationMs),
+                          color: "text-white",
+                        },
+                        {
+                          label: "Best Trade",
+                          value: `+$${perf.bestTrade}`,
+                          color: "text-green-400",
+                        },
+                        {
+                          label: "Worst Trade",
+                          value: `$${perf.worstTrade}`,
+                          color: "text-red-400",
+                        },
+                        {
+                          label: "Avg Win",
+                          value: `+$${perf.avgWin}`,
+                          color: "text-green-400",
+                          sub: `${perf.wins} wins`,
+                        },
+                        {
+                          label: "Avg Loss",
+                          value: `-$${perf.avgLoss}`,
+                          color: "text-red-400",
+                          sub: `${perf.losses} losses`,
+                        },
+                        {
+                          label: "SL Hits",
+                          value: perf.slHits,
+                          color: "text-red-400",
+                        },
+                        {
+                          label: "TP Hits",
+                          value: perf.tpHits,
+                          color: "text-green-400",
+                        },
+                      ].map(({ label, value, color, sub }) => (
+                        <StatCard
+                          key={label}
+                          label={label}
+                          value={value}
+                          color={color}
+                          sub={sub}
+                        />
+                      ))}
                     </div>
 
                     {symbolStats.length > 0 && (
@@ -1482,65 +1663,87 @@ export default function ProfilePage() {
                           Symbol Breakdown
                         </p>
 
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="border-b border-white/5 bg-white/2">
-                              <th className="text-left px-5 py-3 text-white/40">
-                                Symbol
-                              </th>
-                              <th className="text-right px-5 py-3 text-white/40">
-                                Trades
-                              </th>
-                              <th className="text-right px-5 py-3 text-white/40">
-                                Win Rate
-                              </th>
-                              <th className="text-right px-5 py-3 text-white/40">
-                                Net P&L
-                              </th>
-                            </tr>
-                          </thead>
-
-                          <tbody>
-                            {symbolStats.map((s) => (
-                              <tr
-                                key={s.symbolId}
-                                className="border-b border-white/5 hover:bg-white/2"
-                              >
-                                <td className="px-5 py-3">
-                                  <div className="flex items-center gap-2">
-                                    <span>{s.emoji}</span>
-                                    <span className="text-white font-medium">
-                                      {s.displayName}
-                                    </span>
-                                  </div>
-                                </td>
-
-                                <td className="px-5 py-3 text-right text-white/60">
-                                  {s.trades}
-                                </td>
-
-                                <td
-                                  className={`px-5 py-3 text-right ${
-                                    s.winRate >= 50
-                                      ? "text-green-400"
-                                      : "text-red-400"
-                                  }`}
-                                >
-                                  {s.winRate}%
-                                </td>
-
-                                <td
-                                  className={`px-5 py-3 text-right font-bold ${pnlColor(
-                                    s.netPnl
-                                  )}`}
-                                >
-                                  {s.netPnl >= 0 ? "+" : ""}$
-                                  {s.netPnl.toFixed(2)}
-                                </td>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="border-b border-white/5 bg-white/2">
+                                {[
+                                  "Symbol",
+                                  "Trades",
+                                  "Win Rate",
+                                  "Net P&L",
+                                  "Best",
+                                  "Worst",
+                                ].map((h) => (
+                                  <th
+                                    key={h}
+                                    className={`py-3 px-5 text-white/40 ${
+                                      h === "Symbol"
+                                        ? "text-left"
+                                        : "text-right"
+                                    }`}
+                                  >
+                                    {h}
+                                  </th>
+                                ))}
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+
+                            <tbody>
+                              {symbolStats.map((s) => (
+                                <tr
+                                  key={s.symbolId}
+                                  className="border-b border-white/5 hover:bg-white/2 transition"
+                                >
+                                  <td className="px-5 py-3">
+                                    <div className="flex items-center gap-2">
+                                      <span>{s.emoji}</span>
+                                      <div>
+                                        <p className="text-white font-medium">
+                                          {s.displayName}
+                                        </p>
+                                        <p className="text-white/30 capitalize">
+                                          {s.category}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  <td className="px-5 py-3 text-right text-white/60">
+                                    {s.trades}
+                                  </td>
+
+                                  <td
+                                    className={`px-5 py-3 text-right font-semibold ${
+                                      s.winRate >= 50
+                                        ? "text-green-400"
+                                        : "text-red-400"
+                                    }`}
+                                  >
+                                    {s.winRate}%
+                                  </td>
+
+                                  <td
+                                    className={`px-5 py-3 text-right font-bold ${pnlClass(
+                                      s.netPnl
+                                    )}`}
+                                  >
+                                    {s.netPnl >= 0 ? "+" : ""}$
+                                    {s.netPnl.toFixed(2)}
+                                  </td>
+
+                                  <td className="px-5 py-3 text-right text-green-400">
+                                    +${s.bestTrade.toFixed(2)}
+                                  </td>
+
+                                  <td className="px-5 py-3 text-right text-red-400">
+                                    ${s.worstTrade.toFixed(2)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     )}
                   </>
@@ -1548,123 +1751,146 @@ export default function ProfilePage() {
 
                 <div className="p-3 bg-white/2 border border-white/5 rounded-xl">
                   <p className="text-white/15 text-xs leading-relaxed">
-                    Portfolio data is paper trading only. Not broker-verified.
-                    Not real money. Visibility: "{myProfile.portfolioVisibility}"
-                    — enforced locally only until Phase Alpha.
+                    Paper trading only. Not broker-verified. Not real money.
+                    Portfolio visibility is "{myProfile.portfolioVisibility}" —
+                    enforced locally until backend is connected in Phase Alpha.
                   </p>
                 </div>
               </div>
             )}
 
-            {/* ══ POSTS ══════════════════════════════════════════════════ */}
+            {/* ══════════════ POSTS ══════════════════════════ */}
             {activeTab === "posts" && (
               <div className="flex flex-col gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-white mb-1">
+                  <h2 className="text-lg font-bold text-white mb-0.5">
                     My Posts
                   </h2>
                   <p className="text-white/30 text-xs">
-                    {myPosts.length} post{myPosts.length !== 1 ? "s" : ""}
+                    {myPosts.length} post{myPosts.length !== 1 ? "s" : ""} ·
+                    Local community only
                   </p>
                 </div>
 
                 {myPosts.length === 0 ? (
-                  <EmptyCard
-                    message="No posts yet."
-                    sub="Share your first trading thought in Community."
+                  <EmptyState
+                    icon="💬"
+                    title="No posts yet."
+                    sub="Share your first trading thought, strategy idea, or journal lesson in Community."
                   />
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {myPosts.map((post) => (
-                      <MiniPostCard key={post.id} post={post} />
+                      <PostCard key={post.id} post={post} />
                     ))}
                   </div>
                 )}
               </div>
             )}
 
-            {/* ══ STRATEGIES ════════════════════════════════════════════ */}
+            {/* ══════════════ STRATEGIES ════════════════════ */}
             {activeTab === "strategies" && (
               <div className="flex flex-col gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-white mb-1">
+                  <h2 className="text-lg font-bold text-white mb-0.5">
                     Published Strategies
                   </h2>
                   <p className="text-white/30 text-xs">
-                    Local-only · Not verified
+                    Local-only · Not verified · Creator-published by you
                   </p>
                 </div>
 
                 {publishedStrategies.length === 0 ? (
-                  <EmptyCard
-                    message="No published strategies yet."
-                    sub="Publish a strategy from the Strategy Marketplace."
+                  <EmptyState
+                    icon="📋"
+                    title="No published strategies yet."
+                    sub="Publish a strategy from the Strategy Marketplace using the + Publish button."
                   />
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {publishedStrategies.map((s: Strategy) => (
                       <div
                         key={s.id}
-                        className="glass border border-white/5 rounded-xl p-5"
+                        className="glass border border-white/5 rounded-xl p-5 hover:border-white/10 transition"
                       >
                         <div className="flex items-start justify-between mb-2">
-                          <h3 className="text-white font-semibold text-sm">
+                          <h3 className="text-white font-semibold text-sm leading-snug flex-1 pr-2">
                             {s.title}
                           </h3>
-
-                          <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full shrink-0 ml-2">
+                          <Chip className="text-amber-400 bg-amber-500/10 border-amber-500/20 shrink-0">
                             Not verified
-                          </span>
+                          </Chip>
                         </div>
 
-                        <p className="text-white/40 text-xs line-clamp-2 leading-relaxed">
+                        <p className="text-white/40 text-xs leading-relaxed line-clamp-2 mb-3">
                           {s.description}
                         </p>
 
-                        <div className="flex gap-2 mt-3 flex-wrap">
-                          <span className="text-xs text-white/30 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                        <div className="flex flex-wrap gap-1.5">
+                          <Chip className="text-white/30 bg-white/5 border-white/10 capitalize">
                             {s.riskLevel} risk
-                          </span>
+                          </Chip>
 
-                          <span className="text-xs text-white/30 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-                            {s.timeframe}
-                          </span>
+                          <Chip className="text-white/30 bg-white/5 border-white/10">
+                            {s.timeframe === "any" ? "Any TF" : s.timeframe}
+                          </Chip>
+
+                          <Chip className="text-white/30 bg-white/5 border-white/10 capitalize">
+                            {s.assetCategory === "all"
+                              ? "All assets"
+                              : s.assetCategory}
+                          </Chip>
 
                           {s.reviews.length > 0 && (
-                            <span className="text-xs text-white/30 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                            <Chip className="text-white/30 bg-white/5 border-white/10">
                               {s.reviews.length} review
                               {s.reviews.length !== 1 ? "s" : ""}
-                            </span>
+                            </Chip>
                           )}
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
+
+                {savedStrategyCount > 0 && (
+                  <div className="p-4 glass border border-white/5 rounded-xl">
+                    <p className="text-white/40 text-xs">
+                      You also have{" "}
+                      <span className="text-white font-semibold">
+                        {savedStrategyCount}
+                      </span>{" "}
+                      saved strategy record{savedStrategyCount !== 1 ? "s" : ""}{" "}
+                      (not published strategies — use the Marketplace to view
+                      them).
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* ══ ACADEMY ════════════════════════════════════════════════ */}
+            {/* ══════════════ ACADEMY ═══════════════════════ */}
             {activeTab === "academy" && (
               <div className="flex flex-col gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-white mb-1">
+                  <h2 className="text-lg font-bold text-white mb-0.5">
                     Academy Progress
                   </h2>
                   <p className="text-white/30 text-xs">
-                    Saved locally per user
+                    Saved locally per user · Progress persists after refresh
                   </p>
                 </div>
 
-                {enrolledCourses.length === 0 ? (
-                  <EmptyCard
-                    message="Not enrolled in any courses yet."
-                    sub="Visit the Academy to enroll."
+                {enrolledCourseIds.length === 0 ? (
+                  <EmptyState
+                    icon="🎓"
+                    title="Not enrolled in any courses yet."
+                    sub="Visit the Academy to enroll in official TCC courses and free educational resources."
                   />
                 ) : (
                   <div className="flex flex-col gap-3">
                     {courses
-                      .filter((c: Course) => enrolledCourses.includes(c.id))
+                      .filter((c: Course) => enrolledCourseIds.includes(c.id))
                       .map((course: Course) => {
                         const progress = userProgress[course.id];
 
@@ -1682,33 +1908,33 @@ export default function ProfilePage() {
                         return (
                           <div
                             key={course.id}
-                            className="glass border border-white/5 rounded-xl p-5 flex items-center gap-4"
+                            className="glass border border-white/5 rounded-xl p-5 flex items-start gap-4"
                           >
-                            <span className="text-3xl shrink-0">
+                            <span className="text-3xl shrink-0 mt-0.5">
                               {course.thumbnail}
                             </span>
 
-                            <div className="flex-1">
-                              <div className="flex items-start justify-between mb-1">
-                                <p className="text-white font-semibold text-sm">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2 mb-1">
+                                <p className="text-white font-semibold text-sm leading-snug">
                                   {course.title}
                                 </p>
 
                                 {done && (
-                                  <span className="text-xs text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full shrink-0 ml-2">
+                                  <Chip className="text-green-400 bg-green-500/10 border-green-500/20 shrink-0">
                                     ✓ Completed
-                                  </span>
+                                  </Chip>
                                 )}
                               </div>
 
-                              <div className="flex justify-between mb-1.5">
+                              <div className="flex items-center justify-between mb-1.5">
                                 <span className="text-white/40 text-xs capitalize">
                                   {course.type.replace(/_/g, " ")} ·{" "}
                                   {course.level}
                                 </span>
 
                                 <span
-                                  className={`text-xs ${
+                                  className={`text-xs font-semibold ${
                                     done ? "text-green-400" : "text-white/50"
                                   }`}
                                 >
@@ -1716,9 +1942,9 @@ export default function ProfilePage() {
                                 </span>
                               </div>
 
-                              <div className="w-full bg-white/5 rounded-full h-1.5">
+                              <div className="w-full bg-white/5 rounded-full h-1.5 mb-1.5">
                                 <div
-                                  className={`h-1.5 rounded-full ${
+                                  className={`h-1.5 rounded-full transition-all ${
                                     done ? "bg-green-400" : "bg-green-500/50"
                                   }`}
                                   style={{ width: `${pct}%` }}
@@ -1726,7 +1952,7 @@ export default function ProfilePage() {
                               </div>
 
                               {done && (
-                                <p className="text-amber-400/60 text-xs mt-1">
+                                <p className="text-amber-400/60 text-xs">
                                   🏆 Certificate coming soon
                                 </p>
                               )}
@@ -1739,11 +1965,11 @@ export default function ProfilePage() {
               </div>
             )}
 
-            {/* ══ COPY TRADING ══════════════════════════════════════════ */}
+            {/* ══════════════ COPY TRADING ══════════════════ */}
             {activeTab === "copy_trading" && (
               <div className="flex flex-col gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-white mb-1">
+                  <h2 className="text-lg font-bold text-white mb-0.5">
                     Copy Trading
                   </h2>
                   <p className="text-white/30 text-xs">
@@ -1758,16 +1984,16 @@ export default function ProfilePage() {
               </div>
             )}
 
-            {/* ══ SETTINGS ══════════════════════════════════════════════ */}
+            {/* ══════════════ SETTINGS ══════════════════════ */}
             {activeTab === "settings" && (
               <div>
                 <div className="mb-5">
-                  <h2 className="text-lg font-bold text-white mb-1">
+                  <h2 className="text-lg font-bold text-white mb-0.5">
                     Profile Settings
                   </h2>
                   <p className="text-white/30 text-xs">
                     Edit your profile, trading identity, and visibility
-                    settings.
+                    settings. All data stored locally.
                   </p>
                 </div>
 
