@@ -1,0 +1,951 @@
+// TCC Platform — Phase Alpha Database Schema
+// PostgreSQL + Prisma ORM
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ────────────────────────────────────────────────────────────────
+// ENUMS
+// ────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  NORMAL_USER
+  FOLLOWER_TRADER
+  VERIFIED_TRADER
+  MASTER_TRADER
+  MENTOR
+  ADMIN
+  OWNER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  DEACTIVATED
+}
+
+enum Visibility {
+  PUBLIC
+  PRIVATE
+  FOLLOWERS_ONLY
+}
+
+enum ExperienceLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  PROFESSIONAL
+}
+
+enum TradeSide {
+  BUY
+  SELL
+}
+
+enum CloseReason {
+  MANUAL
+  STOP_LOSS
+  TAKE_PROFIT
+}
+
+enum TradeResult {
+  WIN
+  LOSS
+  BREAKEVEN
+}
+
+enum PostType {
+  TEXT
+  TRADE_IDEA
+  SHARED_TRADE
+  ACADEMY_COMPLETION
+  STRATEGY_SHARE
+  COMPETITION_UPDATE
+}
+
+enum PostVisibility {
+  PUBLIC
+  FOLLOWERS_ONLY
+  PRIVATE
+}
+
+enum StrategyType {
+  OFFICIAL
+  EDUCATIONAL_TEMPLATE
+  CREATOR_PUBLISHED
+}
+
+enum PerformanceStatus {
+  UNVERIFIED
+  SELF_REPORTED
+  VERIFIED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum PricingModel {
+  FREE
+  ONE_TIME
+  SUBSCRIPTION
+}
+
+enum CourseType {
+  OFFICIAL
+  FREE_RESOURCE
+  CREATOR_PUBLISHED
+}
+
+enum CourseLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum CertificateStatus {
+  UNAVAILABLE
+  COMING_SOON
+  EARNED
+}
+
+enum LessonType {
+  TEXT
+  VIDEO
+  QUIZ
+  EXERCISE
+}
+
+enum ApplicationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  MORE_INFO_REQUIRED
+  SUSPENDED
+}
+
+enum MasterStatus {
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum CopyMode {
+  PAPER_COPY
+  LIVE_COPY
+}
+
+enum RelationshipStatus {
+  ACTIVE
+  PAUSED
+  STOPPED
+  BLOCKED
+  PENDING_BROKER_CONNECTION
+}
+
+enum CopyLotMode {
+  FIXED_LOT
+  RISK_MULTIPLIER
+  EQUITY_RATIO
+}
+
+enum CopyTradeStatus {
+  COPIED_PAPER
+  SKIPPED
+  BLOCKED
+  PENDING
+  FAILED
+}
+
+enum NotificationType {
+  SYSTEM
+  ACADEMY
+  COPY_TRADE
+  COMMUNITY
+  MARKETPLACE
+  COMPETITION
+  ADMIN
+  REPORT_UPDATE
+  TRADE
+  PRICE_ALERT
+}
+
+enum NotificationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}
+
+enum ReportPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum FollowStatus {
+  ACTIVE
+  PENDING
+  BLOCKED
+}
+
+// ────────────────────────────────────────────────────────────────
+// USER
+// ────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  tccId        String   @unique
+  email        String   @unique
+  passwordHash String
+  handle       String   @unique // serves as "username" — see report for rationale
+  displayName  String
+  bio          String   @default("")
+  location     String   @default("")
+  avatarUrl    String?
+
+  roles               UserRole[]       @default([NORMAL_USER])
+  status              UserStatus       @default(ACTIVE) // NEW — Phase Alpha foundation
+  isVerified          Boolean          @default(false)  // NEW
+  lastLoginAt         DateTime?                          // NEW
+  profileVisibility   Visibility       @default(PUBLIC)
+  portfolioVisibility Visibility       @default(PRIVATE)
+  experienceLevel     ExperienceLevel?
+
+  // Legacy flags — kept for backward compatibility with Day-1 routes.
+  // status (above) is the new source of truth going forward.
+  // See "Technical Debt" in final report for consolidation plan.
+  isActive    Boolean @default(true)
+  isSuspended Boolean @default(false)
+
+  // Relations
+  sessions            Session[]
+  socialLinks         UserSocialLinks?
+  tradingIdentity     UserTradingIdentity?
+
+  trades              Trade[]
+  journalEntries      JournalEntry[]
+  accountSnapshots    AccountSnapshot[]
+
+  posts               CommunityPost[]
+  comments            CommunityComment[]
+  postLikes           PostLike[]
+  commentLikes        CommentLike[]
+  savedPosts          SavedPost[]
+
+  strategies          Strategy[]
+  savedStrategies     SavedStrategy[]
+  strategyReviews     StrategyReview[]
+
+  academyProgress     AcademyProgress[]
+
+  masterProfile       MasterTrader?
+  masterApplication   MasterTraderApplication?
+
+  copyRelationships   CopyRelationship[]  @relation("CopyFollower")
+  feeModels           CopyFeeModel[]
+
+  notifications       Notification[]
+  reportsSubmitted    Report[]            @relation("Reporter")
+  reportsReceived     Report[]            @relation("Reported")
+
+  followedBy          Follow[]            @relation("FollowTarget")
+  following           Follow[]            @relation("FollowSource")
+
+  adminLogsAsActor    AdminActionLog[]    @relation("AuditLogActor")
+  adminLogsAsTarget   AdminActionLog[]    @relation("AuditLogTarget")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([handle])
+  @@index([tccId])
+  @@index([status])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken String   @unique
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([refreshToken])
+}
+
+model UserSocialLinks {
+  id        String  @id @default(cuid())
+  userId    String  @unique
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  website   String?
+  x         String?
+  linkedin  String?
+  youtube   String?
+  instagram String?
+}
+
+model UserTradingIdentity {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  marketsTraded     String[] @default([])
+  symbolsTraded     String[] @default([])
+  strategiesUsed    String[] @default([])
+  preferredSessions String[] @default([])
+}
+
+// ────────────────────────────────────────────────────────────────
+// FOLLOW
+// ────────────────────────────────────────────────────────────────
+
+model Follow {
+  id        String       @id @default(cuid())
+  sourceId  String
+  targetId  String
+  source    User         @relation("FollowSource", fields: [sourceId], references: [id], onDelete: Cascade)
+  target    User         @relation("FollowTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  status    FollowStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+
+  @@unique([sourceId, targetId])
+  @@index([sourceId])
+  @@index([targetId])
+}
+
+// ────────────────────────────────────────────────────────────────
+// TRADES
+// ────────────────────────────────────────────────────────────────
+
+model Trade {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mode          String       @default("paper")
+  symbol        String
+  displayName   String
+  category      String
+  side          TradeSide
+  lotSize       Float
+  entryPrice    Float
+  currentPrice  Float?
+  exitPrice     Float?
+  sl            Float?
+  tp            Float?
+  grossPnl      Float?
+  netPnl        Float?
+  marginUsed    Float
+  notionalValue Float
+  leverage      Int          @default(10)
+  closeReason   CloseReason?
+  openedAt      DateTime     @default(now())
+  closedAt      DateTime?
+  durationMs    Int?
+  isOpen        Boolean      @default(true)
+  result        TradeResult?
+
+  journalEntry  JournalEntry?
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([userId, isOpen])
+  @@index([symbol])
+}
+
+model AccountSnapshot {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance     Float
+  equity      Float
+  floatingPnl Float
+  marginUsed  Float
+  freeMargin  Float
+  marginLevel Float?
+  snapshotAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, snapshotAt])
+}
+
+// ────────────────────────────────────────────────────────────────
+// JOURNAL
+// ────────────────────────────────────────────────────────────────
+
+model JournalEntry {
+  id      String @id @default(cuid())
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tradeId String? @unique
+  trade   Trade?  @relation(fields: [tradeId], references: [id])
+
+  symbol      String
+  displayName String
+  side        TradeSide
+  lotSize     Float
+  entryPrice  Float
+  exitPrice   Float?
+  grossPnl    Float?
+  netPnl      Float?
+  result      TradeResult?
+  openedAt    DateTime?
+  closedAt    DateTime?
+  durationMs  Int?
+  closeReason String?
+  sl          Float?
+  tp          Float?
+
+  emotion         String   @default("neutral")
+  confidenceLevel Int      @default(5)
+  stressLevel     Int      @default(5)
+  entryQuality    String   @default("unknown")
+  followedPlan    Boolean?
+  strategy        String   @default("other")
+  marketStructure String   @default("unknown")
+  session         String   @default("unknown")
+  timeframe       String   @default("1H")
+  notes           String   @default("")
+  whatWentRight   String   @default("")
+  whatWentWrong   String   @default("")
+  lessonLearned   String   @default("")
+  tags            String[] @default([])
+  aiAnalysis      String   @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, closedAt])
+}
+
+// ────────────────────────────────────────────────────────────────
+// COMMUNITY
+// ────────────────────────────────────────────────────────────────
+
+model CommunityPost {
+  id              String         @id @default(cuid())
+  authorId        String
+  author          User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  type            PostType
+  content         String
+  visibility      PostVisibility @default(PUBLIC)
+  isHiddenByAdmin Boolean        @default(false)
+
+  linkedTradeId       String?
+  linkedStrategyId    String?
+  linkedCourseId      String?
+  linkedCompetitionId String?
+  tradeSnapshot       Json?
+  linkedStrategyTitle String?
+  linkedCourseTitle   String?
+  symbol              String?
+  tags                String[] @default([])
+
+  likes    PostLike[]
+  savedBy  SavedPost[]
+  comments CommunityComment[]
+  reports  Report[]   @relation("PostReport")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([authorId])
+  @@index([visibility, isHiddenByAdmin, createdAt])
+}
+
+model CommunityComment {
+  id              String        @id @default(cuid())
+  postId          String
+  post            CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId        String
+  author          User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content         String
+  isHiddenByAdmin Boolean       @default(false)
+
+  likes   CommentLike[]
+  reports Report[]      @relation("CommentReport")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([postId])
+  @@index([authorId])
+}
+
+model PostLike {
+  userId  String
+  postId  String
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post    CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  likedAt DateTime @default(now())
+
+  @@id([userId, postId])
+}
+
+model CommentLike {
+  userId    String
+  commentId String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment   CommunityComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  likedAt   DateTime @default(now())
+
+  @@id([userId, commentId])
+}
+
+model SavedPost {
+  userId  String
+  postId  String
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post    CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  savedAt DateTime @default(now())
+
+  @@id([userId, postId])
+}
+
+// ────────────────────────────────────────────────────────────────
+// STRATEGY
+// ────────────────────────────────────────────────────────────────
+
+model Strategy {
+  id                String            @id @default(cuid())
+  authorId          String
+  author            User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  title             String
+  description       String
+  type              StrategyType
+  authorHandle      String
+  authorTccId       String?
+  asset             String            @default("All")
+  assetCategory     String            @default("all")
+  timeframe         String            @default("H1")
+  riskLevel         RiskLevel         @default(MEDIUM)
+  pricingModel      PricingModel      @default(FREE)
+  price             Float             @default(0)
+  isFeatured        Boolean           @default(false)
+  performanceStatus PerformanceStatus @default(UNVERIFIED)
+  winRate           Float?
+  profitFactor      Float?
+  maxDrawdown       Float?
+  totalTrades       Int?
+  avgRR             Float?
+  monthlyReturn     Float?
+  rules             String[]          @default([])
+  entryConditions   String[]          @default([])
+  exitConditions    String[]          @default([])
+  riskManagement    String[]          @default([])
+  tags              String[]          @default([])
+  verified          Boolean           @default(false)
+  version           String            @default("1.0")
+  disclaimer        String
+  linkedCourseId    String?
+
+  reviews  StrategyReview[]
+  savedBy  SavedStrategy[]
+  reports  Report[]         @relation("StrategyReport")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([authorId])
+  @@index([type])
+  @@index([performanceStatus])
+}
+
+model StrategyReview {
+  id         String   @id @default(cuid())
+  strategyId String
+  strategy   Strategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  handle     String
+  rating     Int
+  comment    String
+  timestamp  DateTime @default(now())
+
+  @@index([strategyId])
+  @@index([authorId])
+}
+
+model SavedStrategy {
+  userId          String
+  strategyId      String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  strategy        Strategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  savedToPlaybook Boolean  @default(false)
+  active          Boolean  @default(false)
+  savedAt         DateTime @default(now())
+
+  @@id([userId, strategyId])
+  @@index([userId])
+}
+
+// ────────────────────────────────────────────────────────────────
+// ACADEMY
+// ────────────────────────────────────────────────────────────────
+
+model Course {
+  id                String            @id
+  title             String
+  description       String
+  type              CourseType
+  level             CourseLevel
+  category          String
+  thumbnail         String
+  totalDuration     String
+  isPaid            Boolean           @default(false)
+  price             Float             @default(0)
+  certificateStatus CertificateStatus @default(COMING_SOON)
+  linkedStrategyId  String?
+  creatorId         String?
+  creatorName       String?
+  tags              String[]          @default([])
+
+  lessons       Lesson[]
+  userProgress  AcademyProgress[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Lesson {
+  id          String     @id @default(cuid())
+  courseId    String
+  course      Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  duration    String
+  type        LessonType
+  content     String?
+  orderIndex  Int        @default(0)
+
+  @@index([courseId])
+}
+
+model AcademyProgress {
+  id                String            @id @default(cuid())
+  userId            String
+  courseId          String
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course            Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  completedLessons  String[]          @default([])
+  quizScores        Json              @default("{}")
+  lastLessonId      String?
+  completedAt       DateTime?
+  certificateStatus CertificateStatus @default(COMING_SOON)
+  enrolledAt        DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@unique([userId, courseId])
+  @@index([userId])
+}
+
+// ────────────────────────────────────────────────────────────────
+// COPY TRADING
+// ────────────────────────────────────────────────────────────────
+
+model MasterTraderApplication {
+  id          String            @id @default(cuid())
+  userId      String            @unique
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tccId       String
+  displayName String
+  status      ApplicationStatus @default(DRAFT)
+
+  marketsTraded                     String[] @default([])
+  strategiesUsed                    String[] @default([])
+  experienceSummary                 String   @default("")
+  riskManagementSummary             String   @default("")
+  reasonForApplying                 String   @default("")
+  hasAcceptedRiskDisclosure         Boolean  @default(false)
+  hasAcceptedPerformanceTruthPolicy Boolean  @default(false)
+  hasAcceptedCopyTradingTerms       Boolean  @default(false)
+
+  adminNotes      String?
+  rejectionReason String?
+  moreInfoRequest String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  submittedAt     DateTime?
+
+  masterProfile MasterTrader?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+model MasterTrader {
+  id            String       @id @default(cuid())
+  userId        String       @unique
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicationId String       @unique
+  application   MasterTraderApplication @relation(fields: [applicationId], references: [id])
+  tccId         String
+  displayName   String
+  status        MasterStatus @default(ACTIVE)
+
+  marketsTraded         String[] @default([])
+  strategiesUsed        String[] @default([])
+  brokerName            String?
+  sameBrokerRequired    Boolean  @default(true)
+  brokerStatus          String   @default("not_connected")
+  publicProfileRequired Boolean  @default(true)
+  trustScoreStatus      String   @default("insufficient_verified_data")
+
+  approvedAt DateTime @default(now())
+  approvedBy String
+
+  copyRelationships CopyRelationship[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+model CopyRelationship {
+  id                String             @id @default(cuid())
+  followerUserId    String
+  follower          User               @relation("CopyFollower", fields: [followerUserId], references: [id], onDelete: Cascade)
+  masterTraderId    String
+  masterTrader      MasterTrader       @relation(fields: [masterTraderId], references: [id], onDelete: Cascade)
+  masterDisplayName String
+  mode              CopyMode           @default(PAPER_COPY)
+  status            RelationshipStatus @default(ACTIVE)
+
+  maxRiskPerTradePercent  Float       @default(1)
+  maxDailyLossPercent     Float       @default(3)
+  maxTotalDrawdownPercent Float       @default(10)
+  maxOpenCopiedTrades     Int         @default(3)
+  copyLotMode             CopyLotMode @default(FIXED_LOT)
+  fixedLotSize            Float       @default(0.01)
+  riskMultiplier          Float       @default(1)
+  maxSlippagePoints       Float       @default(5)
+  requireStopLoss         Boolean     @default(true)
+  newsFilterEnabled       Boolean     @default(false)
+
+  feeModel    CopyFeeModel?
+  copyHistory CopyTradeHistory[]
+
+  startedAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  stoppedAt  DateTime?
+  stopReason String?
+
+  @@unique([followerUserId, masterTraderId])
+  @@index([followerUserId])
+  @@index([masterTraderId])
+}
+
+model CopyFeeModel {
+  id                     String           @id @default(cuid())
+  relationshipId         String           @unique
+  relationship           CopyRelationship @relation(fields: [relationshipId], references: [id], onDelete: Cascade)
+  userId                 String
+  user                   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  performanceFeePercent  Float            @default(0)
+  highWaterMark          Float
+  currentBalanceSnapshot Float
+  totalFeesAccrued       Float            @default(0)
+  lastCalculatedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CopyTradeHistory {
+  id              String           @id @default(cuid())
+  relationshipId  String
+  relationship    CopyRelationship @relation(fields: [relationshipId], references: [id], onDelete: Cascade)
+  masterUserId    String
+  followerUserId  String
+  symbol          String
+  displayName     String
+  side            TradeSide
+  lotSize         Float
+  entryPrice      Float
+  status          CopyTradeStatus
+  reason          String?
+  mode            CopyMode         @default(PAPER_COPY)
+  riskCheckResult Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([relationshipId])
+  @@index([followerUserId])
+}
+
+// ────────────────────────────────────────────────────────────────
+// NOTIFICATIONS
+// ────────────────────────────────────────────────────────────────
+
+model Notification {
+  id          String               @id @default(cuid())
+  userId      String
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        NotificationType
+  priority    NotificationPriority @default(LOW)
+  title       String
+  message     String
+  actionLabel String?
+  actionPath  String?
+  read        Boolean              @default(false)
+  createdAt   DateTime             @default(now())
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
+}
+
+// ────────────────────────────────────────────────────────────────
+// REPORTS
+// ────────────────────────────────────────────────────────────────
+
+model Report {
+  id             String  @id @default(cuid())
+  reporterId     String
+  reporter       User    @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedUserId String?
+  reportedUser   User?   @relation("Reported", fields: [reportedUserId], references: [id])
+
+  reportedItemType  String
+  reportedItemId    String
+  reportedItemTitle String?
+
+  postId     String?
+  post       CommunityPost?    @relation("PostReport",     fields: [postId],     references: [id])
+  commentId  String?
+  comment    CommunityComment? @relation("CommentReport",  fields: [commentId],  references: [id])
+  strategyId String?
+  strategy   Strategy?         @relation("StrategyReport", fields: [strategyId], references: [id])
+
+  reason        String
+  details       String?
+  status        ReportStatus   @default(PENDING)
+  priority      ReportPriority @default(MEDIUM)
+  resolution    String?
+  resolvedBy    String?
+  resolvedAt    DateTime?
+  sourceFeature String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([reporterId])
+  @@index([reportedUserId])
+}
+
+// ────────────────────────────────────────────────────────────────
+// AUDIT LOG  (universal audit/admin-action engine — see auditService.ts)
+// ────────────────────────────────────────────────────────────────
+
+model AdminActionLog {
+  id           String   @id @default(cuid())
+  actorId      String
+  actor        User     @relation("AuditLogActor", fields: [actorId], references: [id], onDelete: Cascade)
+  actorHandle  String
+  actorRole    String
+  actionType   String
+  targetType   String
+  targetId     String
+  targetUserId String?
+  targetUser   User?    @relation("AuditLogTarget", fields: [targetUserId], references: [id])
+  description  String
+  reason       String?  // NEW — explicit human-readable reason (ban/suspend reasons etc.)
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetUserId])
+  @@index([actionType])
+  @@index([createdAt])
+}
+
+// ────────────────────────────────────────────────────────────────
+// RBAC — ROLE / PERMISSION SYSTEM (NEW — Phase Alpha foundation)
+// ────────────────────────────────────────────────────────────────
+//
+// Design: Role rows mirror the UserRole enum (one row per enum value).
+// Permission rows define discrete, granular capabilities.
+// RolePermission is the many-to-many grant table.
+//
+// At runtime, a user's "effective role" is taken from User.roles (the
+// enum array, already wired through every existing Beta/Alpha feature).
+// A user's "effective permissions" are computed by unioning the
+// permissions granted to each of their roles. See permissionService.ts.
+//
+// This table is the single source of truth for WHAT each role can do.
+// It is seeded by prisma/seed/seed.ts and cached in-memory by the API
+// for performance (see permissionService.ts refreshPermissionCache()).
+
+model Role {
+  id          String   @id @default(cuid())
+  name        UserRole @unique
+  label       String
+  description String   @default("")
+  isSystem    Boolean  @default(true) // system roles cannot be deleted via UI
+  permissions RolePermission[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique // e.g. "community.post.delete"
+  label       String
+  description String   @default("")
+  category    String   @default("general")
+  roles       RolePermission[]
+  createdAt   DateTime @default(now())
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  grantedAt    DateTime   @default(now())
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+// ────────────────────────────────────────────────────────────────
+// SYSTEM SETTINGS (NEW — Phase Alpha foundation)
+// ────────────────────────────────────────────────────────────────
+
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  description String   @default("")
+  updatedBy   String?
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}

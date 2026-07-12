@@ -1062,7 +1062,7 @@ export default function CopyTradingPage() {
 
   if (!user) return null;
 
-  const isAdminUser       = mounted && isAdmin(getEffectiveRole(user.role));
+  const isAdminUser = mounted && isAdmin(user.roles);
   const activeMasters     = getActiveMasters();
   const activeRelationships = getActiveRelationships();
   const globalApp         = getApplicationByUserId(user.id);
