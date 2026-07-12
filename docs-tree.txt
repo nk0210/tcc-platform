@@ -1,0 +1,6 @@
+Folder PATH listing for volume Acer
+Volume serial number is 00000255 269D:9A4B
+C:\USERS\ACER\TCC-PLATFORM\DOCS
+Invalid path - \USERS\ACER\TCC-PLATFORM\DOCS
+No subfolders exist 
+

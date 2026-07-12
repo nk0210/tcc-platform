@@ -1,142 +1,219 @@
 /**
- * TCC Watchlist Store
- * Default is EMPTY — fresh users start with no watchlist.
- * Users add symbols from Markets page (only TCC-supported symbols).
- * Live prices for crypto are updated by useMarketPrices hook.
- * Non-crypto symbols are added but show "Chart available" — no live price.
+ * TCC Watchlist Store — Phase Alpha
+ *
+ * Migrated from localStorage to API-backed PostgreSQL persistence.
+ * Auto-initialises on user login via authStore subscription.
  */
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-import { getUserScopedStorage } from "@/lib/persistence/storage";
-import { TCC_SYMBOLS, TCC_SYMBOL_MAP, TCCSymbol } from "@/lib/markets/symbols";
+import { api } from "@/lib/api/client";
+import { useAuthStore } from "@/store/authStore";
 
-export interface PriceAlert {
-  id: string;
-  type: "above" | "below";
-  price: number;
-  triggered: boolean;
-  createdAt: number;
-}
+// ── Types ─────────────────────────────────────────────────────────────────
 
 export interface WatchlistItem {
-  symbolId: string;         // references TCC_SYMBOLS id
-  displayName: string;      // e.g. "BTC/USDT"
-  category: string;         // from central config
-  addedAt: number;
-  alerts: PriceAlert[];
-  // live data — NOT persisted, reset on load, updated by hooks
-  currentPrice: number;
-  change24h: number;
-  changePct24h: number;
-  high24h: number;
-  low24h: number;
-  volume24h: number;
+  id:          string;
+  symbol:      string;
+  displayName: string;
+  category:    string;
+  emoji?:      string;
+  addedAt:     string;
 }
+
+// ── Store interface ────────────────────────────────────────────────────────
 
 interface WatchlistStore {
-  items: WatchlistItem[];
-  // returns all TCC symbols NOT already in watchlist, for the Add Symbol picker
-  getAvailableToAdd: () => TCCSymbol[];
-  updatePrice: (symbolId: string, data: Partial<Pick<WatchlistItem, "currentPrice" | "change24h" | "changePct24h" | "high24h" | "low24h" | "volume24h">>) => void;
-  addSymbol: (symbolId: string) => void;
-  removeSymbol: (symbolId: string) => void;
-  addAlert: (symbolId: string, type: "above" | "below", price: number) => void;
-  removeAlert: (symbolId: string, alertId: string) => void;
-  triggerAlert: (symbolId: string, alertId: string) => void;
+  items:         WatchlistItem[];
+  isLoading:     boolean;
+  isSyncing:     boolean;
+  isInitialized: boolean;
+  error:         string | null;
+
+  // Lifecycle
+  init:  () => Promise<void>;
+  reset: () => void;
+
+  // Mutations
+  addSymbol:     (input: Omit<WatchlistItem, "id" | "addedAt">) => Promise<void>;
+  removeSymbol:  (symbol: string) => Promise<void>;
+  clearWatchlist: ()              => Promise<void>;
+
+  // Selectors
+  isInWatchlist: (symbol: string) => boolean;
 }
 
-export const useWatchlistStore = create<WatchlistStore>()(
-  persist(
-    (set, get) => ({
-      items: [], // Fresh user starts with empty watchlist — NO fake defaults
+// ── Mapper ────────────────────────────────────────────────────────────────
 
-      getAvailableToAdd: () => {
-        const watchedIds = new Set(get().items.map(i => i.symbolId));
-        return TCC_SYMBOLS.filter(s => !watchedIds.has(s.id));
-      },
+function mapApiItem(item: any): WatchlistItem {
+  return {
+    id:          item.id,
+    symbol:      item.symbol,
+    displayName: item.displayName,
+    category:    item.category ?? "crypto",
+    emoji:       item.emoji    ?? undefined,
+    addedAt:     typeof item.addedAt === "string"
+      ? item.addedAt
+      : new Date(item.addedAt).toISOString(),
+  };
+}
 
-      updatePrice: (symbolId, data) =>
-        set((state) => ({
-          items: state.items.map(item =>
-            item.symbolId === symbolId ? { ...item, ...data } : item
-          ),
-        })),
+// ── Store ─────────────────────────────────────────────────────────────────
 
-      addSymbol: (symbolId) => {
-        const existing = get().items.find(i => i.symbolId === symbolId);
-        if (existing) return;
-        const def = TCC_SYMBOL_MAP[symbolId];
-        if (!def) return; // Only add TCC-supported symbols
-        set((state) => ({
-          items: [
-            ...state.items,
-            {
-              symbolId,
-              displayName: def.displayName,
-              category: def.category,
-              addedAt: Date.now(),
-              alerts: [],
-              currentPrice: 0,
-              change24h: 0,
-              changePct24h: 0,
-              high24h: 0,
-              low24h: 0,
-              volume24h: 0,
-            },
-          ],
-        }));
-      },
+export const useWatchlistStore = create<WatchlistStore>()((set, get) => ({
+  items:         [],
+  isLoading:     false,
+  isSyncing:     false,
+  isInitialized: false,
+  error:         null,
 
-      removeSymbol: (symbolId) =>
-        set((state) => ({ items: state.items.filter(i => i.symbolId !== symbolId) })),
+  // ── Lifecycle ──────────────────────────────────────────────────────────
 
-      addAlert: (symbolId, type, price) =>
-        set((state) => ({
-          items: state.items.map(item =>
-            item.symbolId === symbolId
-              ? { ...item, alerts: [...item.alerts, { id: Date.now().toString(), type, price, triggered: false, createdAt: Date.now() }] }
-              : item
-          ),
-        })),
+  init: async () => {
+    if (get().isInitialized) return;
+    set({ isLoading: true, error: null });
 
-      removeAlert: (symbolId, alertId) =>
-        set((state) => ({
-          items: state.items.map(item =>
-            item.symbolId === symbolId
-              ? { ...item, alerts: item.alerts.filter(a => a.id !== alertId) }
-              : item
-          ),
-        })),
+    try {
+      const res = await api.get<{ items: any[] }>("/watchlist");
 
-      triggerAlert: (symbolId, alertId) =>
-        set((state) => ({
-          items: state.items.map(item =>
-            item.symbolId === symbolId
-              ? { ...item, alerts: item.alerts.map(a => a.id === alertId ? { ...a, triggered: true } : a) }
-              : item
-          ),
-        })),
-    }),
-    {
-      name: "watchlist",
-      storage: createJSONStorage(() => getUserScopedStorage("watchlist")),
-      // Only persist symbolId, displayName, category, addedAt, alerts
-      // Live prices are NOT persisted — they reset to 0 and are repopulated by hooks
-      partialize: (state) => ({
-        items: state.items.map(item => ({
-          symbolId: item.symbolId,
-          displayName: item.displayName,
-          category: item.category,
-          addedAt: item.addedAt,
-          alerts: item.alerts,
-          currentPrice: 0,
-          change24h: 0,
-          changePct24h: 0,
-          high24h: 0,
-          low24h: 0,
-          volume24h: 0,
-        })),
-      }),
+      if (!res.success) {
+        set({ isLoading: false, error: res.error, isInitialized: true });
+        return;
+      }
+
+      const items = (res.data?.items ?? []).map(mapApiItem);
+      set({ items, isLoading: false, isInitialized: true, error: null });
+    } catch (err) {
+      console.error("[watchlistStore.init]", err);
+      set({ isLoading: false, error: "Failed to load watchlist", isInitialized: true });
     }
-  )
-);
+  },
+
+  reset: () => {
+    set({
+      items:         [],
+      isLoading:     false,
+      isSyncing:     false,
+      isInitialized: false,
+      error:         null,
+    });
+  },
+
+  // ── Add a symbol ───────────────────────────────────────────────────────
+
+  addSymbol: async (input) => {
+    if (get().isInWatchlist(input.symbol)) return;
+
+    // Optimistic add
+    const tempItem: WatchlistItem = {
+      id:          `temp_${Date.now()}`,
+      symbol:      input.symbol,
+      displayName: input.displayName,
+      category:    input.category,
+      emoji:       input.emoji,
+      addedAt:     new Date().toISOString(),
+    };
+
+    set((state) => ({
+      items:     [tempItem, ...state.items],
+      isSyncing: true,
+    }));
+
+    try {
+      const res = await api.post<any>("/watchlist", {
+        symbol:      input.symbol,
+        displayName: input.displayName,
+        category:    input.category,
+        emoji:       input.emoji,
+      });
+
+      if (!res.success) {
+        // Revert
+        set((state) => ({
+          items:     state.items.filter(i => i.id !== tempItem.id),
+          isSyncing: false,
+          error:     res.error,
+        }));
+        return;
+      }
+
+      // Replace temp with real item from server
+      const serverItem = mapApiItem(res.data);
+      set((state) => ({
+        items:     state.items.map(i => i.id === tempItem.id ? serverItem : i),
+        isSyncing: false,
+        error:     null,
+      }));
+    } catch (err) {
+      set((state) => ({
+        items:     state.items.filter(i => i.id !== tempItem.id),
+        isSyncing: false,
+        error:     "Failed to add symbol",
+      }));
+      console.error("[watchlistStore.addSymbol]", err);
+    }
+  },
+
+  // ── Remove a symbol ────────────────────────────────────────────────────
+
+  removeSymbol: async (symbol) => {
+    const prev = get().items;
+
+    // Optimistic removal
+    set((state) => ({
+      items:     state.items.filter(i => i.symbol !== symbol),
+      isSyncing: true,
+    }));
+
+    try {
+      const res = await api.delete<null>(`/watchlist/${encodeURIComponent(symbol)}`);
+      if (!res.success) {
+        // Revert
+        set({ items: prev, isSyncing: false, error: res.error });
+        return;
+      }
+      set({ isSyncing: false, error: null });
+    } catch (err) {
+      set({ items: prev, isSyncing: false, error: "Failed to remove symbol" });
+      console.error("[watchlistStore.removeSymbol]", err);
+    }
+  },
+
+  // ── Clear all ─────────────────────────────────────────────────────────
+
+  clearWatchlist: async () => {
+    const prev = get().items;
+    set({ items: [], isSyncing: true });
+
+    try {
+      const res = await api.delete<null>("/watchlist");
+      if (!res.success) {
+        set({ items: prev, isSyncing: false, error: res.error });
+        return;
+      }
+      set({ isSyncing: false, error: null });
+    } catch (err) {
+      set({ items: prev, isSyncing: false, error: "Failed to clear watchlist" });
+      console.error("[watchlistStore.clear]", err);
+    }
+  },
+
+  // ── Selector ──────────────────────────────────────────────────────────
+
+  isInWatchlist: (symbol) => {
+    return get().items.some(i => i.symbol === symbol);
+  },
+}));
+
+// ── Auto-init on auth state change ────────────────────────────────────────
+
+if (typeof window !== "undefined") {
+  useAuthStore.subscribe(
+    (state) => state.user?.id,
+    (userId) => {
+      if (userId) {
+        useWatchlistStore.getState().init();
+      } else {
+        useWatchlistStore.getState().reset();
+      }
+    }
+  );
+}

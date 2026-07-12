@@ -1,0 +1,127 @@
+Folder PATH listing for volume Acer
+Volume serial number is 000001F2 269D:9A4B
+C:\USERS\ACER\TCC-PLATFORM\APPS\WEB\APP
+|   favicon.ico
+|   globals.css
+|   layout.tsx
+|   page.tsx
+|   
++---academy
+|       page.tsx
+|       
++---analytics
+|       page.tsx
+|       
++---community
+|       page.tsx
+|       
++---competition
+|       page.tsx
+|       
++---components
+|       BottomPanel.tsx
+|       CenterChart.tsx
+|       JournalTab.tsx
+|       ReportButton.tsx
+|       RightPanel.tsx
+|       Sidebar.tsx
+|       Topbar.tsx
+|       TradingViewChart.tsx
+|       
++---copy-trading
+|       page.tsx
+|       
++---hooks
+|       useLivePrice.ts
+|       useMarketPrices.ts
+|       useSystemNotifications.ts
+|       
++---journal
+|       page.tsx
+|       
++---lib
+|   |   analyzeTrade.ts
+|   |   
+|   +---analytics
+|   |       performance.ts
+|   |       
+|   +---auth
+|   |       roles.ts
+|   |       
+|   +---markets
+|   |       symbols.ts
+|   |       
+|   +---persistence
+|   |       storage.ts
+|   |       
+|   \---trading
+|           calculations.ts
+|           
++---login
+|       page.tsx
+|       
++---marketplace
+|       page.tsx
+|       
++---markets
+|       page.tsx
+|       
++---mentoring
+|       page.tsx
+|       
++---news
+|       page.tsx
+|       
++---notifications
+|       page.tsx
+|       
++---owner
+|   |   layout.tsx
+|   |   page.tsx
+|   |   
+|   +---action-logs
+|   |       page.tsx
+|   |       
+|   +---copy-trading
+|   |       page.tsx
+|   |       
+|   +---reports
+|   |       page.tsx
+|   |       
+|   +---system-health
+|   |       page.tsx
+|   |       
+|   \---users
+|           page.tsx
+|           
++---playbook
+|       page.tsx
+|       
++---profile
+|       page.tsx
+|       
++---store
+|       academyStore.ts
+|       adminActionLogStore.ts
+|       analyticsStore.ts
+|       authStore.ts
+|       communityStore.ts
+|       competitionStore.ts
+|       copyTradingStore.ts
+|       journalStore.ts
+|       mentoringStore.ts
+|       newsStore.ts
+|       notificationStore.ts
+|       playbookStore.ts
+|       priceStore.ts
+|       profileStore.ts
+|       reportStore.ts
+|       riskStore.ts
+|       strategyStore.ts
+|       symbolStore.ts
+|       tradeStore.ts
+|       watchlistStore.ts
+|       
+\---watchlist
+        page.tsx
+        

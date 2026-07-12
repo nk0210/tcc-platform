@@ -213,64 +213,65 @@ enum FollowStatus {
 // ────────────────────────────────────────────────────────────────
 
 model User {
-  id           String   @id @default(cuid())
-  tccId        String   @unique
-  email        String   @unique
+  id           String     @id @default(cuid())
+  tccId        String     @unique
+  email        String     @unique
   passwordHash String
-  handle       String   @unique // serves as "username" — see report for rationale
+  handle       String     @unique
   displayName  String
-  bio          String   @default("")
-  location     String   @default("")
+  bio          String     @default("")
+  location     String     @default("")
   avatarUrl    String?
 
-  roles               UserRole[]       @default([NORMAL_USER])
-  status              UserStatus       @default(ACTIVE) // NEW — Phase Alpha foundation
-  isVerified          Boolean          @default(false)  // NEW
-  lastLoginAt         DateTime?                          // NEW
-  profileVisibility   Visibility       @default(PUBLIC)
-  portfolioVisibility Visibility       @default(PRIVATE)
+  roles               UserRole[]   @default([NORMAL_USER])
+  status              UserStatus   @default(ACTIVE)
+  isVerified          Boolean      @default(false)
+  lastLoginAt         DateTime?
+  profileVisibility   Visibility   @default(PUBLIC)
+  portfolioVisibility Visibility   @default(PRIVATE)
   experienceLevel     ExperienceLevel?
 
-  // Legacy flags — kept for backward compatibility with Day-1 routes.
-  // status (above) is the new source of truth going forward.
-  // See "Technical Debt" in final report for consolidation plan.
   isActive    Boolean @default(true)
   isSuspended Boolean @default(false)
 
-  // Relations
+  // Core relations
   sessions            Session[]
   socialLinks         UserSocialLinks?
   tradingIdentity     UserTradingIdentity?
 
+  // Trading
   trades              Trade[]
   journalEntries      JournalEntry[]
   accountSnapshots    AccountSnapshot[]
+  watchlist           Watchlist?           // NEW Day 2
 
+  // Community
   posts               CommunityPost[]
   comments            CommunityComment[]
   postLikes           PostLike[]
   commentLikes        CommentLike[]
   savedPosts          SavedPost[]
 
+  // Marketplace
   strategies          Strategy[]
   savedStrategies     SavedStrategy[]
   strategyReviews     StrategyReview[]
 
+  // Academy
   academyProgress     AcademyProgress[]
 
+  // Copy trading
   masterProfile       MasterTrader?
   masterApplication   MasterTraderApplication?
-
   copyRelationships   CopyRelationship[]  @relation("CopyFollower")
   feeModels           CopyFeeModel[]
 
+  // Platform
   notifications       Notification[]
   reportsSubmitted    Report[]            @relation("Reporter")
   reportsReceived     Report[]            @relation("Reported")
-
   followedBy          Follow[]            @relation("FollowTarget")
   following           Follow[]            @relation("FollowSource")
-
   adminLogsAsActor    AdminActionLog[]    @relation("AuditLogActor")
   adminLogsAsTarget   AdminActionLog[]    @relation("AuditLogTarget")
 
@@ -337,7 +338,7 @@ model Follow {
 }
 
 // ────────────────────────────────────────────────────────────────
-// TRADES
+// TRADES — core paper trading models
 // ────────────────────────────────────────────────────────────────
 
 model Trade {
@@ -348,6 +349,7 @@ model Trade {
   symbol        String
   displayName   String
   category      String
+  emoji         String?
   side          TradeSide
   lotSize       Float
   entryPrice    Float
@@ -357,8 +359,9 @@ model Trade {
   tp            Float?
   grossPnl      Float?
   netPnl        Float?
-  marginUsed    Float
-  notionalValue Float
+  commission    Float?
+  marginUsed    Float        @default(0)
+  notionalValue Float        @default(0)
   leverage      Int          @default(10)
   closeReason   CloseReason?
   openedAt      DateTime     @default(now())
@@ -366,6 +369,9 @@ model Trade {
   durationMs    Int?
   isOpen        Boolean      @default(true)
   result        TradeResult?
+  session       String?
+  strategy      String?
+  notes         String?
 
   journalEntry  JournalEntry?
 
@@ -374,6 +380,7 @@ model Trade {
 
   @@index([userId])
   @@index([userId, isOpen])
+  @@index([userId, closedAt])
   @@index([symbol])
 }
 
@@ -383,8 +390,8 @@ model AccountSnapshot {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   balance     Float
   equity      Float
-  floatingPnl Float
-  marginUsed  Float
+  floatingPnl Float    @default(0)
+  marginUsed  Float    @default(0)
   freeMargin  Float
   marginLevel Float?
   snapshotAt  DateTime @default(now())
@@ -404,22 +411,27 @@ model JournalEntry {
   tradeId String? @unique
   trade   Trade?  @relation(fields: [tradeId], references: [id])
 
-  symbol      String
-  displayName String
-  side        TradeSide
-  lotSize     Float
-  entryPrice  Float
-  exitPrice   Float?
-  grossPnl    Float?
-  netPnl      Float?
-  result      TradeResult?
-  openedAt    DateTime?
-  closedAt    DateTime?
-  durationMs  Int?
-  closeReason String?
-  sl          Float?
-  tp          Float?
+  // Trade snapshot fields (copied at close time)
+  symbol          String
+  displayName     String
+  category        String    @default("")
+  emoji           String?
+  side            TradeSide
+  lotSize         Float
+  entryPrice      Float
+  exitPrice       Float?
+  grossPnl        Float?
+  netPnl          Float?
+  commission      Float?
+  result          TradeResult?
+  openedAt        DateTime?
+  closedAt        DateTime?
+  durationMs      Int?
+  closeReason     String?
+  sl              Float?
+  tp              Float?
 
+  // User-editable reflection fields
   emotion         String   @default("neutral")
   confidenceLevel Int      @default(5)
   stressLevel     Int      @default(5)
@@ -441,6 +453,34 @@ model JournalEntry {
 
   @@index([userId])
   @@index([userId, closedAt])
+  @@index([userId, session])
+}
+
+// ────────────────────────────────────────────────────────────────
+// WATCHLIST — NEW Day 2
+// ────────────────────────────────────────────────────────────────
+
+model Watchlist {
+  id        String          @id @default(cuid())
+  userId    String          @unique
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     WatchlistItem[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+}
+
+model WatchlistItem {
+  id          String    @id @default(cuid())
+  watchlistId String
+  watchlist   Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  symbol      String
+  displayName String
+  category    String    @default("crypto")
+  emoji       String?
+  addedAt     DateTime  @default(now())
+
+  @@unique([watchlistId, symbol])
+  @@index([watchlistId])
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -528,7 +568,7 @@ model SavedPost {
 }
 
 // ────────────────────────────────────────────────────────────────
-// STRATEGY
+// STRATEGY MARKETPLACE
 // ────────────────────────────────────────────────────────────────
 
 model Strategy {
@@ -862,7 +902,7 @@ model Report {
 }
 
 // ────────────────────────────────────────────────────────────────
-// AUDIT LOG  (universal audit/admin-action engine — see auditService.ts)
+// AUDIT LOG
 // ────────────────────────────────────────────────────────────────
 
 model AdminActionLog {
@@ -877,7 +917,7 @@ model AdminActionLog {
   targetUserId String?
   targetUser   User?    @relation("AuditLogTarget", fields: [targetUserId], references: [id])
   description  String
-  reason       String?  // NEW — explicit human-readable reason (ban/suspend reasons etc.)
+  reason       String?
   metadata     Json?
   createdAt    DateTime @default(now())
 
@@ -888,28 +928,15 @@ model AdminActionLog {
 }
 
 // ────────────────────────────────────────────────────────────────
-// RBAC — ROLE / PERMISSION SYSTEM (NEW — Phase Alpha foundation)
+// RBAC
 // ────────────────────────────────────────────────────────────────
-//
-// Design: Role rows mirror the UserRole enum (one row per enum value).
-// Permission rows define discrete, granular capabilities.
-// RolePermission is the many-to-many grant table.
-//
-// At runtime, a user's "effective role" is taken from User.roles (the
-// enum array, already wired through every existing Beta/Alpha feature).
-// A user's "effective permissions" are computed by unioning the
-// permissions granted to each of their roles. See permissionService.ts.
-//
-// This table is the single source of truth for WHAT each role can do.
-// It is seeded by prisma/seed/seed.ts and cached in-memory by the API
-// for performance (see permissionService.ts refreshPermissionCache()).
 
 model Role {
   id          String   @id @default(cuid())
   name        UserRole @unique
   label       String
   description String   @default("")
-  isSystem    Boolean  @default(true) // system roles cannot be deleted via UI
+  isSystem    Boolean  @default(true)
   permissions RolePermission[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -917,7 +944,7 @@ model Role {
 
 model Permission {
   id          String   @id @default(cuid())
-  key         String   @unique // e.g. "community.post.delete"
+  key         String   @unique
   label       String
   description String   @default("")
   category    String   @default("general")
@@ -937,7 +964,7 @@ model RolePermission {
 }
 
 // ────────────────────────────────────────────────────────────────
-// SYSTEM SETTINGS (NEW — Phase Alpha foundation)
+// SYSTEM SETTINGS
 // ────────────────────────────────────────────────────────────────
 
 model SystemSetting {

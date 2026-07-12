@@ -1,0 +1,16 @@
+Folder PATH listing for volume Acer
+Volume serial number is 00000190 269D:9A4B
+C:\USERS\ACER\TCC-PLATFORM\PACKAGES
++---db
+|   |   package.json
+|   |   
+|   \---prisma
+|       |   schema.prisma
+|       |   
+|       \---seed
+|               seed.ts
+|               
+\---types
+    \---src
+            index.ts
+            

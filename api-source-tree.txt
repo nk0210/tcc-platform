@@ -1,0 +1,40 @@
+Folder PATH listing for volume Acer
+Volume serial number is 0000015C 269D:9A4B
+C:\USERS\ACER\TCC-PLATFORM\APPS\API\SRC
+|   index.ts
+|   
++---lib
+|       prisma.ts
+|       
++---middleware
+|       auth.ts
+|       authenticate.ts
+|       requirePermission.ts
+|       
++---routes
+|       auth.ts
+|       index.ts
+|       owner.ts
+|       
+\---server
+    +---audit
+    |       auditService.ts
+    |       
+    +---auth
+    |       roleDefinitions.ts
+    |       
+    +---notifications
+    |       notificationService.ts
+    |       
+    +---permissions
+    |       permissionRegistry.ts
+    |       permissionService.ts
+    |       
+    +---repositories
+    |       auditRepository.ts
+    |       notificationRepository.ts
+    |       userRepository.ts
+    |       
+    \---services
+            userService.ts
+            

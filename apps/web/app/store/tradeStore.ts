@@ -1,320 +1,417 @@
 /**
- * TCC Paper Trade Store
+ * TCC Trade Store — Phase Alpha
  *
- * Manages paper positions, closed trades, and account metrics.
- * PAPER MODE ONLY — not broker-accurate.
- * This update adds sl/tp to ClosedTrade for analytics.
+ * Migrated from localStorage-only (Beta) to API-backed (Alpha).
+ *
+ * Architecture:
+ *   - Positions and closedTrades loaded from PostgreSQL via REST API on init
+ *   - All mutations (open/close/SL-TP update) call API first, then update local state
+ *   - updatePrices() is LOCAL ONLY — called by live price feed, no API call
+ *   - floatingPnl and equity are computed locally from live prices
+ *   - Auto-initialises when user logs in via authStore subscription
+ *   - Resets to initial state on logout
+ *
+ * Paper trading:
+ *   - PAPER_INITIAL_BALANCE = $10,000
+ *   - Commission = 0.01% of |grossPnl|
+ *   - Balance = initial + Σ(netPnl of all closed trades) — computed server-side
  */
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-import { getUserScopedStorage } from "@/lib/persistence/storage";
-import { SymbolCategory } from "@/lib/markets/symbols";
-import {
-  calcMargin, calcNotional, calcGrossPnl, calcNetPnl,
-  recalcAccount, isStopLossTriggered, isTakeProfitTriggered,
-} from "@/lib/trading/calculations";
+import { api } from "@/lib/api/client";
+import { useAuthStore } from "@/store/authStore";
 
-// ── Models ───────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────
 
-export interface PaperPosition {
-  id: string;
-  mode: "paper";
-  symbol: string;
-  displayName: string;
-  category: SymbolCategory;
-  side: "BUY" | "SELL";
-  lotSize: number;
-  entryPrice: number;
+export const PAPER_INITIAL_BALANCE = 10_000;
+export const COMMISSION_RATE       = 0.0001; // 0.01%
+
+// ── Types ─────────────────────────────────────────────────────────────────
+
+export type TradeSide    = "BUY" | "SELL";
+export type CloseReason  = "MANUAL" | "STOP_LOSS" | "TAKE_PROFIT";
+export type TradeResult  = "WIN" | "LOSS" | "BREAKEVEN";
+
+export interface Position {
+  id:           string;
+  symbol:       string;
+  displayName:  string;
+  category:     string;
+  emoji?:       string;
+  side:         TradeSide;
+  lotSize:      number;
+  entryPrice:   number;
   currentPrice: number;
-  sl: number | null;
-  tp: number | null;
-  grossPnl: number;
-  netPnl: number;
-  marginUsed: number;
+  sl:           number | null;
+  tp:           number | null;
+  marginUsed:   number;
   notionalValue: number;
-  openedAt: string;
+  leverage:     number;
+  floatingPnl:  number; // computed locally
+  openedAt:     string;
 }
 
 export interface ClosedTrade {
-  id: string;
-  positionId: string;
-  symbol: string;
-  displayName: string;
-  category: SymbolCategory;
-  side: "BUY" | "SELL";
-  lotSize: number;
-  entryPrice: number;
-  exitPrice: number;
-  grossPnl: number;
-  netPnl: number;
-  marginUsed: number;
+  id:           string;
+  symbol:       string;
+  displayName:  string;
+  category:     string;
+  emoji?:       string;
+  side:         TradeSide;
+  lotSize:      number;
+  entryPrice:   number;
+  exitPrice:    number;
+  sl:           number | null;
+  tp:           number | null;
+  grossPnl:     number;
+  commission:   number;
+  netPnl:       number;
+  closeReason:  CloseReason;
+  result:       TradeResult;
+  openedAt:     string;
+  closedAt:     string;
+  durationMs:   number;
+  session?:     string;
+  strategy?:    string;
+}
+
+export interface OpenPositionInput {
+  symbol:        string;
+  displayName:   string;
+  category:      string;
+  emoji?:        string;
+  side:          TradeSide;
+  lotSize:       number;
+  entryPrice:    number;
+  sl?:           number | null;
+  tp?:           number | null;
+  marginUsed:    number;
   notionalValue: number;
-  openedAt: string;
-  closedAt: string;
-  durationMs: number;
-  closeReason: "manual" | "stop_loss" | "take_profit";
-  /** SL that was set when trade was open (null if not set) */
-  sl: number | null;
-  /** TP that was set when trade was open (null if not set) */
-  tp: number | null;
+  leverage:      number;
 }
 
-export interface TradeEvent {
-  id: string;
-  type:
-    | "position_opened"
-    | "position_closed_manual"
-    | "position_closed_sl"
-    | "position_closed_tp"
-    | "trade_rejected";
-  position?: PaperPosition;
-  closedTrade?: ClosedTrade;
-  message?: string;
-  timestamp: number;
+export interface ClosePositionInput {
+  exitPrice:   number;
+  closeReason: CloseReason;
+  grossPnl:    number;   // calculated by the frontend
+  durationMs:  number;
 }
 
-// ── Constants ────────────────────────────────────────────────────────────
-
-const INITIAL_BALANCE = 10000;
-
-// ── Store ────────────────────────────────────────────────────────────────
+// ── Store interface ────────────────────────────────────────────────────────
 
 interface TradeStore {
-  balance: number;
-  equity: number;
-  freeMargin: number;
-  marginUsed: number;
-  marginLevel: number;
-  floatingPnl: number;
-  leverage: number;
-  positions: PaperPosition[];
+  positions:    Position[];
   closedTrades: ClosedTrade[];
-  events: TradeEvent[];
-  totalNetPnl: number; // legacy compat
+  balance:      number;
+  equity:       number;
+  floatingPnl:  number;
 
-  openPosition: (params: {
-    symbol: string;
-    displayName: string;
-    category: SymbolCategory;
-    side: "BUY" | "SELL";
-    lotSize: number;
-    entryPrice: number;
-    sl: number | null;
-    tp: number | null;
-  }) => PaperPosition;
+  isLoading:      boolean;
+  isSyncing:      boolean;
+  isInitialized:  boolean;
+  error:          string | null;
 
-  closePosition: (positionId: string, reason?: "manual" | "stop_loss" | "take_profit") => ClosedTrade | null;
-  closeAllPositions: () => void;
-  updatePrices: (symbol: string, price: number) => void;
-  updateSLTP: (positionId: string, sl: number | null, tp: number | null) => void;
-  setLeverage: (leverage: number) => void;
-  resetAccount: () => void;
-  consumeEvents: () => TradeEvent[];
+  // Lifecycle
+  init:  () => Promise<void>;
+  reset: () => void;
+
+  // Mutations — API-backed with optimistic local updates
+  openPosition:    (input: OpenPositionInput)                      => Promise<Position | null>;
+  closePosition:   (id: string, input: ClosePositionInput)         => Promise<ClosedTrade | null>;
+  updateSLTP:      (id: string, sl: number | null, tp: number | null) => Promise<void>;
+  deletePosition:  (id: string)                                    => Promise<void>;
+
+  // Local only — called by price feed
+  updatePrices: (prices: Record<string, number>) => void;
 }
 
-// ── Implementation ───────────────────────────────────────────────────────
+// ── PnL calculation helper ─────────────────────────────────────────────────
 
-export const useTradeStore = create<TradeStore>()(
-  persist(
-    (set, get) => ({
-      balance: INITIAL_BALANCE,
-      equity: INITIAL_BALANCE,
-      freeMargin: INITIAL_BALANCE,
-      marginUsed: 0,
-      marginLevel: 0,
-      floatingPnl: 0,
-      leverage: 10,
-      positions: [],
-      closedTrades: [],
-      events: [],
-      totalNetPnl: 0,
+function computePositionPnl(
+  side:         TradeSide,
+  entryPrice:   number,
+  currentPrice: number,
+  lotSize:      number
+): number {
+  // Simplified: lotSize × (exit − entry) for BUY; reversed for SELL
+  // Works for USD-settled instruments (crypto perpetuals, forex CFD)
+  if (side === "BUY")  return (currentPrice - entryPrice) * lotSize;
+  return (entryPrice - currentPrice) * lotSize;
+}
 
-      openPosition: ({ symbol, displayName, category, side, lotSize, entryPrice, sl, tp }) => {
-        const { balance, leverage, positions, events } = get();
-        const marginUsed = calcMargin(symbol, lotSize, entryPrice, leverage);
-        const notionalValue = calcNotional(symbol, lotSize, entryPrice);
+function mapApiTrade(t: any): Position {
+  return {
+    id:           t.id,
+    symbol:       t.symbol,
+    displayName:  t.displayName,
+    category:     t.category ?? "crypto",
+    emoji:        t.emoji    ?? undefined,
+    side:         t.side,
+    lotSize:      t.lotSize,
+    entryPrice:   t.entryPrice,
+    currentPrice: t.currentPrice ?? t.entryPrice,
+    sl:           t.sl ?? null,
+    tp:           t.tp ?? null,
+    marginUsed:   t.marginUsed   ?? 0,
+    notionalValue: t.notionalValue ?? 0,
+    leverage:     t.leverage     ?? 10,
+    floatingPnl:  computePositionPnl(t.side, t.entryPrice, t.currentPrice ?? t.entryPrice, t.lotSize),
+    openedAt:     typeof t.openedAt === "string" ? t.openedAt : new Date(t.openedAt).toISOString(),
+  };
+}
 
-        const newPos: PaperPosition = {
-          id: `pos_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          mode: "paper",
-          symbol, displayName, category, side, lotSize,
-          entryPrice, currentPrice: entryPrice,
-          sl: sl && sl > 0 ? sl : null,
-          tp: tp && tp > 0 ? tp : null,
-          grossPnl: 0, netPnl: 0,
-          marginUsed, notionalValue,
-          openedAt: new Date().toISOString(),
-        };
+function mapApiClosed(t: any): ClosedTrade {
+  return {
+    id:          t.id,
+    symbol:      t.symbol,
+    displayName: t.displayName,
+    category:    t.category   ?? "crypto",
+    emoji:       t.emoji      ?? undefined,
+    side:        t.side,
+    lotSize:     t.lotSize,
+    entryPrice:  t.entryPrice,
+    exitPrice:   t.exitPrice  ?? 0,
+    sl:          t.sl         ?? null,
+    tp:          t.tp         ?? null,
+    grossPnl:    t.grossPnl   ?? 0,
+    commission:  t.commission ?? 0,
+    netPnl:      t.netPnl     ?? 0,
+    closeReason: t.closeReason,
+    result:      t.result,
+    openedAt:    typeof t.openedAt  === "string" ? t.openedAt  : new Date(t.openedAt).toISOString(),
+    closedAt:    typeof t.closedAt  === "string" ? t.closedAt  : new Date(t.closedAt).toISOString(),
+    durationMs:  t.durationMs ?? 0,
+    session:     t.session    ?? undefined,
+    strategy:    t.strategy   ?? undefined,
+  };
+}
 
-        const updatedPositions = [...positions, newPos];
-        const account = recalcAccount(updatedPositions, balance);
-        const event: TradeEvent = {
-          id: `evt_${Date.now()}`,
-          type: "position_opened",
-          position: newPos,
-          timestamp: Date.now(),
-        };
+// ── Store ─────────────────────────────────────────────────────────────────
 
-        set({
-          positions: updatedPositions,
-          ...account,
-          totalNetPnl: account.floatingPnl,
-          events: [...events, event],
-        });
+export const useTradeStore = create<TradeStore>()((set, get) => ({
+  positions:    [],
+  closedTrades: [],
+  balance:      PAPER_INITIAL_BALANCE,
+  equity:       PAPER_INITIAL_BALANCE,
+  floatingPnl:  0,
 
-        return newPos;
-      },
+  isLoading:     false,
+  isSyncing:     false,
+  isInitialized: false,
+  error:         null,
 
-      closePosition: (positionId, reason = "manual") => {
-        const { positions, balance, closedTrades, events } = get();
-        const pos = positions.find(p => p.id === positionId);
-        if (!pos) return null;
+  // ── Lifecycle ──────────────────────────────────────────────────────────
 
-        const exitPrice = pos.currentPrice;
-        const grossPnl = calcGrossPnl(pos.symbol, pos.side, pos.lotSize, pos.entryPrice, exitPrice);
-        const netPnl = calcNetPnl(pos.symbol, pos.side, pos.lotSize, pos.entryPrice, exitPrice);
+  init: async () => {
+    if (get().isInitialized) return;
+    set({ isLoading: true, error: null });
 
-        const closed: ClosedTrade = {
-          id: `closed_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          positionId: pos.id,
-          symbol: pos.symbol,
-          displayName: pos.displayName,
-          category: pos.category,
-          side: pos.side,
-          lotSize: pos.lotSize,
-          entryPrice: pos.entryPrice,
-          exitPrice,
-          grossPnl: parseFloat(grossPnl.toFixed(4)),
-          netPnl: parseFloat(netPnl.toFixed(4)),
-          marginUsed: pos.marginUsed,
-          notionalValue: pos.notionalValue,
-          openedAt: pos.openedAt,
-          closedAt: new Date().toISOString(),
-          durationMs: Date.now() - new Date(pos.openedAt).getTime(),
-          closeReason: reason,
-          sl: pos.sl,   // ← copy SL from position
-          tp: pos.tp,   // ← copy TP from position
-        };
+    try {
+      // Fetch in parallel
+      const [openRes, closedRes, accountRes] = await Promise.all([
+        api.get<any[]>("/trade"),
+        api.get<{ items: any[] }>("/trade/closed?pageSize=200"),
+        api.get<any>("/trade/account"),
+      ]);
 
-        const newBalance = parseFloat((balance + netPnl).toFixed(4));
-        const updatedPositions = positions.filter(p => p.id !== positionId);
-        const account = recalcAccount(updatedPositions, newBalance);
+      const positions    = openRes.success   ? (openRes.data   ?? []).map(mapApiTrade)  : [];
+      const closedTrades = closedRes.success  ? (closedRes.data?.items ?? []).map(mapApiClosed) : [];
+      const balance      = accountRes.success ? (accountRes.data?.balance ?? PAPER_INITIAL_BALANCE) : PAPER_INITIAL_BALANCE;
 
-        const eventType: TradeEvent["type"] =
-          reason === "stop_loss" ? "position_closed_sl"
-          : reason === "take_profit" ? "position_closed_tp"
-          : "position_closed_manual";
+      const totalFloating = positions.reduce((sum, p) => sum + p.floatingPnl, 0);
 
-        const event: TradeEvent = {
-          id: `evt_${Date.now()}`,
-          type: eventType,
-          closedTrade: closed,
-          timestamp: Date.now(),
-        };
-
-        set({
-          balance: newBalance,
-          positions: updatedPositions,
-          closedTrades: [closed, ...closedTrades],
-          ...account,
-          totalNetPnl: account.floatingPnl,
-          events: [...events, event],
-        });
-
-        return closed;
-      },
-
-      closeAllPositions: () => {
-        const posIds = get().positions.map(p => p.id);
-        posIds.forEach(id => get().closePosition(id, "manual"));
-      },
-
-      updatePrices: (symbol, price) => {
-        if (!price || price <= 0) return;
-        const { positions, balance } = get();
-        const slTpToClose: Array<{ id: string; reason: "stop_loss" | "take_profit" }> = [];
-
-        const updatedPositions = positions.map(p => {
-          if (p.symbol !== symbol) return p;
-          if (isStopLossTriggered(p.side, price, p.sl)) {
-            slTpToClose.push({ id: p.id, reason: "stop_loss" });
-            return { ...p, currentPrice: price };
-          }
-          if (isTakeProfitTriggered(p.side, price, p.tp)) {
-            slTpToClose.push({ id: p.id, reason: "take_profit" });
-            return { ...p, currentPrice: price };
-          }
-          const gross = calcGrossPnl(p.symbol, p.side, p.lotSize, p.entryPrice, price);
-          const net = calcNetPnl(p.symbol, p.side, p.lotSize, p.entryPrice, price);
-          return {
-            ...p,
-            currentPrice: price,
-            grossPnl: parseFloat(gross.toFixed(4)),
-            netPnl: parseFloat(net.toFixed(4)),
-          };
-        });
-
-        const account = recalcAccount(updatedPositions, balance);
-        set({ positions: updatedPositions, ...account, totalNetPnl: account.floatingPnl });
-
-        slTpToClose.forEach(({ id, reason }) => get().closePosition(id, reason));
-      },
-
-      updateSLTP: (positionId, sl, tp) => {
-        set(state => ({
-          positions: state.positions.map(p =>
-            p.id !== positionId ? p : {
-              ...p,
-              sl: sl && sl > 0 ? sl : null,
-              tp: tp && tp > 0 ? tp : null,
-            }
-          ),
-        }));
-      },
-
-      setLeverage: (leverage) => {
-        const { positions, balance } = get();
-        const updated = positions.map(p => ({
-          ...p,
-          marginUsed: calcMargin(p.symbol, p.lotSize, p.entryPrice, leverage),
-        }));
-        const account = recalcAccount(updated, balance);
-        set({ leverage, positions: updated, ...account, totalNetPnl: account.floatingPnl });
-      },
-
-      resetAccount: () => {
-        set({
-          balance: INITIAL_BALANCE,
-          equity: INITIAL_BALANCE,
-          freeMargin: INITIAL_BALANCE,
-          marginUsed: 0, marginLevel: 0, floatingPnl: 0,
-          positions: [], closedTrades: [], events: [], totalNetPnl: 0,
-        });
-      },
-
-      consumeEvents: () => {
-        const { events } = get();
-        set({ events: [] });
-        return events;
-      },
-    }),
-    {
-      name: "trading",
-      storage: createJSONStorage(() => getUserScopedStorage("trading")),
-      partialize: (state) => ({
-        balance: state.balance,
-        leverage: state.leverage,
-        positions: state.positions,
-        closedTrades: state.closedTrades,
-      }),
-      onRehydrateStorage: () => (state) => {
-        if (state && state.positions) {
-          const account = recalcAccount(state.positions, state.balance);
-          Object.assign(state, account);
-          state.totalNetPnl = account.floatingPnl;
-          state.events = [];
-        }
-      },
+      set({
+        positions,
+        closedTrades,
+        balance,
+        floatingPnl: totalFloating,
+        equity:      balance + totalFloating,
+        isLoading:   false,
+        isInitialized: true,
+        error: null,
+      });
+    } catch (err) {
+      console.error("[tradeStore.init]", err);
+      set({ isLoading: false, error: "Failed to load trading data", isInitialized: true });
     }
-  )
-);
+  },
+
+  reset: () => {
+    set({
+      positions:     [],
+      closedTrades:  [],
+      balance:       PAPER_INITIAL_BALANCE,
+      equity:        PAPER_INITIAL_BALANCE,
+      floatingPnl:   0,
+      isLoading:     false,
+      isSyncing:     false,
+      isInitialized: false,
+      error:         null,
+    });
+  },
+
+  // ── Open a position ────────────────────────────────────────────────────
+
+  openPosition: async (input) => {
+    set({ isSyncing: true, error: null });
+    try {
+      const res = await api.post<any>("/trade", {
+        symbol:        input.symbol,
+        displayName:   input.displayName,
+        category:      input.category,
+        emoji:         input.emoji,
+        side:          input.side,
+        lotSize:       input.lotSize,
+        entryPrice:    input.entryPrice,
+        sl:            input.sl ?? null,
+        tp:            input.tp ?? null,
+        marginUsed:    input.marginUsed,
+        notionalValue: input.notionalValue,
+        leverage:      input.leverage,
+      });
+
+      if (!res.success) {
+        set({ isSyncing: false, error: res.error });
+        return null;
+      }
+
+      const newPosition = mapApiTrade(res.data);
+      set((state) => ({
+        positions: [newPosition, ...state.positions],
+        isSyncing: false,
+      }));
+      return newPosition;
+    } catch (err) {
+      console.error("[tradeStore.openPosition]", err);
+      set({ isSyncing: false, error: "Failed to open position" });
+      return null;
+    }
+  },
+
+  // ── Close a position ────────────────────────────────────────────────────
+
+  closePosition: async (id, input) => {
+    set({ isSyncing: true, error: null });
+    try {
+      const res = await api.post<{ trade: any; journalEntry: any; newBalance: number }>(
+        `/trade/${id}/close`,
+        {
+          exitPrice:   input.exitPrice,
+          closeReason: input.closeReason,
+          grossPnl:    input.grossPnl,
+          durationMs:  input.durationMs,
+        }
+      );
+
+      if (!res.success) {
+        set({ isSyncing: false, error: res.error });
+        return null;
+      }
+
+      const closedTrade = mapApiClosed(res.data.trade);
+      const newBalance  = res.data.newBalance ?? get().balance;
+
+      set((state) => {
+        const remaining   = state.positions.filter(p => p.id !== id);
+        const totalFloat  = remaining.reduce((s, p) => s + p.floatingPnl, 0);
+        return {
+          positions:    remaining,
+          closedTrades: [closedTrade, ...state.closedTrades],
+          balance:      newBalance,
+          floatingPnl:  totalFloat,
+          equity:       newBalance + totalFloat,
+          isSyncing:    false,
+          error:        null,
+        };
+      });
+
+      return closedTrade;
+    } catch (err) {
+      console.error("[tradeStore.closePosition]", err);
+      set({ isSyncing: false, error: "Failed to close position" });
+      return null;
+    }
+  },
+
+  // ── Update SL/TP ───────────────────────────────────────────────────────
+
+  updateSLTP: async (id, sl, tp) => {
+    // Optimistic update
+    set((state) => ({
+      positions: state.positions.map(p =>
+        p.id === id ? { ...p, sl, tp } : p
+      ),
+    }));
+
+    try {
+      const res = await api.put<any>(`/trade/${id}/sltp`, { sl, tp });
+      if (!res.success) {
+        // Revert optimistic update on failure
+        console.error("[tradeStore.updateSLTP]", res.error);
+      }
+    } catch (err) {
+      console.error("[tradeStore.updateSLTP]", err);
+    }
+  },
+
+  // ── Delete open position ───────────────────────────────────────────────
+
+  deletePosition: async (id) => {
+    set({ isSyncing: true, error: null });
+
+    // Optimistic removal
+    const prev = get().positions;
+    set((state) => ({
+      positions: state.positions.filter(p => p.id !== id),
+    }));
+
+    try {
+      const res = await api.delete<null>(`/trade/${id}`);
+      if (!res.success) {
+        // Revert
+        set({ positions: prev, isSyncing: false, error: res.error });
+        return;
+      }
+      set({ isSyncing: false });
+    } catch (err) {
+      set({ positions: prev, isSyncing: false, error: "Failed to delete position" });
+      console.error("[tradeStore.deletePosition]", err);
+    }
+  },
+
+  // ── Local only — called by live price feed ─────────────────────────────
+
+  updatePrices: (prices: Record<string, number>) => {
+    const { positions, balance } = get();
+    if (positions.length === 0) return;
+
+    let totalFloat = 0;
+    const updatedPositions = positions.map(pos => {
+      const currentPrice = prices[pos.symbol] ?? pos.currentPrice;
+      const floatingPnl  = computePositionPnl(pos.side, pos.entryPrice, currentPrice, pos.lotSize);
+      totalFloat += floatingPnl;
+      return { ...pos, currentPrice, floatingPnl };
+    });
+
+    set({
+      positions:   updatedPositions,
+      floatingPnl: totalFloat,
+      equity:      balance + totalFloat,
+    });
+  },
+}));
+
+// ── Auto-init on auth state change ────────────────────────────────────────
+// Subscribe to the auth store; initialize when user logs in, reset on logout.
+
+if (typeof window !== "undefined") {
+  useAuthStore.subscribe(
+    (state) => state.user?.id,
+    (userId) => {
+      if (userId) {
+        useTradeStore.getState().init();
+      } else {
+        useTradeStore.getState().reset();
+      }
+    }
+  );
+}

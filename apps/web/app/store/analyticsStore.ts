@@ -1,219 +1,191 @@
+/**
+ * TCC Analytics Store — Phase Alpha
+ *
+ * Analytics are derived from the trade history now stored in PostgreSQL.
+ *
+ * Strategy:
+ *   1. Primary: call the /analytics/full API endpoint for server-computed stats
+ *   2. Secondary: expose raw closedTrades from tradeStore for the existing
+ *      performance.ts helpers (the analytics page uses both approaches)
+ *   3. The store provides a `refresh()` that fetches fresh analytics from the API
+ *
+ * This preserves backward compatibility with the existing analytics page UI
+ * which calls performance calculation functions from lib/analytics/performance.ts
+ * on the tradeStore.closedTrades array.
+ */
 import { create } from "zustand";
-import { useJournalStore } from "@/store/journalStore";
+import { api } from "@/lib/api/client";
+import { useAuthStore } from "@/store/authStore";
 
-export interface EquityPoint {
-  time: string;
-  equity: number;
+// ── Types ─────────────────────────────────────────────────────────────────
+
+export interface AnalyticsOverview {
+  totalTrades:         number;
+  wins:                number;
+  losses:              number;
+  breakevens:          number;
+  winRate:             number;
+  profitFactor:        number;
+  avgWin:              number;
+  avgLoss:             number;
+  avgNetPnl:           number;
+  avgRR:               number;
+  avgDurationMs:       number;
+  totalNetPnl:         number;
+  totalGrossPnl:       number;
+  totalCommission:     number;
+  roiPercent:          number;
+  maxDrawdownPercent:  number;
+  bestTrade:           number;
+  worstTrade:          number;
+  slHits:              number;
+  tpHits:              number;
+  manualCloses:        number;
 }
 
-export interface SessionBreakdown {
-  session: string;
-  trades: number;
-  wins: number;
-  winRate: number;
-  pnl: number;
+export interface PeriodStat {
+  date:     string;
+  pnl:      number;
+  trades:   number;
+  wins:     number;
+  winRate:  number;
 }
 
-export interface StrategyBreakdown {
-  strategy: string;
-  trades: number;
-  wins: number;
-  winRate: number;
-  pnl: number;
+export interface SymbolStat {
+  symbol:      string;
+  displayName: string;
+  category:    string;
+  emoji:       string | null;
+  trades:      number;
+  wins:        number;
+  losses:      number;
+  netPnl:      number;
+  winRate:     number;
+  bestTrade:   number;
+  worstTrade:  number;
 }
 
-export interface EmotionBreakdown {
-  emotion: string;
-  trades: number;
-  wins: number;
-  winRate: number;
-  pnl: number;
+export interface SessionStat {
+  session:  string;
+  trades:   number;
+  wins:     number;
+  netPnl:   number;
+  winRate:  number;
 }
 
-export interface AnalyticsData {
-  totalTrades: number;
-  winRate: number;
-  lossRate: number;
-  profitFactor: number;
-  avgRR: number;
-  totalPnl: number;
-  maxDrawdown: number;
-  currentStreak: number;
-  streakType: "win" | "loss";
-  avgWin: number;
-  avgLoss: number;
-  bestTrade: number;
-  worstTrade: number;
-  equityCurve: EquityPoint[];
-  sessionBreakdown: SessionBreakdown[];
-  strategyBreakdown: StrategyBreakdown[];
-  emotionBreakdown: EmotionBreakdown[];
+export interface FullAnalytics {
+  overview:  AnalyticsOverview;
+  daily:     PeriodStat[];
+  monthly:   PeriodStat[];
+  bySymbol:  SymbolStat[];
+  bySession: SessionStat[];
 }
 
-export function calculateAnalytics(): AnalyticsData {
-  const entries = useJournalStore.getState().entries.filter(
-    (e) => e.pnl !== undefined
-  );
-
-  const empty: AnalyticsData = {
-    totalTrades: 0,
-    winRate: 0,
-    lossRate: 0,
-    profitFactor: 0,
-    avgRR: 0,
-    totalPnl: 0,
-    maxDrawdown: 0,
-    currentStreak: 0,
-    streakType: "win",
-    avgWin: 0,
-    avgLoss: 0,
-    bestTrade: 0,
-    worstTrade: 0,
-    equityCurve: [{ time: "Start", equity: 10000 }],
-    sessionBreakdown: [],
-    strategyBreakdown: [],
-    emotionBreakdown: [],
-  };
-
-  if (entries.length === 0) return empty;
-
-  // Sort by timestamp ascending
-  const sorted = [...entries].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-
-  const totalTrades = sorted.length;
-  const wins = sorted.filter(e => (e.pnl || 0) > 0);
-  const losses = sorted.filter(e => (e.pnl || 0) <= 0);
-  const winRate = totalTrades > 0 ? (wins.length / totalTrades) * 100 : 0;
-  const lossRate = 100 - winRate;
-
-  const grossProfit = wins.reduce((sum, e) => sum + (e.pnl || 0), 0);
-  const grossLoss = Math.abs(losses.reduce((sum, e) => sum + (e.pnl || 0), 0));
-  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : wins.length > 0 ? 999 : 0;
-
-  const avgWin = wins.length > 0 ? grossProfit / wins.length : 0;
-  const avgLoss = losses.length > 0 ? grossLoss / losses.length : 0;
-  const totalPnl = sorted.reduce((sum, e) => sum + (e.pnl || 0), 0);
-
-  const validRR = sorted.filter(e => e.rrRatio && e.rrRatio > 0);
-  const avgRR = validRR.length > 0
-    ? validRR.reduce((sum, e) => sum + (e.rrRatio || 0), 0) / validRR.length
-    : 0;
-
-  const bestTrade = Math.max(...sorted.map(e => e.pnl || 0));
-  const worstTrade = Math.min(...sorted.map(e => e.pnl || 0));
-
-  // Equity curve
-  let equity = 10000;
-  const equityCurve: EquityPoint[] = [{ time: "Start", equity }];
-  let peak = equity;
-  let maxDrawdown = 0;
-  sorted.forEach(e => {
-    equity += e.pnl || 0;
-    const dd = ((peak - equity) / peak) * 100;
-    if (dd > maxDrawdown) maxDrawdown = dd;
-    if (equity > peak) peak = equity;
-    const date = new Date(e.timestamp || Date.now());
-    equityCurve.push({
-      time: date.toLocaleDateString(undefined, { month: "numeric", day: "numeric", year: "numeric" }),
-      equity: parseFloat(equity.toFixed(2)),
-    });
-  });
-
-  // Streak
-  let currentStreak = 0;
-  let streakType: "win" | "loss" = "win";
-  for (let i = sorted.length - 1; i >= 0; i--) {
-    const pnl = sorted[i].pnl || 0;
-    if (i === sorted.length - 1) {
-      streakType = pnl > 0 ? "win" : "loss";
-      currentStreak = 1;
-    } else {
-      const isWin = pnl > 0;
-      if ((isWin && streakType === "win") || (!isWin && streakType === "loss")) {
-        currentStreak++;
-      } else break;
-    }
-  }
-
-  // Session breakdown
-  const sessionMap: Record<string, { trades: number; wins: number; pnl: number }> = {};
-  sorted.forEach(e => {
-    if (!sessionMap[e.session]) sessionMap[e.session] = { trades: 0, wins: 0, pnl: 0 };
-    sessionMap[e.session].trades++;
-    if ((e.pnl || 0) > 0) sessionMap[e.session].wins++;
-    sessionMap[e.session].pnl += e.pnl || 0;
-  });
-  const sessionBreakdown: SessionBreakdown[] = Object.entries(sessionMap).map(([session, d]) => ({
-    session,
-    trades: d.trades,
-    wins: d.wins,
-    winRate: (d.wins / d.trades) * 100,
-    pnl: parseFloat(d.pnl.toFixed(2)),
-  }));
-
-  // Strategy breakdown
-  const strategyMap: Record<string, { trades: number; wins: number; pnl: number }> = {};
-  sorted.forEach(e => {
-    const k = e.strategy || "other";
-    if (!strategyMap[k]) strategyMap[k] = { trades: 0, wins: 0, pnl: 0 };
-    strategyMap[k].trades++;
-    if ((e.pnl || 0) > 0) strategyMap[k].wins++;
-    strategyMap[k].pnl += e.pnl || 0;
-  });
-  const strategyBreakdown: StrategyBreakdown[] = Object.entries(strategyMap).map(([strategy, d]) => ({
-    strategy,
-    trades: d.trades,
-    wins: d.wins,
-    winRate: (d.wins / d.trades) * 100,
-    pnl: parseFloat(d.pnl.toFixed(2)),
-  }));
-
-  // Emotion breakdown
-  const emotionMap: Record<string, { trades: number; wins: number; pnl: number }> = {};
-  sorted.forEach(e => {
-    const k = e.emotion || "neutral";
-    if (!emotionMap[k]) emotionMap[k] = { trades: 0, wins: 0, pnl: 0 };
-    emotionMap[k].trades++;
-    if ((e.pnl || 0) > 0) emotionMap[k].wins++;
-    emotionMap[k].pnl += e.pnl || 0;
-  });
-  const emotionBreakdown: EmotionBreakdown[] = Object.entries(emotionMap).map(([emotion, d]) => ({
-    emotion,
-    trades: d.trades,
-    wins: d.wins,
-    winRate: (d.wins / d.trades) * 100,
-    pnl: parseFloat(d.pnl.toFixed(2)),
-  }));
-
-  return {
-    totalTrades,
-    winRate: parseFloat(winRate.toFixed(1)),
-    lossRate: parseFloat(lossRate.toFixed(1)),
-    profitFactor: parseFloat(profitFactor.toFixed(2)),
-    avgRR: parseFloat(avgRR.toFixed(2)),
-    totalPnl: parseFloat(totalPnl.toFixed(2)),
-    maxDrawdown: parseFloat(maxDrawdown.toFixed(2)),
-    currentStreak,
-    streakType,
-    avgWin: parseFloat(avgWin.toFixed(2)),
-    avgLoss: parseFloat(avgLoss.toFixed(2)),
-    bestTrade: parseFloat(bestTrade.toFixed(2)),
-    worstTrade: parseFloat(worstTrade.toFixed(2)),
-    equityCurve,
-    sessionBreakdown,
-    strategyBreakdown,
-    emotionBreakdown,
-  };
-}
+// ── Store interface ────────────────────────────────────────────────────────
 
 interface AnalyticsStore {
-  data: AnalyticsData | null;
-  refresh: () => void;
+  data:          FullAnalytics | null;
+  isLoading:     boolean;
+  isInitialized: boolean;
+  error:         string | null;
+  lastFetchedAt: number | null;
+
+  // Lifecycle
+  init:    () => Promise<void>;
+  reset:   () => void;
+  refresh: (filters?: { from?: string; to?: string }) => Promise<void>;
 }
 
-export const useAnalyticsStore = create<AnalyticsStore>((set) => ({
-  data: null,
-  refresh: () => {
-    set({ data: calculateAnalytics() });
+// ── Empty/default states ──────────────────────────────────────────────────
+
+const EMPTY_OVERVIEW: AnalyticsOverview = {
+  totalTrades: 0, wins: 0, losses: 0, breakevens: 0,
+  winRate: 0, profitFactor: 0, avgWin: 0, avgLoss: 0, avgNetPnl: 0,
+  avgRR: 0, avgDurationMs: 0, totalNetPnl: 0, totalGrossPnl: 0,
+  totalCommission: 0, roiPercent: 0, maxDrawdownPercent: 0,
+  bestTrade: 0, worstTrade: 0, slHits: 0, tpHits: 0, manualCloses: 0,
+};
+
+// ── Store ─────────────────────────────────────────────────────────────────
+
+const CACHE_TTL_MS = 60_000; // 1 minute
+
+export const useAnalyticsStore = create<AnalyticsStore>()((set, get) => ({
+  data:          null,
+  isLoading:     false,
+  isInitialized: false,
+  error:         null,
+  lastFetchedAt: null,
+
+  init: async () => {
+    if (get().isInitialized) return;
+    await get().refresh();
+    set({ isInitialized: true });
+  },
+
+  reset: () => {
+    set({
+      data:          null,
+      isLoading:     false,
+      isInitialized: false,
+      error:         null,
+      lastFetchedAt: null,
+    });
+  },
+
+  refresh: async (filters = {}) => {
+    const { lastFetchedAt } = get();
+    // Respect cache unless filters are explicitly provided
+    const hasFilters = filters.from || filters.to;
+    if (!hasFilters && lastFetchedAt && Date.now() - lastFetchedAt < CACHE_TTL_MS) {
+      return;
+    }
+
+    set({ isLoading: true, error: null });
+
+    try {
+      const params = new URLSearchParams();
+      if (filters.from) params.set("from", filters.from);
+      if (filters.to)   params.set("to",   filters.to);
+      const qs = params.toString() ? `?${params.toString()}` : "";
+
+      const res = await api.get<FullAnalytics>(`/analytics/full${qs}`);
+
+      if (!res.success) {
+        set({ isLoading: false, error: res.error });
+        return;
+      }
+
+      set({
+        data:          res.data,
+        isLoading:     false,
+        error:         null,
+        lastFetchedAt: Date.now(),
+      });
+    } catch (err) {
+      console.error("[analyticsStore.refresh]", err);
+      set({ isLoading: false, error: "Failed to load analytics" });
+    }
   },
 }));
+
+// ── Auto-init on auth state change ────────────────────────────────────────
+
+if (typeof window !== "undefined") {
+  useAuthStore.subscribe(
+    (state) => state.user?.id,
+    (userId) => {
+      if (userId) {
+        useAnalyticsStore.getState().init();
+      } else {
+        useAnalyticsStore.getState().reset();
+      }
+    }
+  );
+}
+
+// ── Convenience hook ──────────────────────────────────────────────────────
+
+export function selectOverview(state: AnalyticsStore): AnalyticsOverview {
+  return state.data?.overview ?? EMPTY_OVERVIEW;
+}
