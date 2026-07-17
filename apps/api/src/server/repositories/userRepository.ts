@@ -1,29 +1,17 @@
-/**
- * TCC User Repository — data-access layer for User.
- *
- * Repositories own all direct Prisma calls for a given model. Services
- * (server/services/*) call repositories and add business rules, audit
- * logging, and notification side-effects on top. Routes call services,
- * never repositories directly, and never call Prisma directly.
- *
- * This file establishes the pattern; not every model has a repository
- * yet (trades/journal still query Prisma directly in their routes from
- * Day 1 — migrating those is a future Alpha day, not a regression).
- */
 import db from "../../lib/prisma";
-import type { UserRole, UserStatus } from "@tcc/db";
+import { type UserRole, type UserStatus } from "@prisma/client";
 
 export const userRepository = {
   findById(id: string) {
     return db.user.findUnique({ where: { id } });
   },
 
-  findByHandle(handle: string) {
-    return db.user.findUnique({ where: { handle } });
-  },
-
   findByEmail(email: string) {
     return db.user.findUnique({ where: { email } });
+  },
+
+  findByHandle(handle: string) {
+    return db.user.findUnique({ where: { handle } });
   },
 
   async list(params: { page: number; pageSize: number; search?: string }) {
@@ -47,8 +35,8 @@ export const userRepository = {
           isSuspended: true, createdAt: true, lastLoginAt: true,
         },
         orderBy: { createdAt: "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip:    (page - 1) * pageSize,
+        take:    pageSize,
       }),
       db.user.count({ where }),
     ]);
@@ -57,10 +45,7 @@ export const userRepository = {
   },
 
   updateStatus(id: string, status: UserStatus, flags: { isActive?: boolean; isSuspended?: boolean }) {
-    return db.user.update({
-      where: { id },
-      data:  { status, ...flags },
-    });
+    return db.user.update({ where: { id }, data: { status, ...flags } });
   },
 
   updateRoles(id: string, roles: UserRole[]) {

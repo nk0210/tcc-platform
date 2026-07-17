@@ -1,12 +1,12 @@
 import db from "../../lib/prisma";
-import type { NotificationType, NotificationPriority } from "@tcc/db";
+import type { NotificationType, NotificationPriority } from "@prisma/client";
 
 export interface CreateNotificationInput {
-  userId:      string;
-  type:        NotificationType;
-  priority?:   NotificationPriority;
-  title:       string;
-  message:     string;
+  userId:       string;
+  type:         NotificationType;
+  priority?:    NotificationPriority;
+  title:        string;
+  message:      string;
   actionLabel?: string;
   actionPath?:  string;
 }
@@ -31,7 +31,7 @@ export const notificationRepository = {
       data: inputs.map((i) => ({
         userId:      i.userId,
         type:        i.type,
-        priority:    i.priority ?? "LOW",
+        priority:    i.priority ?? ("LOW" as NotificationPriority),
         title:       i.title,
         message:     i.message,
         actionLabel: i.actionLabel ?? null,
@@ -40,33 +40,26 @@ export const notificationRepository = {
     });
   },
 
-  findForUser(userId: string, params: { page: number; pageSize: number; unreadOnly?: boolean }) {
+  async findForUser(userId: string, params: { page: number; pageSize: number; unreadOnly?: boolean }) {
     const { page, pageSize, unreadOnly } = params;
     const where = { userId, ...(unreadOnly ? { read: false } : {}) };
-
     return Promise.all([
       db.notification.findMany({
         where,
         orderBy: { createdAt: "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip:    (page - 1) * pageSize,
+        take:    pageSize,
       }),
       db.notification.count({ where }),
     ]);
   },
 
   markRead(id: string, userId: string) {
-    return db.notification.updateMany({
-      where: { id, userId },
-      data:  { read: true },
-    });
+    return db.notification.updateMany({ where: { id, userId }, data: { read: true } });
   },
 
   markAllRead(userId: string) {
-    return db.notification.updateMany({
-      where: { userId, read: false },
-      data:  { read: true },
-    });
+    return db.notification.updateMany({ where: { userId, read: false }, data: { read: true } });
   },
 
   remove(id: string, userId: string) {

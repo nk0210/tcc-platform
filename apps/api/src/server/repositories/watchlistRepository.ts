@@ -1,24 +1,19 @@
-/**
- * TCC Watchlist Repository — sole Prisma layer for Watchlist + WatchlistItem.
- */
 import db from "../../lib/prisma";
 
 export interface WatchlistItemInput {
   symbol:      string;
   displayName: string;
   category:    string;
-  emoji?:      string;
+  emoji?:      string | null;
 }
 
 export const watchlistRepository = {
-  // Find or create the user's watchlist
   async findOrCreate(userId: string) {
     const existing = await db.watchlist.findUnique({
       where:   { userId },
       include: { items: { orderBy: { addedAt: "desc" } } },
     });
     if (existing) return existing;
-
     return db.watchlist.create({
       data:    { userId },
       include: { items: { orderBy: { addedAt: "desc" } } },
@@ -35,9 +30,7 @@ export const watchlistRepository = {
   async addItem(userId: string, input: WatchlistItemInput) {
     const watchlist = await this.findOrCreate(userId);
     return db.watchlistItem.upsert({
-      where: {
-        watchlistId_symbol: { watchlistId: watchlist.id, symbol: input.symbol },
-      },
+      where: { watchlistId_symbol: { watchlistId: watchlist.id, symbol: input.symbol } },
       create: {
         watchlistId: watchlist.id,
         symbol:      input.symbol,
@@ -56,17 +49,13 @@ export const watchlistRepository = {
   async removeItem(userId: string, symbol: string) {
     const watchlist = await db.watchlist.findUnique({ where: { userId } });
     if (!watchlist) return null;
-    return db.watchlistItem.deleteMany({
-      where: { watchlistId: watchlist.id, symbol },
-    });
+    return db.watchlistItem.deleteMany({ where: { watchlistId: watchlist.id, symbol } });
   },
 
   async clearItems(userId: string) {
     const watchlist = await db.watchlist.findUnique({ where: { userId } });
     if (!watchlist) return null;
-    return db.watchlistItem.deleteMany({
-      where: { watchlistId: watchlist.id },
-    });
+    return db.watchlistItem.deleteMany({ where: { watchlistId: watchlist.id } });
   },
 
   async isInWatchlist(userId: string, symbol: string): Promise<boolean> {

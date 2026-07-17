@@ -1,6 +1,3 @@
-/**
- * TCC Journal Service — business logic for trade journaling.
- */
 import { journalRepository, type UpdateJournalInput, type ListJournalParams } from "../repositories/journalRepository";
 
 export const journalService = {
@@ -32,6 +29,6 @@ export const journalService = {
   async updateEntry(id: string, userId: string, input: UpdateJournalInput) {
     const entry = await journalRepository.findById(id, userId);
     if (!entry) throw new Error("JOURNAL_ENTRY_NOT_FOUND");
-    return journalRepository.update(id, userId, input);
+    return journalRepository.update(id, input);
   },
 };

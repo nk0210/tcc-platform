@@ -1,12 +1,9 @@
 /**
  * TCC Watchlist Store — Phase Alpha
- *
- * Migrated from localStorage to API-backed PostgreSQL persistence.
- * Auto-initialises on user login via authStore subscription.
+ * API-backed. Optimistic updates with revert on failure.
  */
 import { create } from "zustand";
-import { api } from "@/lib/api/client";
-import { useAuthStore } from "@/store/authStore";
+import { api }    from "@/lib/api/client";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -19,8 +16,6 @@ export interface WatchlistItem {
   addedAt:     string;
 }
 
-// ── Store interface ────────────────────────────────────────────────────────
-
 interface WatchlistStore {
   items:         WatchlistItem[];
   isLoading:     boolean;
@@ -28,31 +23,25 @@ interface WatchlistStore {
   isInitialized: boolean;
   error:         string | null;
 
-  // Lifecycle
-  init:  () => Promise<void>;
-  reset: () => void;
-
-  // Mutations
+  init:          () => Promise<void>;
+  reset:         () => void;
   addSymbol:     (input: Omit<WatchlistItem, "id" | "addedAt">) => Promise<void>;
-  removeSymbol:  (symbol: string) => Promise<void>;
-  clearWatchlist: ()              => Promise<void>;
-
-  // Selectors
-  isInWatchlist: (symbol: string) => boolean;
+  removeSymbol:  (symbol: string)                               => Promise<void>;
+  clearWatchlist: ()                                            => Promise<void>;
+  isInWatchlist: (symbol: string)                              => boolean;
 }
 
 // ── Mapper ────────────────────────────────────────────────────────────────
 
-function mapApiItem(item: any): WatchlistItem {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapItem(i: any): WatchlistItem {
   return {
-    id:          item.id,
-    symbol:      item.symbol,
-    displayName: item.displayName,
-    category:    item.category ?? "crypto",
-    emoji:       item.emoji    ?? undefined,
-    addedAt:     typeof item.addedAt === "string"
-      ? item.addedAt
-      : new Date(item.addedAt).toISOString(),
+    id:          i.id,
+    symbol:      i.symbol,
+    displayName: i.displayName,
+    category:    i.category ?? "crypto",
+    emoji:       i.emoji    ?? undefined,
+    addedAt:     typeof i.addedAt === "string" ? i.addedAt : new Date(i.addedAt).toISOString(),
   };
 }
 
@@ -65,111 +54,84 @@ export const useWatchlistStore = create<WatchlistStore>()((set, get) => ({
   isInitialized: false,
   error:         null,
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────
+  // ── Init ──────────────────────────────────────────────────────────────
 
   init: async () => {
     if (get().isInitialized) return;
     set({ isLoading: true, error: null });
 
     try {
-      const res = await api.get<{ items: any[] }>("/watchlist");
-
+      const res = await api.get<{ id: string; items: any[] }>("/watchlist");
       if (!res.success) {
         set({ isLoading: false, error: res.error, isInitialized: true });
         return;
       }
 
-      const items = (res.data?.items ?? []).map(mapApiItem);
-      set({ items, isLoading: false, isInitialized: true, error: null });
+      set({
+        items:         (res.data?.items ?? []).map(mapItem),
+        isLoading:     false,
+        isInitialized: true,
+        error:         null,
+      });
     } catch (err) {
       console.error("[watchlistStore.init]", err);
       set({ isLoading: false, error: "Failed to load watchlist", isInitialized: true });
     }
   },
 
-  reset: () => {
+  reset: () =>
     set({
-      items:         [],
-      isLoading:     false,
-      isSyncing:     false,
-      isInitialized: false,
-      error:         null,
-    });
-  },
+      items: [], isLoading: false, isSyncing: false,
+      isInitialized: false, error: null,
+    }),
 
-  // ── Add a symbol ───────────────────────────────────────────────────────
+  // ── Add symbol ────────────────────────────────────────────────────────
 
   addSymbol: async (input) => {
     if (get().isInWatchlist(input.symbol)) return;
 
-    // Optimistic add
-    const tempItem: WatchlistItem = {
-      id:          `temp_${Date.now()}`,
-      symbol:      input.symbol,
-      displayName: input.displayName,
-      category:    input.category,
-      emoji:       input.emoji,
-      addedAt:     new Date().toISOString(),
+    const temp: WatchlistItem = {
+      id:      `temp_${Date.now()}`,
+      addedAt: new Date().toISOString(),
+      ...input,
     };
 
-    set((state) => ({
-      items:     [tempItem, ...state.items],
-      isSyncing: true,
-    }));
+    set((s) => ({ items: [temp, ...s.items], isSyncing: true }));
 
     try {
       const res = await api.post<any>("/watchlist", {
         symbol:      input.symbol,
         displayName: input.displayName,
         category:    input.category,
-        emoji:       input.emoji,
+        emoji:       input.emoji ?? null,
       });
 
       if (!res.success) {
-        // Revert
-        set((state) => ({
-          items:     state.items.filter(i => i.id !== tempItem.id),
-          isSyncing: false,
-          error:     res.error,
-        }));
+        set((s) => ({ items: s.items.filter((i) => i.id !== temp.id), isSyncing: false, error: res.error }));
         return;
       }
 
-      // Replace temp with real item from server
-      const serverItem = mapApiItem(res.data);
-      set((state) => ({
-        items:     state.items.map(i => i.id === tempItem.id ? serverItem : i),
+      const serverItem = mapItem(res.data);
+      set((s) => ({
+        items:     s.items.map((i) => (i.id === temp.id ? serverItem : i)),
         isSyncing: false,
         error:     null,
       }));
     } catch (err) {
-      set((state) => ({
-        items:     state.items.filter(i => i.id !== tempItem.id),
-        isSyncing: false,
-        error:     "Failed to add symbol",
-      }));
+      set((s) => ({ items: s.items.filter((i) => i.id !== temp.id), isSyncing: false, error: "Failed to add symbol" }));
       console.error("[watchlistStore.addSymbol]", err);
     }
   },
 
-  // ── Remove a symbol ────────────────────────────────────────────────────
+  // ── Remove symbol ─────────────────────────────────────────────────────
 
   removeSymbol: async (symbol) => {
     const prev = get().items;
-
-    // Optimistic removal
-    set((state) => ({
-      items:     state.items.filter(i => i.symbol !== symbol),
-      isSyncing: true,
-    }));
+    set((s) => ({ items: s.items.filter((i) => i.symbol !== symbol), isSyncing: true }));
 
     try {
       const res = await api.delete<null>(`/watchlist/${encodeURIComponent(symbol)}`);
-      if (!res.success) {
-        // Revert
-        set({ items: prev, isSyncing: false, error: res.error });
-        return;
-      }
+      if (!res.success) { set({ items: prev, isSyncing: false, error: res.error }); return; }
       set({ isSyncing: false, error: null });
     } catch (err) {
       set({ items: prev, isSyncing: false, error: "Failed to remove symbol" });
@@ -184,36 +146,36 @@ export const useWatchlistStore = create<WatchlistStore>()((set, get) => ({
     set({ items: [], isSyncing: true });
 
     try {
-      const res = await api.delete<null>("/watchlist");
-      if (!res.success) {
-        set({ items: prev, isSyncing: false, error: res.error });
-        return;
-      }
+      const res = await api.delete<null>("/watchlist/clear");
+      if (!res.success) { set({ items: prev, isSyncing: false, error: res.error }); return; }
       set({ isSyncing: false, error: null });
     } catch (err) {
       set({ items: prev, isSyncing: false, error: "Failed to clear watchlist" });
-      console.error("[watchlistStore.clear]", err);
+      console.error("[watchlistStore.clearWatchlist]", err);
     }
   },
 
   // ── Selector ──────────────────────────────────────────────────────────
 
-  isInWatchlist: (symbol) => {
-    return get().items.some(i => i.symbol === symbol);
-  },
+  isInWatchlist: (symbol) => get().items.some((i) => i.symbol === symbol),
 }));
 
-// ── Auto-init on auth state change ────────────────────────────────────────
+// ── Auto-init / reset (single-arg subscribe) ──────────────────────────────
 
 if (typeof window !== "undefined") {
-  useAuthStore.subscribe(
-    (state) => state.user?.id,
-    (userId) => {
-      if (userId) {
-        useWatchlistStore.getState().init();
-      } else {
-        useWatchlistStore.getState().reset();
+  import("@/store/authStore").then(({ useAuthStore }) => {
+    let prevUserId: string | undefined;
+
+    useAuthStore.subscribe((state) => {
+      const userId = state.user?.id;
+      if (userId !== prevUserId) {
+        prevUserId = userId;
+        if (userId) {
+          useWatchlistStore.getState().init();
+        } else {
+          useWatchlistStore.getState().reset();
+        }
       }
-    }
-  );
+    });
+  });
 }

@@ -1,54 +1,43 @@
 /**
  * TCC Analytics Store — Phase Alpha
- *
- * Analytics are derived from the trade history now stored in PostgreSQL.
- *
- * Strategy:
- *   1. Primary: call the /analytics/full API endpoint for server-computed stats
- *   2. Secondary: expose raw closedTrades from tradeStore for the existing
- *      performance.ts helpers (the analytics page uses both approaches)
- *   3. The store provides a `refresh()` that fetches fresh analytics from the API
- *
- * This preserves backward compatibility with the existing analytics page UI
- * which calls performance calculation functions from lib/analytics/performance.ts
- * on the tradeStore.closedTrades array.
+ * Fetches server-computed statistics from /analytics/full.
+ * 60-second cache to avoid redundant calls.
  */
 import { create } from "zustand";
-import { api } from "@/lib/api/client";
-import { useAuthStore } from "@/store/authStore";
+import { api }    from "@/lib/api/client";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
 export interface AnalyticsOverview {
-  totalTrades:         number;
-  wins:                number;
-  losses:              number;
-  breakevens:          number;
-  winRate:             number;
-  profitFactor:        number;
-  avgWin:              number;
-  avgLoss:             number;
-  avgNetPnl:           number;
-  avgRR:               number;
-  avgDurationMs:       number;
-  totalNetPnl:         number;
-  totalGrossPnl:       number;
-  totalCommission:     number;
-  roiPercent:          number;
-  maxDrawdownPercent:  number;
-  bestTrade:           number;
-  worstTrade:          number;
-  slHits:              number;
-  tpHits:              number;
-  manualCloses:        number;
+  totalTrades:        number;
+  wins:               number;
+  losses:             number;
+  breakevens:         number;
+  winRate:            number;
+  profitFactor:       number;
+  avgWin:             number;
+  avgLoss:            number;
+  avgNetPnl:          number;
+  avgRR:              number;
+  avgDurationMs:      number;
+  totalNetPnl:        number;
+  totalGrossPnl:      number;
+  totalCommission:    number;
+  roiPercent:         number;
+  maxDrawdownPercent: number;
+  bestTrade:          number;
+  worstTrade:         number;
+  slHits:             number;
+  tpHits:             number;
+  manualCloses:       number;
 }
 
 export interface PeriodStat {
-  date:     string;
-  pnl:      number;
-  trades:   number;
-  wins:     number;
-  winRate:  number;
+  date:    string;
+  pnl:     number;
+  trades:  number;
+  wins:    number;
+  winRate: number;
 }
 
 export interface SymbolStat {
@@ -66,11 +55,11 @@ export interface SymbolStat {
 }
 
 export interface SessionStat {
-  session:  string;
-  trades:   number;
-  wins:     number;
-  netPnl:   number;
-  winRate:  number;
+  session: string;
+  trades:  number;
+  wins:    number;
+  netPnl:  number;
+  winRate: number;
 }
 
 export interface FullAnalytics {
@@ -81,22 +70,7 @@ export interface FullAnalytics {
   bySession: SessionStat[];
 }
 
-// ── Store interface ────────────────────────────────────────────────────────
-
-interface AnalyticsStore {
-  data:          FullAnalytics | null;
-  isLoading:     boolean;
-  isInitialized: boolean;
-  error:         string | null;
-  lastFetchedAt: number | null;
-
-  // Lifecycle
-  init:    () => Promise<void>;
-  reset:   () => void;
-  refresh: (filters?: { from?: string; to?: string }) => Promise<void>;
-}
-
-// ── Empty/default states ──────────────────────────────────────────────────
+// ── Empty default ─────────────────────────────────────────────────────────
 
 const EMPTY_OVERVIEW: AnalyticsOverview = {
   totalTrades: 0, wins: 0, losses: 0, breakevens: 0,
@@ -106,9 +80,23 @@ const EMPTY_OVERVIEW: AnalyticsOverview = {
   bestTrade: 0, worstTrade: 0, slHits: 0, tpHits: 0, manualCloses: 0,
 };
 
-// ── Store ─────────────────────────────────────────────────────────────────
+// ── Store interface ────────────────────────────────────────────────────────
 
-const CACHE_TTL_MS = 60_000; // 1 minute
+interface AnalyticsStore {
+  data:          FullAnalytics | null;
+  isLoading:     boolean;
+  isInitialized: boolean;
+  error:         string | null;
+  lastFetchedAt: number | null;
+
+  init:    () => Promise<void>;
+  reset:   () => void;
+  refresh: (filters?: { from?: string; to?: string }) => Promise<void>;
+}
+
+const CACHE_MS = 60_000;
+
+// ── Store ─────────────────────────────────────────────────────────────────
 
 export const useAnalyticsStore = create<AnalyticsStore>()((set, get) => ({
   data:          null,
@@ -123,45 +111,30 @@ export const useAnalyticsStore = create<AnalyticsStore>()((set, get) => ({
     set({ isInitialized: true });
   },
 
-  reset: () => {
+  reset: () =>
     set({
-      data:          null,
-      isLoading:     false,
-      isInitialized: false,
-      error:         null,
-      lastFetchedAt: null,
-    });
-  },
+      data: null, isLoading: false, isInitialized: false,
+      error: null, lastFetchedAt: null,
+    }),
 
   refresh: async (filters = {}) => {
     const { lastFetchedAt } = get();
-    // Respect cache unless filters are explicitly provided
-    const hasFilters = filters.from || filters.to;
-    if (!hasFilters && lastFetchedAt && Date.now() - lastFetchedAt < CACHE_TTL_MS) {
-      return;
-    }
+    const hasFilters = !!(filters.from || filters.to);
+
+    if (!hasFilters && lastFetchedAt && Date.now() - lastFetchedAt < CACHE_MS) return;
 
     set({ isLoading: true, error: null });
 
     try {
-      const params = new URLSearchParams();
-      if (filters.from) params.set("from", filters.from);
-      if (filters.to)   params.set("to",   filters.to);
-      const qs = params.toString() ? `?${params.toString()}` : "";
+      const qs  = new URLSearchParams();
+      if (filters.from) qs.set("from", filters.from);
+      if (filters.to)   qs.set("to",   filters.to);
+      const query = qs.toString() ? `?${qs.toString()}` : "";
 
-      const res = await api.get<FullAnalytics>(`/analytics/full${qs}`);
+      const res = await api.get<FullAnalytics>(`/analytics/full${query}`);
+      if (!res.success) { set({ isLoading: false, error: res.error }); return; }
 
-      if (!res.success) {
-        set({ isLoading: false, error: res.error });
-        return;
-      }
-
-      set({
-        data:          res.data,
-        isLoading:     false,
-        error:         null,
-        lastFetchedAt: Date.now(),
-      });
+      set({ data: res.data, isLoading: false, error: null, lastFetchedAt: Date.now() });
     } catch (err) {
       console.error("[analyticsStore.refresh]", err);
       set({ isLoading: false, error: "Failed to load analytics" });
@@ -169,23 +142,28 @@ export const useAnalyticsStore = create<AnalyticsStore>()((set, get) => ({
   },
 }));
 
-// ── Auto-init on auth state change ────────────────────────────────────────
-
-if (typeof window !== "undefined") {
-  useAuthStore.subscribe(
-    (state) => state.user?.id,
-    (userId) => {
-      if (userId) {
-        useAnalyticsStore.getState().init();
-      } else {
-        useAnalyticsStore.getState().reset();
-      }
-    }
-  );
-}
-
-// ── Convenience hook ──────────────────────────────────────────────────────
+// ── Selector ──────────────────────────────────────────────────────────────
 
 export function selectOverview(state: AnalyticsStore): AnalyticsOverview {
   return state.data?.overview ?? EMPTY_OVERVIEW;
+}
+
+// ── Auto-init / reset (single-arg subscribe) ──────────────────────────────
+
+if (typeof window !== "undefined") {
+  import("@/store/authStore").then(({ useAuthStore }) => {
+    let prevUserId: string | undefined;
+
+    useAuthStore.subscribe((state) => {
+      const userId = state.user?.id;
+      if (userId !== prevUserId) {
+        prevUserId = userId;
+        if (userId) {
+          useAnalyticsStore.getState().init();
+        } else {
+          useAnalyticsStore.getState().reset();
+        }
+      }
+    });
+  });
 }

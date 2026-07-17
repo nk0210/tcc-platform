@@ -1,25 +1,21 @@
-/**
- * TCC Trade Repository — sole Prisma layer for Trade + AccountSnapshot.
- * Services call this; routes call services.
- */
 import db from "../../lib/prisma";
-import type { Prisma, TradeSide, CloseReason, TradeResult } from "@tcc/db";
+import type { Prisma, TradeSide, CloseReason, TradeResult } from "@prisma/client";
 
 export interface CreateTradeInput {
-  userId:       string;
-  symbol:       string;
-  displayName:  string;
-  category:     string;
-  emoji?:       string;
-  side:         TradeSide;
-  lotSize:      number;
-  entryPrice:   number;
-  sl?:          number | null;
-  tp?:          number | null;
-  marginUsed:   number;
+  userId:        string;
+  symbol:        string;
+  displayName:   string;
+  category:      string;
+  emoji?:        string | null;
+  side:          TradeSide;
+  lotSize:       number;
+  entryPrice:    number;
+  sl?:           number | null;
+  tp?:           number | null;
+  marginUsed:    number;
   notionalValue: number;
-  leverage:     number;
-  openedAt?:    Date;
+  leverage:      number;
+  openedAt?:     Date;
 }
 
 export interface CloseTradeInput {
@@ -31,26 +27,19 @@ export interface CloseTradeInput {
   durationMs:  number;
   result:      TradeResult;
   closedAt:    Date;
-  session?:    string;
-}
-
-export interface UpdateSLTPInput {
-  sl?: number | null;
-  tp?: number | null;
+  session?:    string | null;
 }
 
 export interface ListTradesParams {
-  page:      number;
-  pageSize:  number;
-  symbol?:   string;
-  side?:     TradeSide;
-  from?:     Date;
-  to?:       Date;
+  page:     number;
+  pageSize: number;
+  symbol?:  string;
+  side?:    TradeSide;
+  from?:    Date;
+  to?:      Date;
 }
 
 export const tradeRepository = {
-  // ── Open positions ─────────────────────────────────────────────────────
-
   findOpenByUserId(userId: string) {
     return db.trade.findMany({
       where:   { userId, isOpen: true },
@@ -58,24 +47,20 @@ export const tradeRepository = {
     });
   },
 
-  // ── Closed trades (paginated) ──────────────────────────────────────────
-
   async findClosedByUserId(userId: string, params: ListTradesParams) {
     const { page, pageSize, symbol, side, from, to } = params;
-
     const where: Prisma.TradeWhereInput = {
       userId,
       isOpen: false,
       ...(symbol ? { symbol } : {}),
       ...(side   ? { side }   : {}),
-      ...(from || to ? {
+      ...((from || to) ? {
         closedAt: {
           ...(from ? { gte: from } : {}),
           ...(to   ? { lte: to }   : {}),
         },
       } : {}),
     };
-
     const [items, total] = await Promise.all([
       db.trade.findMany({
         where,
@@ -85,18 +70,15 @@ export const tradeRepository = {
       }),
       db.trade.count({ where }),
     ]);
-
     return { items, total };
   },
-
-  // ── All closed trades for analytics (no pagination) ───────────────────
 
   findAllClosedByUserId(userId: string, from?: Date, to?: Date) {
     return db.trade.findMany({
       where: {
         userId,
         isOpen: false,
-        ...(from || to ? {
+        ...((from || to) ? {
           closedAt: {
             ...(from ? { gte: from } : {}),
             ...(to   ? { lte: to }   : {}),
@@ -107,43 +89,35 @@ export const tradeRepository = {
     });
   },
 
-  // ── Find by ID ─────────────────────────────────────────────────────────
-
   findById(id: string, userId: string) {
-    return db.trade.findFirst({
-      where: { id, userId },
-    });
+    return db.trade.findFirst({ where: { id, userId } });
   },
-
-  // ── Open a new trade ───────────────────────────────────────────────────
 
   create(input: CreateTradeInput) {
     return db.trade.create({
       data: {
-        userId:       input.userId,
-        mode:         "paper",
-        symbol:       input.symbol,
-        displayName:  input.displayName,
-        category:     input.category,
-        emoji:        input.emoji ?? null,
-        side:         input.side,
-        lotSize:      input.lotSize,
-        entryPrice:   input.entryPrice,
-        currentPrice: input.entryPrice,
-        sl:           input.sl ?? null,
-        tp:           input.tp ?? null,
-        marginUsed:   input.marginUsed,
+        userId:        input.userId,
+        mode:          "paper",
+        symbol:        input.symbol,
+        displayName:   input.displayName,
+        category:      input.category,
+        emoji:         input.emoji   ?? null,
+        side:          input.side,
+        lotSize:       input.lotSize,
+        entryPrice:    input.entryPrice,
+        currentPrice:  input.entryPrice,
+        sl:            input.sl      ?? null,
+        tp:            input.tp      ?? null,
+        marginUsed:    input.marginUsed,
         notionalValue: input.notionalValue,
-        leverage:     input.leverage,
-        isOpen:       true,
-        openedAt:     input.openedAt ?? new Date(),
+        leverage:      input.leverage,
+        isOpen:        true,
+        openedAt:      input.openedAt ?? new Date(),
       },
     });
   },
 
-  // ── Update SL/TP ───────────────────────────────────────────────────────
-
-  updateSLTP(id: string, userId: string, input: UpdateSLTPInput) {
+  updateSLTP(id: string, input: { sl?: number | null; tp?: number | null }) {
     return db.trade.update({
       where: { id },
       data:  {
@@ -153,14 +127,9 @@ export const tradeRepository = {
     });
   },
 
-  // ── Close a position (within a transaction) ────────────────────────────
-
   async close(id: string, userId: string, input: CloseTradeInput) {
     return db.$transaction(async (tx) => {
-      const trade = await tx.trade.findFirst({
-        where: { id, userId, isOpen: true },
-      });
-
+      const trade = await tx.trade.findFirst({ where: { id, userId, isOpen: true } });
       if (!trade) throw new Error("TRADE_NOT_FOUND_OR_ALREADY_CLOSED");
 
       const updatedTrade = await tx.trade.update({
@@ -186,7 +155,7 @@ export const tradeRepository = {
           tradeId:     trade.id,
           symbol:      trade.symbol,
           displayName: trade.displayName,
-          category:    trade.category ?? "",
+          category:    trade.category ?? "crypto",
           emoji:       trade.emoji    ?? null,
           side:        trade.side,
           lotSize:     trade.lotSize,
@@ -210,19 +179,13 @@ export const tradeRepository = {
     });
   },
 
-  // ── Delete (open trade only) ──────────────────────────────────────────
-
   async delete(id: string, userId: string) {
-    const trade = await db.trade.findFirst({
-      where: { id, userId, isOpen: true },
-    });
+    const trade = await db.trade.findFirst({ where: { id, userId, isOpen: true } });
     if (!trade) throw new Error("TRADE_NOT_FOUND_OR_ALREADY_CLOSED");
     return db.trade.delete({ where: { id } });
   },
 
-  // ── Account snapshot ──────────────────────────────────────────────────
-
-  async getLatestSnapshot(userId: string) {
+  getLatestSnapshot(userId: string) {
     return db.accountSnapshot.findFirst({
       where:   { userId },
       orderBy: { snapshotAt: "desc" },
@@ -230,20 +193,20 @@ export const tradeRepository = {
   },
 
   saveSnapshot(userId: string, data: {
-    balance: number; equity: number; floatingPnl: number;
-    marginUsed: number; freeMargin: number; marginLevel?: number | null;
+    balance:      number;
+    equity:       number;
+    floatingPnl:  number;
+    marginUsed:   number;
+    freeMargin:   number;
+    marginLevel?: number | null;
   }) {
-    return db.accountSnapshot.create({
-      data: { userId, ...data },
-    });
+    return db.accountSnapshot.create({ data: { userId, ...data } });
   },
-
-  // ── Aggregate for balance calculation ─────────────────────────────────
 
   async sumClosedNetPnl(userId: string): Promise<number> {
     const result = await db.trade.aggregate({
-      where:  { userId, isOpen: false },
-      _sum:   { netPnl: true },
+      where: { userId, isOpen: false },
+      _sum:  { netPnl: true },
     });
     return result._sum.netPnl ?? 0;
   },

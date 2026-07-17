@@ -1,27 +1,34 @@
+/**
+ * TCC JWT authentication middleware.
+ *
+ * AuthRequest extends Express Request — the `req as AuthRequest` cast in routes
+ * is valid and standard Express pattern (not an unsafe cast).
+ *
+ * Roles are string[] — identical values to Prisma UserRole enum but decoupled
+ * from the Prisma package so middleware never imports Prisma types.
+ */
 import type { Request, Response, NextFunction } from "express";
 import { verifyAccessToken } from "../lib/jwt";
 import { unauthorized } from "../lib/response";
 import db from "../lib/prisma";
-import type { UserRole } from "@tcc/types";
 import { getEffectivePermissions } from "../server/permissions/permissionService";
+
+// ── AuthRequest ───────────────────────────────────────────────────────────
+// Augments Express Request with auth fields attached by authenticate().
 
 export interface AuthRequest extends Request {
   userId:      string;
   email:       string;
   handle:      string;
-  roles:       UserRole[];
+  roles:       string[];
   permissions: string[];
 }
 
-/**
- * Require a valid Bearer JWT access token.
- * Attaches userId, email, handle, roles, and effective permissions
- * to the request. Permissions are read from the in-memory cache
- * (see permissionService.ts) — no extra DB query.
- */
+// ── authenticate ──────────────────────────────────────────────────────────
+
 export async function authenticate(
-  req: Request,
-  res: Response,
+  req:  Request,
+  res:  Response,
   next: NextFunction
 ): Promise<void> {
   const header = req.headers.authorization;
@@ -44,18 +51,22 @@ export async function authenticate(
       return;
     }
 
-    // Dual check during status-field migration period (see tech debt notes)
-    if (!user.isActive || user.isSuspended || user.status === "BANNED" || user.status === "DEACTIVATED") {
+    if (
+      !user.isActive ||
+      user.isSuspended ||
+      user.status === "BANNED" ||
+      user.status === "DEACTIVATED"
+    ) {
       unauthorized(res, "Account is inactive, suspended, or banned");
       return;
     }
 
-    const authReq = req as AuthRequest;
-    authReq.userId  = payload.sub;
-    authReq.email   = payload.email;
-    authReq.handle  = payload.handle;
-    authReq.roles   = payload.roles;
-    authReq.permissions = await getEffectivePermissions(payload.roles as any);
+    const authReq        = req as AuthRequest;
+    authReq.userId       = payload.sub;
+    authReq.email        = payload.email;
+    authReq.handle       = payload.handle;
+    authReq.roles        = payload.roles;
+    authReq.permissions  = await getEffectivePermissions(payload.roles);
 
     next();
   } catch {
@@ -63,14 +74,12 @@ export async function authenticate(
   }
 }
 
-/**
- * Require specific roles (call after authenticate).
- */
-export function requireRole(...allowedRoles: UserRole[]) {
+// ── requireRole ───────────────────────────────────────────────────────────
+
+export function requireRole(...allowedRoles: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const authReq = req as AuthRequest;
-    const hasRole = authReq.roles?.some((r) => allowedRoles.includes(r));
-    if (!hasRole) {
+    if (!authReq.roles?.some((r) => allowedRoles.includes(r))) {
       res.status(403).json({ success: false, error: "Insufficient permissions", code: "FORBIDDEN" });
       return;
     }
@@ -78,32 +87,26 @@ export function requireRole(...allowedRoles: UserRole[]) {
   };
 }
 
-/**
- * Optional authentication — attaches user if token present, continues if not.
- */
+// ── optionalAuthenticate ──────────────────────────────────────────────────
+
 export async function optionalAuthenticate(
-  req: Request,
+  req:  Request,
   _res: Response,
   next: NextFunction
 ): Promise<void> {
   const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) {
-    next();
-    return;
+  if (header?.startsWith("Bearer ")) {
+    try {
+      const payload        = verifyAccessToken(header.slice(7));
+      const authReq        = req as AuthRequest;
+      authReq.userId       = payload.sub;
+      authReq.email        = payload.email;
+      authReq.handle       = payload.handle;
+      authReq.roles        = payload.roles;
+      authReq.permissions  = await getEffectivePermissions(payload.roles);
+    } catch {
+      // Invalid token — continue unauthenticated
+    }
   }
-
-  try {
-    const token   = header.slice(7);
-    const payload = verifyAccessToken(token);
-    const authReq = req as AuthRequest;
-    authReq.userId  = payload.sub;
-    authReq.email   = payload.email;
-    authReq.handle  = payload.handle;
-    authReq.roles   = payload.roles;
-    authReq.permissions = await getEffectivePermissions(payload.roles as any);
-  } catch {
-    // Ignore invalid token for optional auth
-  }
-
   next();
 }

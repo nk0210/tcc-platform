@@ -1,8 +1,5 @@
-/**
- * TCC Journal Repository — sole Prisma layer for JournalEntry.
- */
 import db from "../../lib/prisma";
-import type { Prisma } from "@tcc/db";
+import type { Prisma } from "@prisma/client";
 
 export interface UpdateJournalInput {
   emotion?:         string;
@@ -35,20 +32,18 @@ export interface ListJournalParams {
 export const journalRepository = {
   async findByUserId(userId: string, params: ListJournalParams) {
     const { page, pageSize, symbol, session, strategy, from, to } = params;
-
     const where: Prisma.JournalEntryWhereInput = {
       userId,
       ...(symbol   ? { symbol }   : {}),
       ...(session  ? { session }  : {}),
       ...(strategy ? { strategy } : {}),
-      ...(from || to ? {
+      ...((from || to) ? {
         closedAt: {
           ...(from ? { gte: from } : {}),
           ...(to   ? { lte: to }   : {}),
         },
       } : {}),
     };
-
     const [items, total] = await Promise.all([
       db.journalEntry.findMany({
         where,
@@ -58,40 +53,31 @@ export const journalRepository = {
       }),
       db.journalEntry.count({ where }),
     ]);
-
     return { items, total };
   },
 
   findById(id: string, userId: string) {
-    return db.journalEntry.findFirst({
-      where: { id, userId },
-    });
+    return db.journalEntry.findFirst({ where: { id, userId } });
   },
 
   findByTradeId(tradeId: string, userId: string) {
-    return db.journalEntry.findFirst({
-      where: { tradeId, userId },
-    });
+    return db.journalEntry.findFirst({ where: { tradeId, userId } });
   },
 
-  update(id: string, userId: string, input: UpdateJournalInput) {
-    return db.journalEntry.update({
-      where: { id },
-      data:  input,
-    });
+  update(id: string, input: UpdateJournalInput) {
+    return db.journalEntry.update({ where: { id }, data: input });
   },
 
-  // For analytics — all entries without pagination
   findAllByUserId(userId: string) {
     return db.journalEntry.findMany({
       where:   { userId },
       orderBy: { closedAt: "asc" },
       select: {
         id: true, symbol: true, displayName: true, category: true,
-        side: true, lotSize: true, entryPrice: true, exitPrice: true,
-        grossPnl: true, netPnl: true, commission: true, result: true,
-        openedAt: true, closedAt: true, durationMs: true, closeReason: true,
-        session: true, strategy: true, timeframe: true,
+        emoji: true, side: true, lotSize: true, entryPrice: true,
+        exitPrice: true, grossPnl: true, netPnl: true, commission: true,
+        result: true, openedAt: true, closedAt: true, durationMs: true,
+        closeReason: true, session: true, strategy: true, timeframe: true,
         confidenceLevel: true, stressLevel: true, followedPlan: true,
         entryQuality: true, tags: true, emotion: true,
       },

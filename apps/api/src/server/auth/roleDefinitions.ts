@@ -1,20 +1,19 @@
 /**
- * TCC Role Definitions — display/priority metadata ONLY.
- *
- * This file does NOT define permission grants. Grants live in the
- * database (Role/Permission/RolePermission tables, seeded by
- * packages/db/prisma/seed/seed.ts) and are read at runtime by
- * permissionService.ts. This avoids having two sources of truth
- * for "what can this role do."
- *
- * This file exists purely for:
- *   - Human-readable labels (admin UI, logs)
- *   - Role priority ordering (which role "wins" for display purposes
- *     when a user has multiple roles)
+ * Role metadata — display labels and priority order ONLY.
+ * No permission grants defined here. Grants live in the database.
+ * No Prisma imports — roles are plain strings.
  */
-import type { UserRole } from "@tcc/db";
 
-export const ROLE_LABELS: Record<UserRole, string> = {
+export type TccRole =
+  | "NORMAL_USER"
+  | "FOLLOWER_TRADER"
+  | "VERIFIED_TRADER"
+  | "MASTER_TRADER"
+  | "MENTOR"
+  | "ADMIN"
+  | "OWNER";
+
+export const ROLE_LABELS: Record<TccRole, string> = {
   NORMAL_USER:     "Trader",
   FOLLOWER_TRADER: "Follower",
   VERIFIED_TRADER: "Verified Trader",
@@ -24,12 +23,8 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   OWNER:           "Owner",
 };
 
-/**
- * Priority order — highest authority first.
- * Used by getEffectiveRole() to pick a single "display role" out of
- * a user's role array.
- */
-export const ROLE_PRIORITY: UserRole[] = [
+/** Highest priority first — used to pick a single display role */
+export const ROLE_PRIORITY: TccRole[] = [
   "OWNER",
   "ADMIN",
   "MENTOR",
@@ -39,19 +34,15 @@ export const ROLE_PRIORITY: UserRole[] = [
   "NORMAL_USER",
 ];
 
-export function getHighestPriorityRole(roles: UserRole[]): UserRole {
+const ADMIN_ROLES: TccRole[] = ["ADMIN", "OWNER"];
+
+export function getHighestRole(roles: string[]): TccRole {
   for (const candidate of ROLE_PRIORITY) {
     if (roles.includes(candidate)) return candidate;
   }
   return "NORMAL_USER";
 }
 
-export const ADMIN_ROLES: UserRole[] = ["ADMIN", "OWNER"];
-
-export function isAdminRole(roles: UserRole[]): boolean {
-  return roles.some((r) => ADMIN_ROLES.includes(r));
-}
-
-export function isOwnerRole(roles: UserRole[]): boolean {
-  return roles.includes("OWNER");
+export function isAdminRole(roles: string[]): boolean {
+  return roles.some((r) => (ADMIN_ROLES as string[]).includes(r));
 }

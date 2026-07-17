@@ -1,6 +1,10 @@
 /**
  * TCC Shared Types — Phase Alpha
+ * Framework-agnostic types shared between apps/api and apps/web.
+ * No Prisma imports. No Express imports. Pure TypeScript.
  */
+
+// ── Enum mirrors (string literals matching Prisma enum values) ────────────
 
 export type UserRole =
   | "NORMAL_USER"
@@ -21,9 +25,9 @@ export type ExperienceLevel =
   | "ADVANCED"
   | "PROFESSIONAL";
 
-export type TradeSide = "BUY" | "SELL";
-export type CloseReason = "MANUAL" | "STOP_LOSS" | "TAKE_PROFIT";
-export type TradeResult = "WIN" | "LOSS" | "BREAKEVEN";
+export type TradeSide    = "BUY" | "SELL";
+export type CloseReason  = "MANUAL" | "STOP_LOSS" | "TAKE_PROFIT";
+export type TradeResult  = "WIN" | "LOSS" | "BREAKEVEN";
 
 export type PostType =
   | "TEXT"
@@ -33,20 +37,15 @@ export type PostType =
   | "STRATEGY_SHARE"
   | "COMPETITION_UPDATE";
 
-export type PostVisibility = "PUBLIC" | "FOLLOWERS_ONLY" | "PRIVATE";
-
-export type StrategyType =
-  | "OFFICIAL"
-  | "EDUCATIONAL_TEMPLATE"
-  | "CREATOR_PUBLISHED";
-
+export type PostVisibility  = "PUBLIC" | "FOLLOWERS_ONLY" | "PRIVATE";
+export type StrategyType    = "OFFICIAL" | "EDUCATIONAL_TEMPLATE" | "CREATOR_PUBLISHED";
 export type PerformanceStatus = "UNVERIFIED" | "SELF_REPORTED" | "VERIFIED";
-export type RiskLevel = "LOW" | "MEDIUM" | "HIGH";
-export type PricingModel = "FREE" | "ONE_TIME" | "SUBSCRIPTION";
-export type CourseType = "OFFICIAL" | "FREE_RESOURCE" | "CREATOR_PUBLISHED";
-export type CourseLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
+export type RiskLevel       = "LOW" | "MEDIUM" | "HIGH";
+export type PricingModel    = "FREE" | "ONE_TIME" | "SUBSCRIPTION";
+export type CourseType      = "OFFICIAL" | "FREE_RESOURCE" | "CREATOR_PUBLISHED";
+export type CourseLevel     = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
 export type CertificateStatus = "UNAVAILABLE" | "COMING_SOON" | "EARNED";
-export type LessonType = "TEXT" | "VIDEO" | "QUIZ" | "EXERCISE";
+export type LessonType      = "TEXT" | "VIDEO" | "QUIZ" | "EXERCISE";
 
 export type ApplicationStatus =
   | "DRAFT"
@@ -57,17 +56,15 @@ export type ApplicationStatus =
   | "MORE_INFO_REQUIRED"
   | "SUSPENDED";
 
-export type MasterStatus = "ACTIVE" | "SUSPENDED" | "REMOVED";
-export type CopyMode = "PAPER_COPY" | "LIVE_COPY";
-
+export type MasterStatus       = "ACTIVE" | "SUSPENDED" | "REMOVED";
+export type CopyMode           = "PAPER_COPY" | "LIVE_COPY";
 export type RelationshipStatus =
   | "ACTIVE"
   | "PAUSED"
   | "STOPPED"
   | "BLOCKED"
   | "PENDING_BROKER_CONNECTION";
-
-export type CopyLotMode = "FIXED_LOT" | "RISK_MULTIPLIER" | "EQUITY_RATIO";
+export type CopyLotMode     = "FIXED_LOT" | "RISK_MULTIPLIER" | "EQUITY_RATIO";
 export type CopyTradeStatus = "COPIED_PAPER" | "SKIPPED" | "BLOCKED" | "PENDING" | "FAILED";
 
 export type NotificationType =
@@ -83,11 +80,11 @@ export type NotificationType =
   | "PRICE_ALERT";
 
 export type NotificationPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-export type ReportStatus = "PENDING" | "REVIEWED" | "RESOLVED" | "DISMISSED";
-export type ReportPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-export type FollowStatus = "ACTIVE" | "PENDING" | "BLOCKED";
+export type ReportStatus         = "PENDING" | "REVIEWED" | "RESOLVED" | "DISMISSED";
+export type ReportPriority       = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type FollowStatus         = "ACTIVE" | "PENDING" | "BLOCKED";
 
-// ── API Response wrappers ─────────────────────────────────────────────────
+// ── API response wrappers ─────────────────────────────────────────────────
 
 export interface ApiSuccess<T> {
   success: true;
@@ -116,25 +113,9 @@ export interface TokenPayload {
   sub:    string;
   email:  string;
   handle: string;
-  roles:  UserRole[];
-  iat?: number;
-  exp?: number;
-}
-
-export interface RegisterRequest {
-  email:       string;
-  password:    string;
-  handle:      string;
-  displayName: string;
-}
-
-export interface LoginRequest {
-  email:    string;
-  password: string;
-}
-
-export interface RefreshRequest {
-  refreshToken: string;
+  roles:  string[];
+  iat?:   number;
+  exp?:   number;
 }
 
 // ── User DTOs ─────────────────────────────────────────────────────────────
@@ -153,20 +134,18 @@ export interface UserPublicDTO {
   profileVisibility: Visibility;
   experienceLevel:   ExperienceLevel | null;
   socialLinks: {
-    website?:   string;
-    x?:         string;
-    linkedin?:  string;
-    youtube?:   string;
-    instagram?: string;
-  };
+    website?:   string | null;
+    x?:         string | null;
+    linkedin?:  string | null;
+    youtube?:   string | null;
+    instagram?: string | null;
+  } | null;
   tradingIdentity: {
     marketsTraded:     string[];
     symbolsTraded:     string[];
     strategiesUsed:    string[];
     preferredSessions: string[];
-  };
-  followersCount: number;
-  followingCount: number;
+  } | null;
   createdAt: string;
 }
 
@@ -175,149 +154,11 @@ export interface UserPrivateDTO extends UserPublicDTO {
   portfolioVisibility: Visibility;
   isActive:            boolean;
   lastLoginAt:         string | null;
-  permissions:         string[]; // NEW — effective permission keys for this session
+  permissions:         string[];
   updatedAt:           string;
 }
 
-export interface UpdateProfileRequest {
-  displayName?:        string;
-  bio?:                string;
-  location?:           string;
-  profileVisibility?:  Visibility;
-  portfolioVisibility?: Visibility;
-  experienceLevel?:    ExperienceLevel | null;
-  tradingIdentity?: {
-    marketsTraded?:     string[];
-    symbolsTraded?:     string[];
-    strategiesUsed?:    string[];
-    preferredSessions?: string[];
-  };
-  socialLinks?: {
-    website?:   string | null;
-    x?:         string | null;
-    linkedin?:  string | null;
-    youtube?:   string | null;
-    instagram?: string | null;
-  };
-}
-
-// ── Trade DTOs ────────────────────────────────────────────────────────────
-
-export interface TradeDTO {
-  id:            string;
-  userId:        string;
-  mode:          string;
-  symbol:        string;
-  displayName:   string;
-  category:      string;
-  side:          TradeSide;
-  lotSize:       number;
-  entryPrice:    number;
-  currentPrice:  number | null;
-  exitPrice:     number | null;
-  sl:            number | null;
-  tp:            number | null;
-  grossPnl:      number | null;
-  netPnl:        number | null;
-  marginUsed:    number;
-  notionalValue: number;
-  leverage:      number;
-  closeReason:   CloseReason | null;
-  openedAt:      string;
-  closedAt:      string | null;
-  durationMs:    number | null;
-  isOpen:        boolean;
-  result:        TradeResult | null;
-  createdAt:     string;
-  updatedAt:     string;
-}
-
-export interface OpenTradeRequest {
-  symbol:        string;
-  displayName:   string;
-  category:      string;
-  side:          TradeSide;
-  lotSize:       number;
-  entryPrice:    number;
-  sl?:           number | null;
-  tp?:           number | null;
-  marginUsed:    number;
-  notionalValue: number;
-  leverage:      number;
-}
-
-export interface CloseTradeRequest {
-  exitPrice:   number;
-  closeReason: CloseReason;
-  grossPnl:    number;
-  netPnl:      number;
-  durationMs:  number;
-}
-
-export interface UpdateSLTPRequest {
-  sl?: number | null;
-  tp?: number | null;
-}
-
-// ── Journal DTOs ──────────────────────────────────────────────────────────
-
-export interface JournalEntryDTO {
-  id:          string;
-  userId:      string;
-  tradeId:     string | null;
-  symbol:      string;
-  displayName: string;
-  side:        TradeSide;
-  lotSize:     number;
-  entryPrice:  number;
-  exitPrice:   number | null;
-  grossPnl:    number | null;
-  netPnl:      number | null;
-  result:      TradeResult | null;
-  openedAt:    string | null;
-  closedAt:    string | null;
-  durationMs:  number | null;
-  closeReason: string | null;
-  sl:          number | null;
-  tp:          number | null;
-  emotion:         string;
-  confidenceLevel: number;
-  stressLevel:     number;
-  entryQuality:    string;
-  followedPlan:    boolean | null;
-  strategy:        string;
-  marketStructure: string;
-  session:         string;
-  timeframe:       string;
-  notes:           string;
-  whatWentRight:   string;
-  whatWentWrong:   string;
-  lessonLearned:   string;
-  tags:            string[];
-  aiAnalysis:      string;
-  createdAt:       string;
-  updatedAt:       string;
-}
-
-export interface UpdateJournalEntryRequest {
-  emotion?:         string;
-  confidenceLevel?: number;
-  stressLevel?:     number;
-  entryQuality?:    string;
-  followedPlan?:    boolean | null;
-  strategy?:        string;
-  marketStructure?: string;
-  session?:         string;
-  timeframe?:       string;
-  notes?:           string;
-  whatWentRight?:   string;
-  whatWentWrong?:   string;
-  lessonLearned?:   string;
-  tags?:            string[];
-  aiAnalysis?:      string;
-}
-
-// ── RBAC DTOs (NEW) ──────────────────────────────────────────────────────
+// ── RBAC DTOs ─────────────────────────────────────────────────────────────
 
 export interface RoleDTO {
   id:          string;
@@ -363,6 +204,77 @@ export interface NotificationDTO {
   createdAt:   string;
 }
 
+// ── Trade DTOs ────────────────────────────────────────────────────────────
+
+export interface TradeDTO {
+  id:            string;
+  userId:        string;
+  mode:          string;
+  symbol:        string;
+  displayName:   string;
+  category:      string;
+  side:          TradeSide;
+  lotSize:       number;
+  entryPrice:    number;
+  currentPrice:  number | null;
+  exitPrice:     number | null;
+  sl:            number | null;
+  tp:            number | null;
+  grossPnl:      number | null;
+  commission:    number | null;
+  netPnl:        number | null;
+  marginUsed:    number;
+  notionalValue: number;
+  leverage:      number;
+  closeReason:   CloseReason | null;
+  openedAt:      string;
+  closedAt:      string | null;
+  durationMs:    number | null;
+  isOpen:        boolean;
+  result:        TradeResult | null;
+  session:       string | null;
+  createdAt:     string;
+  updatedAt:     string;
+}
+
+// ── Journal DTOs ──────────────────────────────────────────────────────────
+
+export interface JournalEntryDTO {
+  id:              string;
+  userId:          string;
+  tradeId:         string | null;
+  symbol:          string;
+  displayName:     string;
+  side:            TradeSide;
+  lotSize:         number;
+  entryPrice:      number;
+  exitPrice:       number | null;
+  grossPnl:        number | null;
+  netPnl:          number | null;
+  result:          TradeResult | null;
+  openedAt:        string | null;
+  closedAt:        string | null;
+  durationMs:      number | null;
+  closeReason:     string | null;
+  emotion:         string;
+  confidenceLevel: number;
+  stressLevel:     number;
+  entryQuality:    string;
+  followedPlan:    boolean | null;
+  strategy:        string;
+  marketStructure: string;
+  session:         string;
+  timeframe:       string;
+  notes:           string;
+  whatWentRight:   string;
+  whatWentWrong:   string;
+  lessonLearned:   string;
+  tags:            string[];
+  aiAnalysis:      string;
+  createdAt:       string;
+  updatedAt:       string;
+}
+
 // ── Pagination ─────────────────────────────────────────────────────────────
 
 export interface PaginatedResponse<T> {
@@ -373,9 +285,4 @@ export interface PaginatedResponse<T> {
   totalPages: number;
   hasNext:    boolean;
   hasPrev:    boolean;
-}
-
-export interface PaginationQuery {
-  page?:     number;
-  pageSize?: number;
 }

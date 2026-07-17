@@ -1,13 +1,15 @@
 /**
  * TCC Auth Store — Phase Alpha
- *
- * Real JWT authentication via TCC API.
- * Access tokens stored in memory only (XSS-safe).
- * Refresh tokens in localStorage (Phase Alpha) — HttpOnly cookie upgrade later.
+ * Real JWT auth via TCC API. Access tokens in memory. Refresh in localStorage.
  */
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { api, setTokens, clearTokens, getStoredRefreshToken } from "@/lib/api/client";
+import {
+  api,
+  setTokens,
+  clearTokens,
+  getStoredRefreshToken,
+} from "@/lib/api/client";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -32,7 +34,6 @@ export interface AuthUser {
   roles:       UserRole[];
   status?:     UserStatus;
   isVerified?: boolean;
-  /** Effective permission keys for this session — computed server-side. */
   permissions: string[];
 }
 
@@ -60,6 +61,19 @@ interface AuthStore {
   clearError: () => void;
 }
 
+// ── Token response shape ──────────────────────────────────────────────────
+
+interface TokenSet {
+  accessToken:  string;
+  refreshToken: string;
+  expiresIn:    number;
+}
+
+interface AuthResponse {
+  user:   AuthUser;
+  tokens: TokenSet;
+}
+
 // ── Store ─────────────────────────────────────────────────────────────────
 
 export const useAuthStore = create<AuthStore>()(
@@ -72,20 +86,21 @@ export const useAuthStore = create<AuthStore>()(
 
       clearError: () => set({ error: null }),
 
+      // ── Restore session from stored refresh token on app mount ──────────
       initialise: async () => {
         if (get().isInitialised) return;
 
-        const storedRefreshToken = getStoredRefreshToken();
-        if (!storedRefreshToken) {
+        const rt = getStoredRefreshToken();
+        if (!rt) {
           set({ isInitialised: true });
           return;
         }
 
         set({ isLoading: true });
         try {
-          const refreshRes = await api.post<{ tokens: { accessToken: string; refreshToken: string; expiresIn: number } }>(
+          const refreshRes = await api.post<{ tokens: TokenSet }>(
             "/auth/refresh",
-            { refreshToken: storedRefreshToken },
+            { refreshToken: rt },
             { skipAuth: true, skipRefresh: true }
           );
 
@@ -110,13 +125,15 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
+      // ── Register ─────────────────────────────────────────────────────────
       register: async ({ email, password, handle, displayName }) => {
         set({ isLoading: true, error: null });
         try {
-          const res = await api.post<{
-            user:   AuthUser;
-            tokens: { accessToken: string; refreshToken: string; expiresIn: number };
-          }>("/auth/register", { email, password, handle, displayName }, { skipAuth: true });
+          const res = await api.post<AuthResponse>(
+            "/auth/register",
+            { email, password, handle, displayName },
+            { skipAuth: true }
+          );
 
           if (!res.success) {
             set({ isLoading: false, error: res.error });
@@ -133,13 +150,15 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
+      // ── Login ─────────────────────────────────────────────────────────────
       login: async ({ email, password }) => {
         set({ isLoading: true, error: null });
         try {
-          const res = await api.post<{
-            user:   AuthUser;
-            tokens: { accessToken: string; refreshToken: string; expiresIn: number };
-          }>("/auth/login", { email, password }, { skipAuth: true });
+          const res = await api.post<AuthResponse>(
+            "/auth/login",
+            { email, password },
+            { skipAuth: true }
+          );
 
           if (!res.success) {
             set({ isLoading: false, error: res.error });
@@ -156,20 +175,20 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
+      // ── Logout ────────────────────────────────────────────────────────────
       logout: async () => {
-        const storedRefreshToken = getStoredRefreshToken();
+        const rt = getStoredRefreshToken();
         try {
-          if (storedRefreshToken) {
-            await api.delete("/auth/logout", { refreshToken: storedRefreshToken });
-          }
+          if (rt) await api.delete("/auth/logout", { refreshToken: rt });
         } catch {
-          // ignore
+          // ignore network errors on logout
         } finally {
           clearTokens();
           set({ user: null, error: null });
         }
       },
 
+      // ── Logout all devices ────────────────────────────────────────────────
       logoutAll: async () => {
         try {
           await api.delete("/auth/logout-all");
@@ -189,6 +208,7 @@ export const useAuthStore = create<AuthStore>()(
         }
         return localStorage;
       }),
+      // Persist ONLY the user object — tokens handled by lib/api/client.ts
       partialize: (state) => ({ user: state.user }),
     }
   )
