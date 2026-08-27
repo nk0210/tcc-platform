@@ -44,7 +44,7 @@ export default function MentoringPage() {
       mentorHandle: reviewForm.mentorHandle,
       studentHandle: user?.handle || "guest",
       tradeSymbol: trade.symbol,
-      tradeDirection: trade.direction,
+      tradeDirection: trade.side,
       entryPrice: trade.entryPrice,
     });
     setShowReviewRequest(false);
@@ -425,7 +425,7 @@ export default function MentoringPage() {
                     <option value="">Choose a trade...</option>
                     {entries.map(e => (
                       <option key={e.id} value={e.id} className="bg-[#0a0a0f]">
-                        {e.direction} {e.symbol} @ ${e.entryPrice.toFixed(2)} — {e.emotion}
+                        {e.side} {e.symbol} @ ${e.entryPrice.toFixed(2)} — {e.emotion}
                       </option>
                     ))}
                   </select>

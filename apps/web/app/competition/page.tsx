@@ -36,7 +36,7 @@ export default function CompetitionPage() {
 
   const handleJoin = (competition: Competition) => {
     if (!user) return;
-    joinCompetition(competition.id, user.handle || "guest", user.skillLevel || "ROOKIE");
+    joinCompetition(competition.id, user.handle || "guest", user.experienceLevel || "ROOKIE");
   };
 
   const handleGenerateReport = async (participant: any) => {

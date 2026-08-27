@@ -240,6 +240,7 @@ model User {
   postLikes           PostLike[]
   commentLikes        CommentLike[]
   savedPosts          SavedPost[]
+  postShares          PostShare[]                    // ← NEW Day 3
 
   strategies          Strategy[]
   savedStrategies     SavedStrategy[]
@@ -481,6 +482,7 @@ model CommunityPost {
 
   likes    PostLike[]
   savedBy  SavedPost[]
+  shares   PostShare[]           // ← NEW Day 3
   comments CommunityComment[]
   reports  Report[]   @relation("PostReport")
 
@@ -489,7 +491,24 @@ model CommunityPost {
 
   @@index([authorId])
   @@index([visibility, isHiddenByAdmin, createdAt])
+  @@index([symbol])
 }
+
+// ─── NEW Day 3: Post Share tracking ───────────────────────────────────────
+
+model PostShare {
+  userId   String
+  postId   String
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post     CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  sharedAt DateTime      @default(now())
+
+  @@id([userId, postId])
+  @@index([postId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 
 model CommunityComment {
   id              String        @id @default(cuid())
@@ -500,6 +519,12 @@ model CommunityComment {
   content         String
   isHiddenByAdmin Boolean       @default(false)
 
+  // ─── NEW Day 3: Nested comments / replies ────────────────────────────
+  parentId String?
+  parent   CommunityComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies  CommunityComment[] @relation("CommentReplies")
+  // ─────────────────────────────────────────────────────────────────────
+
   likes   CommentLike[]
   reports Report[]      @relation("CommentReport")
 
@@ -507,7 +532,10 @@ model CommunityComment {
   updatedAt DateTime @updatedAt
 
   @@index([postId])
+  @@index([postId, parentId])
+  @@index([parentId])
   @@index([authorId])
+  @@index([createdAt])
 }
 
 model PostLike {

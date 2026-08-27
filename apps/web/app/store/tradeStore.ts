@@ -5,11 +5,15 @@
  */
 import { create } from "zustand";
 import { api }    from "@/lib/api/client";
+import { useJournalStore } from "@/store/journalStore";
+import { calcGrossPnl, calcNetPnl, recalcAccount } from "@/lib/trading/calculations";
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
 export const PAPER_INITIAL_BALANCE = 10_000;
 export const COMMISSION_RATE       = 0.0001;
+export const DEFAULT_LEVERAGE      = 10;
+const MAX_EVENTS = 50;
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -35,6 +39,9 @@ export interface Position {
   floatingPnl:   number;
   openedAt:      string;
 }
+
+/** @deprecated kept as an alias — the type was renamed to `Position`. */
+export type PaperPosition = Position;
 
 export interface ClosedTrade {
   id:          string;
@@ -82,12 +89,48 @@ export interface ClosePositionInput {
   durationMs:  number;
 }
 
+// ── Trade event log (local, in-memory) ─────────────────────────────────────
+// Drives useSystemNotifications — a generic bridge from trade actions to
+// notifications/journal, regardless of which component triggered them.
+
+export type TradeEventType =
+  | "position_opened"
+  | "position_closed_manual"
+  | "position_closed_sl"
+  | "position_closed_tp";
+
+export interface TradeEvent {
+  id:          string;
+  type:        TradeEventType;
+  position?:   Position;
+  closedTrade?: ClosedTrade;
+  timestamp:   number;
+}
+
+function closeReasonToEventType(reason: CloseReason): TradeEventType {
+  if (reason === "STOP_LOSS") return "position_closed_sl";
+  if (reason === "TAKE_PROFIT") return "position_closed_tp";
+  return "position_closed_manual";
+}
+
+function makeEventId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `evt_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
 interface TradeStore {
   positions:    Position[];
   closedTrades: ClosedTrade[];
   balance:      number;
   equity:       number;
   floatingPnl:  number;
+  freeMargin:   number;
+  marginUsed:   number;
+  marginLevel:  number;
+  leverage:     number;
+  events:       TradeEvent[];
 
   isLoading:     boolean;
   isSyncing:     boolean;
@@ -96,19 +139,14 @@ interface TradeStore {
 
   init:          () => Promise<void>;
   reset:         () => void;
+  setLeverage:   (leverage: number) => void;
   openPosition:  (input: OpenPositionInput)              => Promise<Position | null>;
   closePosition: (id: string, input: ClosePositionInput) => Promise<ClosedTrade | null>;
+  closePositionAtMarket: (id: string, closeReason: CloseReason) => Promise<ClosedTrade | null>;
+  closeAllPositions: () => Promise<void>;
   updateSLTP:    (id: string, sl: number | null, tp: number | null) => Promise<void>;
   deletePosition: (id: string)                           => Promise<void>;
-  updatePrices:  (prices: Record<string, number>)        => void;
-}
-
-// ── PnL helper ────────────────────────────────────────────────────────────
-
-function calcPnl(side: TradeSide, entry: number, current: number, lots: number): number {
-  return side === "BUY"
-    ? (current - entry) * lots
-    : (entry - current) * lots;
+  updatePrices:  (symbol: string, price: number)          => void;
 }
 
 // ── Mappers ───────────────────────────────────────────────────────────────
@@ -130,8 +168,8 @@ function toPosition(t: any): Position {
     tp:            t.tp         ?? null,
     marginUsed:    t.marginUsed    ?? 0,
     notionalValue: t.notionalValue ?? 0,
-    leverage:      t.leverage      ?? 10,
-    floatingPnl:   calcPnl(t.side, t.entryPrice, current, t.lotSize),
+    leverage:      t.leverage      ?? DEFAULT_LEVERAGE,
+    floatingPnl:   calcNetPnl(t.symbol, t.side, t.lotSize, t.entryPrice, current),
     openedAt:      typeof t.openedAt === "string" ? t.openedAt : new Date(t.openedAt).toISOString(),
   };
 }
@@ -171,6 +209,11 @@ export const useTradeStore = create<TradeStore>()((set, get) => ({
   balance:      PAPER_INITIAL_BALANCE,
   equity:       PAPER_INITIAL_BALANCE,
   floatingPnl:  0,
+  freeMargin:   PAPER_INITIAL_BALANCE,
+  marginUsed:   0,
+  marginLevel:  0,
+  leverage:     DEFAULT_LEVERAGE,
+  events:       [],
 
   isLoading:     false,
   isSyncing:     false,
@@ -196,14 +239,13 @@ export const useTradeStore = create<TradeStore>()((set, get) => ({
         ? (accountRes.data?.balance ?? PAPER_INITIAL_BALANCE)
         : PAPER_INITIAL_BALANCE;
 
-      const totalFloat = positions.reduce((s, p) => s + p.floatingPnl, 0);
+      const metrics = recalcAccount(positions, balance);
 
       set({
         positions,
         closedTrades,
         balance,
-        floatingPnl:   totalFloat,
-        equity:        balance + totalFloat,
+        ...metrics,
         isLoading:     false,
         isInitialized: true,
         error:         null,
@@ -221,11 +263,20 @@ export const useTradeStore = create<TradeStore>()((set, get) => ({
       balance:       PAPER_INITIAL_BALANCE,
       equity:        PAPER_INITIAL_BALANCE,
       floatingPnl:   0,
+      freeMargin:    PAPER_INITIAL_BALANCE,
+      marginUsed:    0,
+      marginLevel:   0,
+      leverage:      DEFAULT_LEVERAGE,
+      events:        [],
       isLoading:     false,
       isSyncing:     false,
       isInitialized: false,
       error:         null,
     }),
+
+  // ── Leverage preference (used as the default for new positions) ───────
+
+  setLeverage: (leverage) => set({ leverage }),
 
   // ── Open position ─────────────────────────────────────────────────────
 
@@ -236,7 +287,17 @@ export const useTradeStore = create<TradeStore>()((set, get) => ({
       if (!res.success) { set({ isSyncing: false, error: res.error }); return null; }
 
       const pos = toPosition(res.data);
-      set((s) => ({ positions: [pos, ...s.positions], isSyncing: false }));
+      const event: TradeEvent = { id: makeEventId(), type: "position_opened", position: pos, timestamp: Date.now() };
+
+      set((s) => {
+        const positions = [pos, ...s.positions];
+        return {
+          positions,
+          ...recalcAccount(positions, s.balance),
+          events:    [...s.events, event].slice(-MAX_EVENTS),
+          isSyncing: false,
+        };
+      });
       return pos;
     } catch (err) {
       console.error("[tradeStore.openPosition]", err);
@@ -258,26 +319,63 @@ export const useTradeStore = create<TradeStore>()((set, get) => ({
 
       const closed     = toClosed(res.data.trade);
       const newBalance = res.data.newBalance ?? get().balance;
+      const event: TradeEvent = {
+        id:        makeEventId(),
+        type:      closeReasonToEventType(closed.closeReason),
+        closedTrade: closed,
+        timestamp: Date.now(),
+      };
 
       set((s) => {
-        const remaining  = s.positions.filter((p) => p.id !== id);
-        const totalFloat = remaining.reduce((acc, p) => acc + p.floatingPnl, 0);
+        const remaining = s.positions.filter((p) => p.id !== id);
         return {
           positions:    remaining,
           closedTrades: [closed, ...s.closedTrades],
           balance:      newBalance,
-          floatingPnl:  totalFloat,
-          equity:       newBalance + totalFloat,
-          isSyncing:    false,
-          error:        null,
+          ...recalcAccount(remaining, newBalance),
+          events:    [...s.events, event].slice(-MAX_EVENTS),
+          isSyncing: false,
+          error:     null,
         };
       });
+
+      // Backend auto-creates a journal entry on close — surface it immediately
+      // instead of waiting for the journal page to refetch.
+      if (res.data.journalEntry) {
+        useJournalStore.getState().addEntryFromClosedTrade(res.data.journalEntry);
+      }
 
       return closed;
     } catch (err) {
       console.error("[tradeStore.closePosition]", err);
       set({ isSyncing: false, error: "Failed to close position" });
       return null;
+    }
+  },
+
+  // ── Close a single position at its current market price ───────────────
+
+  closePositionAtMarket: async (id, closeReason) => {
+    const pos = get().positions.find((p) => p.id === id);
+    if (!pos) return null;
+
+    const grossPnl   = calcGrossPnl(pos.symbol, pos.side, pos.lotSize, pos.entryPrice, pos.currentPrice);
+    const durationMs = Date.now() - new Date(pos.openedAt).getTime();
+
+    return get().closePosition(id, {
+      exitPrice: pos.currentPrice,
+      closeReason,
+      grossPnl,
+      durationMs,
+    });
+  },
+
+  // ── Close every open position at market ────────────────────────────────
+
+  closeAllPositions: async () => {
+    const ids = get().positions.map((p) => p.id);
+    for (const id of ids) {
+      await get().closePositionAtMarket(id, "MANUAL");
     }
   },
 
@@ -300,32 +398,37 @@ export const useTradeStore = create<TradeStore>()((set, get) => ({
 
   deletePosition: async (id) => {
     const prev = get().positions;
-    set((s) => ({ positions: s.positions.filter((p) => p.id !== id), isSyncing: true }));
+    const next = prev.filter((p) => p.id !== id);
+    set((s) => ({ positions: next, ...recalcAccount(next, s.balance), isSyncing: true }));
     try {
       const res = await api.delete<null>(`/trade/${id}`);
-      if (!res.success) { set({ positions: prev, isSyncing: false, error: res.error }); return; }
+      if (!res.success) {
+        set((s) => ({ positions: prev, ...recalcAccount(prev, s.balance), isSyncing: false, error: res.error }));
+        return;
+      }
       set({ isSyncing: false });
     } catch (err) {
-      set({ positions: prev, isSyncing: false, error: "Failed to delete position" });
+      set((s) => ({ positions: prev, ...recalcAccount(prev, s.balance), isSyncing: false, error: "Failed to delete position" }));
       console.error("[tradeStore.deletePosition]", err);
     }
   },
 
   // ── Live price update (local only) ────────────────────────────────────
 
-  updatePrices: (prices) => {
+  updatePrices: (symbol, price) => {
     const { positions, balance } = get();
     if (positions.length === 0) return;
 
-    let totalFloat = 0;
+    let touched = false;
     const updated = positions.map((p) => {
-      const cur = prices[p.symbol] ?? p.currentPrice;
-      const pnl = calcPnl(p.side, p.entryPrice, cur, p.lotSize);
-      totalFloat += pnl;
-      return { ...p, currentPrice: cur, floatingPnl: pnl };
+      if (p.symbol !== symbol) return p;
+      touched = true;
+      const pnl = calcNetPnl(p.symbol, p.side, p.lotSize, p.entryPrice, price);
+      return { ...p, currentPrice: price, floatingPnl: pnl };
     });
 
-    set({ positions: updated, floatingPnl: totalFloat, equity: balance + totalFloat });
+    if (!touched) return;
+    set({ positions: updated, ...recalcAccount(updated, balance) });
   },
 }));
 

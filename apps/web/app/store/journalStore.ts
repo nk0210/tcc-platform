@@ -7,6 +7,11 @@ import { api }    from "@/lib/api/client";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
+export type Emotion         = "neutral" | "confident" | "fearful" | "greedy" | "hesitant" | "frustrated";
+export type EntryQuality    = "good" | "early" | "late" | "impulsive" | "missed" | "unknown";
+export type Strategy        = "other" | "smc" | "ema_pullback" | "breakout" | "reversal" | "scalp" | "news" | "fibonacci" | "support_resistance";
+export type MarketStructure = "trending_up" | "trending_down" | "ranging" | "choppy" | "unknown";
+
 export interface JournalEntry {
   id:             string;
   tradeId:        string | null;
@@ -43,6 +48,8 @@ export interface JournalEntry {
   lessonLearned:   string;
   tags:            string[];
   aiAnalysis:      string;
+  /** Local-only UI flag — true while an AI analysis request is in flight. Never persisted. */
+  aiLoading:       boolean;
   createdAt:       string;
   updatedAt:       string;
 }
@@ -81,6 +88,12 @@ interface JournalStore {
 
   updateEntry: (id: string, input: UpdateJournalInput) => Promise<void>;
   addEntryToTop: (entry: JournalEntry) => void;
+  /** Maps a raw journal entry returned by the API (e.g. from closing a trade) and prepends it. */
+  addEntryFromClosedTrade: (raw: unknown) => void;
+  /** Persists an AI coaching analysis and clears the local aiLoading flag. */
+  updateAiAnalysis: (id: string, analysis: string) => Promise<void>;
+  /** Local-only — toggles the transient "AI analysis in progress" flag. Never hits the API. */
+  setAiLoading: (id: string, loading: boolean) => void;
 
   getEntryByTradeId: (tradeId: string) => JournalEntry | undefined;
 }
@@ -125,6 +138,7 @@ function mapEntry(e: any): JournalEntry {
     lessonLearned:   e.lessonLearned   ?? "",
     tags:            e.tags            ?? [],
     aiAnalysis:      e.aiAnalysis      ?? "",
+    aiLoading:       false,
     createdAt: typeof e.createdAt === "string" ? e.createdAt : new Date(e.createdAt).toISOString(),
     updatedAt: typeof e.updatedAt === "string" ? e.updatedAt : new Date(e.updatedAt).toISOString(),
   };
@@ -244,6 +258,27 @@ export const useJournalStore = create<JournalStore>()((set, get) => ({
       if (s.entries.some((e) => e.id === entry.id)) return s;
       return { entries: [entry, ...s.entries], total: s.total + 1 };
     });
+  },
+
+  // ── Add latest entry from a raw API journal entry (e.g. auto-created on trade close) ──
+
+  addEntryFromClosedTrade: (raw) => {
+    get().addEntryToTop(mapEntry(raw));
+  },
+
+  // ── AI analysis ───────────────────────────────────────────────────────
+
+  updateAiAnalysis: async (id, analysis) => {
+    await get().updateEntry(id, { aiAnalysis: analysis });
+    set((s) => ({
+      entries: s.entries.map((e) => (e.id === id ? { ...e, aiLoading: false } : e)),
+    }));
+  },
+
+  setAiLoading: (id, loading) => {
+    set((s) => ({
+      entries: s.entries.map((e) => (e.id === id ? { ...e, aiLoading: loading } : e)),
+    }));
   },
 
   // ── Selector ──────────────────────────────────────────────────────────

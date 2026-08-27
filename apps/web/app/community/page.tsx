@@ -58,7 +58,8 @@ function PostComposer({ onPost }: { onPost: () => void }) {
   const { user } = useAuthStore();
   const { createPost } = useCommunityStore();
   const { closedTrades } = useTradeStore();
-  const { publishedStrategies } = useStrategyStore();
+  const { strategies } = useStrategyStore();
+  const publishedStrategies = strategies.filter((s) => s.type === "creator_published");
   const { courses, userProgress } = useAcademyStore();
   const { addNotification } = useNotificationStore();
 
@@ -430,12 +431,12 @@ function PostCard({ post }: { post: CommunityPost }) {
             {formatPnl(post.tradeSnapshot.netPnl)}
           </span>
           <span className={`text-xs px-2 py-0.5 rounded-full ${
-            post.tradeSnapshot.closeReason === "stop_loss"   ? "text-red-400    bg-red-500/10"
-            : post.tradeSnapshot.closeReason === "take_profit" ? "text-green-400  bg-green-500/10"
+            post.tradeSnapshot.closeReason === "STOP_LOSS"   ? "text-red-400    bg-red-500/10"
+            : post.tradeSnapshot.closeReason === "TAKE_PROFIT" ? "text-green-400  bg-green-500/10"
             : "text-white/30 bg-white/5"
           }`}>
-            {post.tradeSnapshot.closeReason === "stop_loss"  ? "⛔ SL"
-             : post.tradeSnapshot.closeReason === "take_profit" ? "✅ TP"
+            {post.tradeSnapshot.closeReason === "STOP_LOSS"  ? "⛔ SL"
+             : post.tradeSnapshot.closeReason === "TAKE_PROFIT" ? "✅ TP"
              : "Manual"}
           </span>
           <span className="text-white/20 text-xs">

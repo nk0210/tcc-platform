@@ -52,7 +52,7 @@ export default function ReportsQueuePage() {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [adminNote, setAdminNote] = useState("");
 
-  const effectiveRole = getEffectiveRole(user?.role);
+  const effectiveRole = getEffectiveRole(user?.roles);
 
   const filtered = reports.filter(r => {
     if (statusFilter === "pending" && r.status !== "pending") return false;

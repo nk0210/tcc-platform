@@ -31,33 +31,32 @@ function safePnlStr(val: number | undefined | null): string {
 
 // ── Badge Styles ──────────────────────────────────────────────────────────
 
-const resultBadge = (result?: string) => {
-  if (result === "win") return "text-green-400 bg-green-500/10 border-green-500/20";
-  if (result === "loss") return "text-red-400 bg-red-500/10 border-red-500/20";
+const resultBadge = (result?: string | null) => {
+  if (result === "WIN") return "text-green-400 bg-green-500/10 border-green-500/20";
+  if (result === "LOSS") return "text-red-400 bg-red-500/10 border-red-500/20";
   return "text-white/40 bg-white/5 border-white/10";
 };
 
 const sideBadge = (side: string) =>
   side === "BUY" ? "text-green-400" : "text-red-400";
 
-const reasonBadge = (reason?: string) => {
-  if (reason === "stop_loss") return "text-red-400 bg-red-500/10";
-  if (reason === "take_profit") return "text-green-400 bg-green-500/10";
+const reasonBadge = (reason?: string | null) => {
+  if (reason === "STOP_LOSS") return "text-red-400 bg-red-500/10";
+  if (reason === "TAKE_PROFIT") return "text-green-400 bg-green-500/10";
   return "text-white/30 bg-white/5";
 };
 
-const reasonLabel = (reason?: string) => {
-  if (reason === "stop_loss") return "⛔ SL Hit";
-  if (reason === "take_profit") return "✅ TP Hit";
-  if (reason === "manual") return "Manual";
+const reasonLabel = (reason?: string | null) => {
+  if (reason === "STOP_LOSS") return "⛔ SL Hit";
+  if (reason === "TAKE_PROFIT") return "✅ TP Hit";
+  if (reason === "MANUAL") return "Manual";
   return "—";
 };
 
 // ── Entry Detail Panel ────────────────────────────────────────────────────
 
 function EntryDetail({ entry, onClose }: { entry: JournalEntry; onClose: () => void }) {
-  const { updateEntry, updateAiAnalysis } = useJournalStore();
-  const [aiLoading, setAiLoading] = useState(false);
+  const { updateEntry, updateAiAnalysis, setAiLoading } = useJournalStore();
 
   const pnlColor = (entry.netPnl ?? 0) >= 0 ? "text-green-400" : "text-red-400";
 
@@ -67,8 +66,7 @@ function EntryDetail({ entry, onClose }: { entry: JournalEntry; onClose: () => v
       updateEntry(entry.id, { aiAnalysis: "Groq API key not configured. Add NEXT_PUBLIC_GROQ_API_KEY to .env.local." });
       return;
     }
-    setAiLoading(true);
-    updateEntry(entry.id, { aiLoading: true });
+    setAiLoading(entry.id, true);
     try {
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -88,7 +86,6 @@ function EntryDetail({ entry, onClose }: { entry: JournalEntry; onClose: () => v
     } catch {
       updateAiAnalysis(entry.id, "AI analysis failed. Check your Groq API key and connection.");
     }
-    setAiLoading(false);
   };
 
   return (
@@ -256,9 +253,9 @@ function EntryDetail({ entry, onClose }: { entry: JournalEntry; onClose: () => v
             <p className="text-white/40 text-xs uppercase tracking-wider">AI Coaching (Groq)</p>
             <button
               onClick={handleGroqAnalysis}
-              disabled={aiLoading || entry.aiLoading}
+              disabled={entry.aiLoading}
               className="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-3 py-1 rounded-lg text-xs font-semibold disabled:opacity-50 hover:bg-indigo-500/30 transition">
-              {aiLoading || entry.aiLoading ? "Analyzing..." : "🤖 Get Feedback"}
+              {entry.aiLoading ? "Analyzing..." : "🤖 Get Feedback"}
             </button>
           </div>
           {entry.aiAnalysis ? (
@@ -332,13 +329,13 @@ function EntryCard({
 
 // ── Main Page ─────────────────────────────────────────────────────────────
 
-type FilterResult = "all" | "win" | "loss" | "breakeven";
+type FilterResult = "all" | "WIN" | "LOSS" | "BREAKEVEN";
 type FilterSide = "all" | "BUY" | "SELL";
 type FilterSession = "all" | "london" | "newyork" | "asian" | "sydney" | "unknown";
 type SortKey = "date_desc" | "date_asc" | "pnl_desc" | "pnl_asc";
 
 export default function JournalPage() {
-  const { entries, deleteEntry } = useJournalStore();
+  const { entries } = useJournalStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filterResult, setFilterResult] = useState<FilterResult>("all");
   const [filterSide, setFilterSide] = useState<FilterSide>("all");
@@ -364,8 +361,8 @@ export default function JournalPage() {
 
     list.sort((a, b) => {
       switch (sortKey) {
-        case "date_desc": return (b.createdAt || 0) - (a.createdAt || 0);
-        case "date_asc": return (a.createdAt || 0) - (b.createdAt || 0);
+        case "date_desc": return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        case "date_asc": return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
         case "pnl_desc": return (b.netPnl ?? 0) - (a.netPnl ?? 0);
         case "pnl_asc": return (a.netPnl ?? 0) - (b.netPnl ?? 0);
         default: return 0;
@@ -377,9 +374,9 @@ export default function JournalPage() {
 
   const selectedEntry = entries.find(e => e.id === selectedId);
 
-  const totalPnl = entries.filter(e => e.netPnl !== undefined).reduce((s, e) => s + (e.netPnl ?? 0), 0);
-  const winCount = entries.filter(e => e.result === "win").length;
-  const closedCount = entries.filter(e => e.netPnl !== undefined).length;
+  const totalPnl = entries.filter(e => e.netPnl != null).reduce((s, e) => s + (e.netPnl ?? 0), 0);
+  const winCount = entries.filter(e => e.result === "WIN").length;
+  const closedCount = entries.filter(e => e.netPnl != null).length;
   const winRate = closedCount > 0 ? ((winCount / closedCount) * 100).toFixed(1) : null;
 
   return (
@@ -429,9 +426,9 @@ export default function JournalPage() {
                 <select value={filterResult} onChange={e => setFilterResult(e.target.value as FilterResult)}
                   className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs">
                   <option value="all">All results</option>
-                  <option value="win">Wins</option>
-                  <option value="loss">Losses</option>
-                  <option value="breakeven">Breakeven</option>
+                  <option value="WIN">Wins</option>
+                  <option value="LOSS">Losses</option>
+                  <option value="BREAKEVEN">Breakeven</option>
                 </select>
                 <select value={filterSide} onChange={e => setFilterSide(e.target.value as FilterSide)}
                   className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs">

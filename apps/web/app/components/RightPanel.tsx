@@ -237,9 +237,9 @@ function JournalPanel() {
       (selected.netPnl || 0) >= 0 ? "text-green-400" : "text-red-400";
 
     const resultBadge =
-      selected.result === "win"
+      selected.result === "WIN"
         ? "text-green-400 bg-green-500/10 border-green-500/20"
-        : selected.result === "loss"
+        : selected.result === "LOSS"
           ? "text-red-400 bg-red-500/10 border-red-500/20"
           : "text-white/40 bg-white/5 border-white/10";
 
@@ -280,7 +280,7 @@ function JournalPanel() {
             </span>
           </div>
 
-          {selected.netPnl !== undefined && (
+          {selected.netPnl != null && (
             <p className={`text-xl font-bold ${pnlColor} mb-3`}>
               {selected.netPnl >= 0 ? "+" : ""}${selected.netPnl.toFixed(2)}
             </p>
@@ -448,9 +448,9 @@ function JournalPanel() {
                     </span>
                     <span
                       className={`text-xs px-1.5 py-0.5 rounded-full capitalize ${
-                        entry.result === "win"
+                        entry.result === "WIN"
                           ? "text-green-400 bg-green-500/10"
-                          : entry.result === "loss"
+                          : entry.result === "LOSS"
                             ? "text-red-400 bg-red-500/10"
                             : "text-white/30 bg-white/5"
                       }`}
@@ -459,7 +459,7 @@ function JournalPanel() {
                     </span>
                   </div>
 
-                  {entry.netPnl !== undefined && (
+                  {entry.netPnl != null && (
                     <span className={`text-xs font-bold ${pnlColor}`}>
                       {entry.netPnl >= 0 ? "+" : ""}${entry.netPnl.toFixed(2)}
                     </span>

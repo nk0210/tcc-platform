@@ -15,16 +15,16 @@ export default function JournalTab() {
           <div key={entry.id} className="glass border border-white/5 rounded-lg p-3 flex gap-4">
             <div className="flex flex-col gap-1 w-40 shrink-0">
               <div className="flex items-center gap-2">
-                <span className={`text-xs font-bold ${entry.direction === "BUY" ? "text-green-400" : "text-red-400"}`}>
-                  {entry.direction}
+                <span className={`text-xs font-bold ${entry.side === "BUY" ? "text-green-400" : "text-red-400"}`}>
+                  {entry.side}
                 </span>
                 <span className="text-white/70 text-xs">{entry.symbol}</span>
               </div>
               <span className="text-white/40 text-xs">@ ${entry.entryPrice.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
-              <span className="text-white/40 text-xs">{entry.lots} lots</span>
-              {entry.pnl !== undefined && (
-                <span className={`text-xs font-bold ${entry.pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
-                  {entry.pnl >= 0 ? "+" : ""}${entry.pnl.toFixed(2)}
+              <span className="text-white/40 text-xs">{entry.lotSize} lots</span>
+              {entry.netPnl != null && (
+                <span className={`text-xs font-bold ${entry.netPnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                  {entry.netPnl >= 0 ? "+" : ""}${entry.netPnl.toFixed(2)}
                 </span>
               )}
             </div>

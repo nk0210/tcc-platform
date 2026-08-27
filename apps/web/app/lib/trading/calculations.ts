@@ -78,7 +78,7 @@ export function calcNetPnl(
 
 /** Recalculate account metrics from all open positions */
 export function recalcAccount(
-  positions: Array<{ marginUsed: number; netPnl: number }>,
+  positions: Array<{ marginUsed: number; floatingPnl: number }>,
   balance: number
 ): {
   equity: number;
@@ -88,7 +88,7 @@ export function recalcAccount(
   floatingPnl: number;
 } {
   const marginUsed = positions.reduce((s, p) => s + p.marginUsed, 0);
-  const floatingPnl = positions.reduce((s, p) => s + p.netPnl, 0);
+  const floatingPnl = positions.reduce((s, p) => s + p.floatingPnl, 0);
   const equity = balance + floatingPnl;
   const freeMargin = equity - marginUsed;
   const marginLevel = marginUsed > 0 ? (equity / marginUsed) * 100 : 0;

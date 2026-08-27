@@ -64,7 +64,7 @@ export interface TradeSnapshot {
   entryPrice:   number;
   exitPrice:    number;
   netPnl:       number;
-  closeReason:  "manual" | "stop_loss" | "take_profit";
+  closeReason:  "MANUAL" | "STOP_LOSS" | "TAKE_PROFIT";
   durationMs:   number;
 }
 

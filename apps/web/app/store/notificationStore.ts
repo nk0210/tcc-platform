@@ -21,7 +21,9 @@ export type NotificationType =
   | "community"
   | "report_update"
   | "trade"
-  | "price_alert";
+  | "price_alert"
+  | "journal_prompt"
+  | "risk_warning";
 
 export type NotificationPriority = "low" | "medium" | "high" | "critical";
 

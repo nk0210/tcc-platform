@@ -34,6 +34,8 @@ const TYPE_ICON: Record<NotificationType, string> = {
   report_update: "🚨",
   trade:         "📊",
   price_alert:   "🔔",
+  journal_prompt: "📓",
+  risk_warning:   "⚠",
 };
 
 const TYPE_LABEL: Record<NotificationType, string> = {
@@ -44,6 +46,8 @@ const TYPE_LABEL: Record<NotificationType, string> = {
   report_update: "Reports",
   trade:         "Trade",
   price_alert:   "Price Alert",
+  journal_prompt: "Journal",
+  risk_warning:   "Risk Warning",
 };
 
 const PRIORITY_DOT: Record<string, string> = {

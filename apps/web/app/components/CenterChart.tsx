@@ -25,7 +25,7 @@ import { useTradeStore } from "@/store/tradeStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useSymbolStore } from "@/store/symbolStore";
 import { calculateRiskScore } from "@/store/riskStore";
-import { validatePaperTrade } from "@/lib/trading/calculations";
+import { validatePaperTrade, calcMargin, calcNotional } from "@/lib/trading/calculations";
 import { TCC_SYMBOLS, type SymbolCategory } from "@/lib/markets/symbols";
 
 type AssetTab = {
@@ -122,6 +122,9 @@ export default function CenterChart() {
         entryPrice: effectivePrice,
         sl,
         tp,
+        marginUsed: calcMargin(activeSymbol.id, lots, effectivePrice, leverage),
+        notionalValue: calcNotional(activeSymbol.id, lots, effectivePrice),
+        leverage,
       });
 
       setSlInput("");

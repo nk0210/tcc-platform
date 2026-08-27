@@ -24,6 +24,8 @@ export type UserRole =
 
 export type UserStatus = "ACTIVE" | "SUSPENDED" | "BANNED" | "DEACTIVATED";
 
+export type ExperienceLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "PROFESSIONAL";
+
 export interface AuthUser {
   id:          string;
   tccId:       string;
@@ -34,6 +36,7 @@ export interface AuthUser {
   roles:       UserRole[];
   status?:     UserStatus;
   isVerified?: boolean;
+  experienceLevel?: ExperienceLevel;
   permissions: string[];
 }
 

@@ -17,8 +17,7 @@
     "resolveJsonModule": true,
     "declaration": false,
 
-    "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
+    "ignoreDeprecations": "5.0",
 
     "paths": {
       "@tcc/types": [
@@ -27,9 +26,7 @@
       "@tcc/types/*": [
         "../../packages/types/src/*"
       ]
-    },
-
-    
+    }
   },
 
   "include": [

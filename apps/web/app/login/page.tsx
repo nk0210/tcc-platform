@@ -6,7 +6,7 @@ import { rehydrateAllStores } from "@/lib/persistence/storage";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setAuth } = useAuthStore();
+  const { login, register } = useAuthStore();
   const [isRegister, setIsRegister] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -16,29 +16,24 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      const endpoint = isRegister ? "/auth/register" : "/auth/login";
-      const body = isRegister
-        ? { email: form.email, password: form.password, handle: form.handle }
-        : { email: form.email, password: form.password };
+      const result = isRegister
+        ? await register({
+            email: form.email,
+            password: form.password,
+            handle: form.handle,
+            displayName: form.handle,
+          })
+        : await login({ email: form.email, password: form.password });
 
-      const res = await fetch(`http://localhost:4000${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      if (!result.success) {
+        setError(result.error || "Something went wrong. Please try again.");
+        return;
+      }
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      // Set auth first (this updates localStorage tcc:auth)
-      setAuth(data.user, data.token);
-
-      // Then rehydrate all stores with the new userId scoping
+      // Rehydrate all stores with the new userId scoping
       rehydrateAllStores();
 
       router.push("/");
-    } catch (err: any) {
-      setError(err.message);
     } finally {
       setLoading(false);
     }

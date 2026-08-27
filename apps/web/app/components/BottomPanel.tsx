@@ -6,9 +6,7 @@
  * No fake data. Empty state if no positions.
  */
 import { useState, useCallback } from "react";
-import { useTradeStore, PaperPosition, ClosedTrade } from "@/store/tradeStore";
-import { useJournalStore } from "@/store/journalStore";
-import { useNotificationStore } from "@/store/notificationStore";
+import { useTradeStore, Position, ClosedTrade } from "@/store/tradeStore";
 
 type Tab = "positions" | "history";
 
@@ -74,26 +72,17 @@ function SLTPEditor({
 
 // ── Position Row ───────────────────────────────────────────────────────
 
-function PositionRow({ position }: { position: PaperPosition }) {
-  const { closePosition } = useTradeStore();
-  const { addEntryFromClosedTrade } = useJournalStore();
-  const { addNotification } = useNotificationStore();
+function PositionRow({ position }: { position: Position }) {
+  // Notification + journal-entry creation happen centrally: tradeStore logs a
+  // TradeEvent on close, and useSystemNotifications (mounted in Topbar) reacts
+  // to it — so this just needs to trigger the close itself.
+  const { closePositionAtMarket } = useTradeStore();
 
   const handleClose = useCallback(() => {
-    const closed = closePosition(position.id, "manual");
-    if (closed) {
-      addEntryFromClosedTrade(closed);
-      addNotification({
-        type: "journal_prompt",
-        priority: "medium",
-        title: `✅ Paper ${closed.side} Closed — ${closed.displayName}`,
-        message: `Exit: ${formatPrice(closed.exitPrice)} | P&L: ${closed.netPnl >= 0 ? "+" : ""}$${closed.netPnl.toFixed(2)} | ${formatDuration(closed.durationMs)}`,
-        action: { label: "Update Journal", path: "/journal" },
-      });
-    }
-  }, [position.id, closePosition, addEntryFromClosedTrade, addNotification]);
+    closePositionAtMarket(position.id, "MANUAL");
+  }, [position.id, closePositionAtMarket]);
 
-  const pnl = position.netPnl;
+  const pnl = position.floatingPnl;
   const pnlColor = pnl > 0 ? "text-green-400" : pnl < 0 ? "text-red-400" : "text-white/50";
   const sideColor = position.side === "BUY" ? "text-green-400" : "text-red-400";
   const duration = Date.now() - new Date(position.openedAt).getTime();
@@ -142,12 +131,12 @@ function HistoryRow({ trade }: { trade: ClosedTrade }) {
   const pnlColor = pnl > 0 ? "text-green-400" : pnl < 0 ? "text-red-400" : "text-white/50";
   const sideColor = trade.side === "BUY" ? "text-green-400" : "text-red-400";
   const reasonBadge = {
-    manual: "text-white/30 bg-white/5",
-    stop_loss: "text-red-400 bg-red-500/10",
-    take_profit: "text-green-400 bg-green-500/10",
+    MANUAL: "text-white/30 bg-white/5",
+    STOP_LOSS: "text-red-400 bg-red-500/10",
+    TAKE_PROFIT: "text-green-400 bg-green-500/10",
   }[trade.closeReason];
   const reasonLabel = {
-    manual: "Manual", stop_loss: "SL Hit", take_profit: "TP Hit"
+    MANUAL: "Manual", STOP_LOSS: "SL Hit", TAKE_PROFIT: "TP Hit"
   }[trade.closeReason];
 
   return (
@@ -177,31 +166,17 @@ function HistoryRow({ trade }: { trade: ClosedTrade }) {
 
 export default function BottomPanel() {
   const { positions, closedTrades, closeAllPositions } = useTradeStore();
-  const { addEntryFromClosedTrade } = useJournalStore();
-  const { addNotification } = useNotificationStore();
   const [activeTab, setActiveTab] = useState<Tab>("positions");
 
-  const totalPnl = positions.reduce((s, p) => s + p.netPnl, 0);
+  const totalPnl = positions.reduce((s, p) => s + p.floatingPnl, 0);
   const totalClosedPnl = closedTrades.reduce((s, t) => s + t.netPnl, 0);
   const totalPnlColor = totalPnl >= 0 ? "text-green-400" : "text-red-400";
 
+  // Notifications + journal entries are handled centrally by useSystemNotifications
+  // reacting to the TradeEvents each close produces — no manual work needed here.
   const handleCloseAll = useCallback(() => {
-    const openPositions = [...positions];
     closeAllPositions();
-    openPositions.forEach(pos => {
-      // We don't have the closed trade here, so we create minimal journal entries
-      // The store already added events — useSystemNotifications will handle them
-    });
-    if (openPositions.length > 0) {
-      addNotification({
-        type: "journal_prompt",
-        priority: "medium",
-        title: `📤 ${openPositions.length} Paper Position${openPositions.length > 1 ? "s" : ""} Closed`,
-        message: "All positions closed manually. Journal entries created.",
-        action: { label: "Review Journal", path: "/journal" },
-      });
-    }
-  }, [positions, closeAllPositions, addNotification]);
+  }, [closeAllPositions]);
 
   return (
     <div className="glass border-t border-white/5 flex flex-col" style={{ minHeight: "160px", maxHeight: "300px" }}>

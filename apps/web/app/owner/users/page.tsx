@@ -42,9 +42,9 @@ export default function UserManagementPage() {
                 <p className="text-white font-semibold">@{user.handle}</p>
                 <p className="text-white/30 text-xs">{user.email}</p>
                 <div className="flex gap-2 mt-1">
-                  <span className="text-xs bg-white/5 text-white/30 border border-white/10 px-2 py-0.5 rounded-full">{user.skillLevel || "ROOKIE"}</span>
+                  <span className="text-xs bg-white/5 text-white/30 border border-white/10 px-2 py-0.5 rounded-full">{user.experienceLevel || "BEGINNER"}</span>
                   {user.tccId && <span className="text-xs text-green-400/60 font-mono">{user.tccId}</span>}
-                  {user.role && <span className="text-xs bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full">{user.role}</span>}
+                  {user.roles && user.roles.length > 0 && <span className="text-xs bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full">{user.roles.join(", ")}</span>}
                 </div>
               </div>
               <div className="text-right text-xs text-white/30">

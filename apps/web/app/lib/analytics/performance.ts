@@ -65,12 +65,12 @@ export interface ClosedTradeInput {
   exitPrice: number;
   grossPnl: number;
   netPnl: number;
-  marginUsed: number;
+  marginUsed?: number;
   notionalValue?: number;
   openedAt: string;
   closedAt: string;
   durationMs: number;
-  closeReason: "manual" | "stop_loss" | "take_profit";
+  closeReason: "MANUAL" | "STOP_LOSS" | "TAKE_PROFIT";
   sl?: number | null;
   tp?: number | null;
 }
@@ -85,7 +85,7 @@ export interface PositionInput {
   currentPrice: number;
   sl: number | null;
   tp: number | null;
-  netPnl: number;
+  floatingPnl: number;
   marginUsed: number;
   notionalValue: number;
 }
@@ -97,14 +97,14 @@ export interface JournalEntryInput {
   side: "BUY" | "SELL";
   lotSize: number;
   entryPrice: number;
-  exitPrice?: number;
-  grossPnl?: number;
-  netPnl?: number;
-  result?: "win" | "loss" | "breakeven";
-  openedAt?: string;
-  closedAt?: string;
-  durationMs?: number;
-  closeReason?: string;
+  exitPrice?: number | null;
+  grossPnl?: number | null;
+  netPnl?: number | null;
+  result?: "WIN" | "LOSS" | "BREAKEVEN" | null;
+  openedAt?: string | null;
+  closedAt?: string | null;
+  durationMs?: number | null;
+  closeReason?: string | null;
   sl?: number | null;
   tp?: number | null;
   emotion: string;
@@ -122,8 +122,8 @@ export interface JournalEntryInput {
   lessonLearned: string;
   tags: string[];
   aiAnalysis: string;
-  createdAt: number;
-  updatedAt: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface RiskScoreInput {
@@ -224,9 +224,9 @@ export function calculatePerformanceOverview(
     equity: parseFloat(equity.toFixed(2)),
     balance: parseFloat(balance.toFixed(2)),
     roiPercent: parseFloat(roiPercent.toFixed(2)),
-    slHits: closedTrades.filter(t => t.closeReason === "stop_loss").length,
-    tpHits: closedTrades.filter(t => t.closeReason === "take_profit").length,
-    manualCloses: closedTrades.filter(t => t.closeReason === "manual").length,
+    slHits: closedTrades.filter(t => t.closeReason === "STOP_LOSS").length,
+    tpHits: closedTrades.filter(t => t.closeReason === "TAKE_PROFIT").length,
+    manualCloses: closedTrades.filter(t => t.closeReason === "MANUAL").length,
   };
 }
 
@@ -365,9 +365,9 @@ export function calculateRiskAnalytics(
     drawdownPercent: parseFloat(drawdownPercent.toFixed(2)),
     drawdownAmount: parseFloat(maxDrawdownAmt.toFixed(2)),
     peakEquity: parseFloat(peak.toFixed(2)),
-    slHitCount: closedTrades.filter(t => t.closeReason === "stop_loss").length,
-    tpHitCount: closedTrades.filter(t => t.closeReason === "take_profit").length,
-    manualCloseCount: closedTrades.filter(t => t.closeReason === "manual").length,
+    slHitCount: closedTrades.filter(t => t.closeReason === "STOP_LOSS").length,
+    tpHitCount: closedTrades.filter(t => t.closeReason === "TAKE_PROFIT").length,
+    manualCloseCount: closedTrades.filter(t => t.closeReason === "MANUAL").length,
     positionsWithoutSL,
     maxConsecutiveLosses: maxConLosses,
     maxDrawdownTrade: parseFloat(maxDrawdownTrade.toFixed(2)),
@@ -451,7 +451,7 @@ export function calculateSessionAnalytics(
   const map: Record<string, { trades: number; wins: number; losses: number; netPnl: number }> = {};
 
   journalEntries.forEach(entry => {
-    if (entry.netPnl === undefined) return;
+    if (entry.netPnl == null) return;
     const session = entry.session || "unknown";
     if (!map[session]) map[session] = { trades: 0, wins: 0, losses: 0, netPnl: 0 };
     map[session].trades++;
@@ -489,7 +489,7 @@ export function calculateStrategyAnalytics(
   const map: Record<string, { trades: number; wins: number; losses: number; netPnl: number }> = {};
 
   journalEntries.forEach(entry => {
-    if (entry.netPnl === undefined) return;
+    if (entry.netPnl == null) return;
     const key = (entry.strategy && entry.strategy !== "other" && entry.strategy !== "unknown")
       ? entry.strategy
       : "untagged";
@@ -539,7 +539,7 @@ export interface BehaviorAnalytics {
 export function calculateBehaviorAnalytics(
   journalEntries: JournalEntryInput[]
 ): BehaviorAnalytics {
-  const closed = journalEntries.filter(e => e.netPnl !== undefined);
+  const closed = journalEntries.filter(e => e.netPnl != null);
   const empty: BehaviorAnalytics = {
     emotionBreakdown: [], followedPlanPercent: 0, didNotFollowPlanCount: 0,
     withPlanDataCount: 0, impulsiveEntries: 0, earlyEntries: 0, lateEntries: 0,
@@ -616,7 +616,7 @@ export function calculateDisciplineScore(
   const noData: DisciplineScore = { total: 0, grade: "N/A", components: [], hasEnoughData: false };
   if (closedTrades.length < MIN_TRADES_FOR_DISCIPLINE) return noData;
 
-  const closed = journalEntries.filter(e => e.netPnl !== undefined);
+  const closed = journalEntries.filter(e => e.netPnl != null);
   const components: DisciplineComponent[] = [];
 
   // 1. Journal coverage (20 pts)

@@ -39,7 +39,7 @@ router.post("/register", validate(RegisterSchema), async (req, res) => {
         tradingIdentity: { create: {} },
         socialLinks:     { create: {} },
       },
-      select: { id: true, tccId: true, email: true, handle: true, displayName: true, roles: true, status: true, isVerified: true },
+      select: { id: true, tccId: true, email: true, handle: true, displayName: true, roles: true, status: true, isVerified: true, experienceLevel: true },
     });
 
     const session = await db.session.create({
@@ -62,7 +62,7 @@ router.post("/login", validate(LoginSchema), async (req, res) => {
   try {
     const user = await db.user.findUnique({
       where: { email },
-      select: { id: true, tccId: true, email: true, handle: true, displayName: true, roles: true, status: true, isVerified: true, passwordHash: true, isActive: true, isSuspended: true },
+      select: { id: true, tccId: true, email: true, handle: true, displayName: true, roles: true, status: true, isVerified: true, experienceLevel: true, passwordHash: true, isActive: true, isSuspended: true },
     });
     if (!user)                                          { unauthorized(res, "Invalid credentials"); return; }
     if (!user.isActive || user.status === "DEACTIVATED") { unauthorized(res, "Account deactivated");  return; }
@@ -79,7 +79,7 @@ router.post("/login", validate(LoginSchema), async (req, res) => {
     await db.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
     ok(res, {
-      user:   { id: user.id, tccId: user.tccId, email: user.email, handle: user.handle, displayName: user.displayName, roles: user.roles, status: user.status, isVerified: user.isVerified, permissions: await getEffectivePermissions(user.roles as string[]) },
+      user:   { id: user.id, tccId: user.tccId, email: user.email, handle: user.handle, displayName: user.displayName, roles: user.roles, status: user.status, isVerified: user.isVerified, experienceLevel: user.experienceLevel, permissions: await getEffectivePermissions(user.roles as string[]) },
       tokens: { accessToken: at, refreshToken: rt, expiresIn: getAccessTokenExpiresInSeconds() },
     }, "Logged in");
   } catch (err) { console.error("[auth/login]", err); internalError(res); }
