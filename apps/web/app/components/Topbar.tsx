@@ -6,22 +6,24 @@ import { useTradeStore } from "@/store/tradeStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useSystemNotifications } from "@/hooks/useSystemNotifications";
 import { getEffectiveRole, isAdmin } from "@/lib/auth/roles";
+import { connect, disconnect } from "@/lib/websocket/client";
 import { useRouter } from "next/navigation";
 
 export default function Topbar() {
   const { user, logout } = useAuthStore();
 
-  const {
-    balance,
-    equity,
-    freeMargin,
-    marginLevel,
-    floatingPnl,
-    leverage,
-    setLeverage,
-  } = useTradeStore();
+  // Individual selectors — Topbar renders on every page, and a plain
+  // useTradeStore() would re-render it on every WS price tick's
+  // positions/closedTrades/isSyncing churn too, not just these 6 fields.
+  const balance     = useTradeStore((s) => s.balance);
+  const equity      = useTradeStore((s) => s.equity);
+  const freeMargin  = useTradeStore((s) => s.freeMargin);
+  const marginLevel = useTradeStore((s) => s.marginLevel);
+  const floatingPnl = useTradeStore((s) => s.floatingPnl);
+  const leverage    = useTradeStore((s) => s.leverage);
+  const setLeverage = useTradeStore((s) => s.setLeverage);
 
-  const unreadCount = useNotificationStore((s) => s.unreadCount());
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
   const router = useRouter();
 
   const [mounted, setMounted] = useState(false);
@@ -42,6 +44,20 @@ export default function Topbar() {
       }
     });
   }, [router]);
+
+  // WebSocket connection follows auth state: connect once logged in,
+  // disconnect on logout. Single-argument subscribe (no subscribeWithSelector).
+  useEffect(() => {
+    if (user) {
+      connect();
+    } else {
+      disconnect();
+    }
+    return () => {
+      disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const handleLogout = () => {
     logout();
@@ -228,7 +244,7 @@ export default function Topbar() {
             🔔
           </span>
 
-          {unreadCount > 0 && (
+          {mounted && unreadCount > 0 && (
 
             <span className="absolute -top-1 -right-1 min-w-[16px] h-4 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold px-1">
               {unreadCount > 9 ? "9+" : unreadCount}

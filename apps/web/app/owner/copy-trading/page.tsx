@@ -4,15 +4,54 @@
  * Route: /owner/copy-trading
  *
  * Full admin review queue for master trader applications.
- * Reads from useMasterRegistryStore (global shared store).
+ * API-backed via adminCopyTradingApi (/copy-trading/admin/*).
  * All actions logged with correct AdminActionType values.
- * Zero fake data.
  */
-import { useState } from "react";
-import { useMasterRegistryStore } from "@/store/copyTradingStore";
+import { useState, useEffect, useCallback } from "react";
+import { api } from "@/lib/api/client";
+import { adminCopyTradingApi } from "@/lib/api/adminCopyTrading";
 import { useAdminActionLogStore } from "@/store/adminActionLogStore";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useAuthStore } from "@/store/authStore";
+
+// ── Types (match backend MasterTraderApplication / MasterTrader shapes) ────
+
+type ApplicationStatus =
+  | "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "APPROVED" | "REJECTED"
+  | "MORE_INFO_REQUIRED" | "SUSPENDED";
+
+type MasterStatus = "ACTIVE" | "SUSPENDED" | "REMOVED";
+
+interface Application {
+  id:                                 string;
+  userId:                             string;
+  tccId:                              string;
+  displayName:                        string;
+  status:                             ApplicationStatus;
+  marketsTraded:                      string[];
+  strategiesUsed:                     string[];
+  experienceSummary:                  string;
+  riskManagementSummary:              string;
+  reasonForApplying:                  string;
+  hasAcceptedRiskDisclosure:          boolean;
+  hasAcceptedPerformanceTruthPolicy:  boolean;
+  hasAcceptedCopyTradingTerms:        boolean;
+  adminNotes:                         string | null;
+  rejectionReason:                    string | null;
+  moreInfoRequest:                    string | null;
+  submittedAt:                        string | null;
+  createdAt:                          string;
+}
+
+interface Master {
+  id:                string;
+  displayName:        string;
+  tccId:              string;
+  status:              MasterStatus;
+  approvedAt:          string;
+  approvedBy:          string;
+  trustScoreStatus:    string;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -43,13 +82,12 @@ const STATUS_ICONS: Record<string, string> = {
 
 export default function OwnerCopyTradingPage() {
   const { user } = useAuthStore();
-  const {
-    allApplications, approvedMasters,
-    approveApplication, rejectApplication, requestMoreInfo,
-    suspendMaster, removeMaster, markUnderReview, addAdminNote,
-  } = useMasterRegistryStore();
   const { addLog }          = useAdminActionLogStore();
   const { addNotification } = useNotificationStore();
+
+  const [allApplications, setAllApplications] = useState<Application[]>([]);
+  const [approvedMasters, setApprovedMasters] = useState<Master[]>([]);
+  const [isLoading, setIsLoading]             = useState(true);
 
   const [selectedId,   setSelectedId]   = useState<string | null>(null);
   const [actionNote,   setActionNote]   = useState("");
@@ -58,27 +96,49 @@ export default function OwnerCopyTradingPage() {
   const adminHandle = user?.handle ?? "admin";
   const adminUserId = user?.id ?? adminHandle;
 
+  // ── Data loading ─────────────────────────────────────────────────────
+
+  const refetchApplications = useCallback(async () => {
+    const res = await adminCopyTradingApi.getApplications(1);
+    if (res.success) setAllApplications((res.data as { items: Application[] }).items);
+  }, []);
+
+  const refetchMasters = useCallback(async () => {
+    const res = await api.get<{ items: Master[] }>("/copy-trading/masters?page=1&pageSize=50");
+    if (res.success) setApprovedMasters(res.data.items);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      setIsLoading(true);
+      await Promise.all([refetchApplications(), refetchMasters()]);
+      setIsLoading(false);
+    })();
+  }, [refetchApplications, refetchMasters]);
+
   const filtered = filterStatus === "all"
     ? allApplications
-    : allApplications.filter(a => a.status === filterStatus);
+    : allApplications.filter(a => a.status.toLowerCase() === filterStatus);
 
   const selected = allApplications.find(a => a.id === selectedId);
 
   const counts = {
     all:          allApplications.length,
-    submitted:    allApplications.filter(a => a.status === "submitted").length,
-    under_review: allApplications.filter(a => a.status === "under_review").length,
-    more_info:    allApplications.filter(a => a.status === "more_info_required").length,
-    approved:     approvedMasters.filter(m => m.status === "active").length,
-    rejected:     allApplications.filter(a => a.status === "rejected").length,
-    suspended:    approvedMasters.filter(m => m.status === "suspended").length,
+    submitted:    allApplications.filter(a => a.status === "SUBMITTED").length,
+    under_review: allApplications.filter(a => a.status === "UNDER_REVIEW").length,
+    more_info:    allApplications.filter(a => a.status === "MORE_INFO_REQUIRED").length,
+    approved:     approvedMasters.filter(m => m.status === "ACTIVE").length,
+    rejected:     allApplications.filter(a => a.status === "REJECTED").length,
+    suspended:    approvedMasters.filter(m => m.status === "SUSPENDED").length,
   };
 
   // ── Action helpers — each uses the correct AdminActionType ────────────
 
-  const handleMarkUnderReview = () => {
+  const handleMarkUnderReview = async () => {
     if (!selected) return;
-    markUnderReview(selected.id, adminHandle);
+    const res = await adminCopyTradingApi.reviewApplication(selected.id);
+    if (!res.success) { addNotification({ type: "system", priority: "high", title: "Failed", message: res.error }); return; }
+
     addNotification({
       type: "system", priority: "low",
       title: "🔍 Marked Under Review",
@@ -91,11 +151,14 @@ export default function OwnerCopyTradingPage() {
       targetType: "copy_trading_application", targetId: selected.id,
       description: `Marked under review: ${selected.displayName}`,
     });
+    await refetchApplications();
   };
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     if (!selected) return;
-    const master = approveApplication(selected.id, adminHandle);
+    const res = await adminCopyTradingApi.approveApplication(selected.id);
+    if (!res.success) { addNotification({ type: "system", priority: "high", title: "Failed", message: res.error }); return; }
+
     addLog({
       actorUserId: adminUserId, actorHandle: adminHandle, actorRole: "admin",
       actionType: "copy_trading_approved",
@@ -107,14 +170,16 @@ export default function OwnerCopyTradingPage() {
       title: "✅ Master Trader Approved",
       message: `${selected.displayName} is now an approved master trader.`,
     });
-    if (master) console.info("[TCC Owner] Master approved:", master.id);
     setSelectedId(null);
     setActionNote("");
+    await Promise.all([refetchApplications(), refetchMasters()]);
   };
 
-  const handleReject = () => {
+  const handleReject = async () => {
     if (!selected || !actionNote.trim()) return;
-    rejectApplication(selected.id, adminHandle, actionNote);
+    const res = await adminCopyTradingApi.rejectApplication(selected.id, actionNote);
+    if (!res.success) { addNotification({ type: "system", priority: "high", title: "Failed", message: res.error }); return; }
+
     addLog({
       actorUserId: adminUserId, actorHandle: adminHandle, actorRole: "admin",
       actionType: "copy_trading_rejected",
@@ -128,11 +193,14 @@ export default function OwnerCopyTradingPage() {
     });
     setSelectedId(null);
     setActionNote("");
+    await refetchApplications();
   };
 
-  const handleMoreInfo = () => {
+  const handleMoreInfo = async () => {
     if (!selected || !actionNote.trim()) return;
-    requestMoreInfo(selected.id, adminHandle, actionNote);
+    const res = await adminCopyTradingApi.requestMoreInfo(selected.id, actionNote);
+    if (!res.success) { addNotification({ type: "system", priority: "high", title: "Failed", message: res.error }); return; }
+
     // Use "system_note" — requesting info is an internal admin note action
     addLog({
       actorUserId: adminUserId, actorHandle: adminHandle, actorRole: "admin",
@@ -147,24 +215,15 @@ export default function OwnerCopyTradingPage() {
     });
     setSelectedId(null);
     setActionNote("");
+    await refetchApplications();
   };
 
-  const handleSaveNote = () => {
-    if (!selected || !actionNote.trim()) return;
-    addAdminNote(selected.id, actionNote);
-    addLog({
-      actorUserId: adminUserId, actorHandle: adminHandle, actorRole: "admin",
-      actionType: "system_note",
-      targetType: "copy_trading_application", targetId: selected.id,
-      description: `Admin note: ${actionNote}`,
-    });
-    setActionNote("");
-  };
-
-  const handleSuspendMaster = (masterId: string, masterDisplayName: string) => {
+  const handleSuspendMaster = async (masterId: string, masterDisplayName: string) => {
     const reason = prompt("Suspension reason:");
     if (!reason) return;
-    suspendMaster(masterId, adminHandle, reason);
+    const res = await adminCopyTradingApi.suspendMaster(masterId, reason);
+    if (!res.success) { addNotification({ type: "system", priority: "high", title: "Failed", message: res.error }); return; }
+
     addLog({
       actorUserId: adminUserId, actorHandle: adminHandle, actorRole: "admin",
       actionType: "user_suspended",
@@ -176,11 +235,14 @@ export default function OwnerCopyTradingPage() {
       title: "🚫 Master Trader Suspended",
       message: `${masterDisplayName} has been suspended. Reason: ${reason}`,
     });
+    await refetchMasters();
   };
 
-  const handleRemoveMaster = (masterId: string, masterDisplayName: string) => {
+  const handleRemoveMaster = async (masterId: string, masterDisplayName: string) => {
     if (!confirm(`Remove ${masterDisplayName} permanently from approved masters?`)) return;
-    removeMaster(masterId);
+    const res = await adminCopyTradingApi.removeMaster(masterId, "Removed by admin");
+    if (!res.success) { addNotification({ type: "system", priority: "high", title: "Failed", message: res.error }); return; }
+
     // "user_suspended" is the correct type for a disabling/removal action in this store
     addLog({
       actorUserId: adminUserId, actorHandle: adminHandle, actorRole: "admin",
@@ -193,9 +255,18 @@ export default function OwnerCopyTradingPage() {
       title: "🗑 Master Trader Removed",
       message: `${masterDisplayName} has been removed from the approved master traders list.`,
     });
+    await refetchMasters();
   };
 
   // ── Render ────────────────────────────────────────────────────────────
+
+  if (isLoading) {
+    return (
+      <div className="p-6 flex items-center justify-center h-48">
+        <p className="text-white/30 text-sm">Loading applications...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
@@ -268,9 +339,9 @@ export default function OwnerCopyTradingPage() {
                     <p className="text-white/30 text-xs font-mono">{app.tccId}</p>
                   </div>
                   <span className={`text-xs px-2 py-0.5 rounded-full border capitalize ${
-                    STATUS_COLORS[app.status] ?? STATUS_COLORS.draft
+                    STATUS_COLORS[app.status.toLowerCase()] ?? STATUS_COLORS.draft
                   }`}>
-                    {STATUS_ICONS[app.status] ?? "📝"} {app.status.replace(/_/g, " ")}
+                    {STATUS_ICONS[app.status.toLowerCase()] ?? "📝"} {app.status.toLowerCase().replace(/_/g, " ")}
                   </span>
                 </div>
                 <div className="flex items-center gap-4 text-xs text-white/30">
@@ -300,7 +371,7 @@ export default function OwnerCopyTradingPage() {
               <div className="flex flex-col gap-1.5 text-xs mb-4">
                 {[
                   { l: "TCC ID",       v: selected.tccId                             },
-                  { l: "Status",       v: selected.status.replace(/_/g, " ")         },
+                  { l: "Status",       v: selected.status.toLowerCase().replace(/_/g, " ") },
                   { l: "User ID",      v: selected.userId                            },
                   { l: "Submitted",    v: selected.submittedAt
                       ? new Date(selected.submittedAt).toLocaleString()
@@ -370,17 +441,17 @@ export default function OwnerCopyTradingPage() {
               <textarea
                 value={actionNote}
                 onChange={e => setActionNote(e.target.value)}
-                placeholder="Admin note / rejection reason / info request..."
+                placeholder="Rejection reason / info request..."
                 rows={3}
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white text-xs resize-none focus:outline-none mb-3"
               />
 
               {/* Action buttons — only for actionable statuses */}
-              {(selected.status === "submitted"          ||
-                selected.status === "under_review"       ||
-                selected.status === "more_info_required") && (
+              {(selected.status === "SUBMITTED"          ||
+                selected.status === "UNDER_REVIEW"       ||
+                selected.status === "MORE_INFO_REQUIRED") && (
                 <div className="flex flex-col gap-2">
-                  {selected.status !== "under_review" && (
+                  {selected.status !== "UNDER_REVIEW" && (
                     <button
                       onClick={handleMarkUnderReview}
                       className="w-full bg-blue-500/20 text-blue-400 border border-blue-500/30 py-2 rounded-lg text-xs font-semibold transition hover:bg-blue-500/30">
@@ -404,12 +475,6 @@ export default function OwnerCopyTradingPage() {
                     className="w-full bg-orange-500/10 text-orange-400 border border-orange-500/20 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-40 hover:bg-orange-500/20">
                     ❓ Request More Info (requires note)
                   </button>
-                  <button
-                    onClick={handleSaveNote}
-                    disabled={!actionNote.trim()}
-                    className="w-full bg-white/5 text-white/40 border border-white/10 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-40 hover:bg-white/10">
-                    📝 Save Admin Note
-                  </button>
                 </div>
               )}
             </div>
@@ -422,7 +487,7 @@ export default function OwnerCopyTradingPage() {
             <p className="text-white/40 text-xs uppercase tracking-wider">
               Active Masters ({counts.approved})
             </p>
-            {approvedMasters.filter(m => m.status === "active").map(master => (
+            {approvedMasters.filter(m => m.status === "ACTIVE").map(master => (
               <div key={master.id} className="bg-green-500/3 border border-green-500/10 rounded-xl p-4">
                 <p className="text-white font-semibold text-sm">{master.displayName}</p>
                 <p className="text-green-400/60 text-xs font-mono">{master.tccId}</p>

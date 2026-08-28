@@ -3,6 +3,7 @@ import {
   type CreateTradeInput,
   type ListTradesParams,
 } from "../repositories/tradeRepository";
+import { send } from "../../websocket/connectionManager";
 import type { CloseReason, TradeResult } from "@prisma/client";
 
 export const PAPER_INITIAL_BALANCE = 10_000;
@@ -90,6 +91,16 @@ export const tradeService = {
       floatingPnl: 0,
       marginUsed:  0,
       freeMargin:  balance,
+    });
+
+    send(userId, {
+      type: "TRADE_CLOSED",
+      payload: {
+        tradeId:    closedTrade.id,
+        netPnl:     closedTrade.netPnl ?? 0,
+        result:     closedTrade.result ?? "BREAKEVEN",
+        newBalance: balance,
+      },
     });
 
     return { trade: closedTrade, journalEntry, newBalance: balance };

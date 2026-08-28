@@ -3,6 +3,8 @@ import express      from "express";
 import cors         from "cors";
 import helmet       from "helmet";
 import rateLimit    from "express-rate-limit";
+import http                      from "http";
+import { createWebSocketServer } from "./websocket";
 import { getEnv }                from "./config/env";
 import routes                    from "./routes";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
@@ -45,12 +47,15 @@ async function bootstrap() {
   }
 
   const port = parseInt(env.PORT, 10);
-  app.listen(port, () => {
+  const server = http.createServer(app);
+  createWebSocketServer(server);
+  server.listen(port, () => {
     console.log(`🚀  TCC API → http://localhost:${port} [${env.NODE_ENV}]`);
+    console.log(`🔌  WebSocket → ws://localhost:${port}/ws`);
   });
 
-  process.on("SIGTERM", async () => { await db.$disconnect(); process.exit(0); });
-  process.on("SIGINT",  async () => { await db.$disconnect(); process.exit(0); });
+  process.on("SIGTERM", async () => { server.close(); await db.$disconnect(); process.exit(0); });
+  process.on("SIGINT",  async () => { server.close(); await db.$disconnect(); process.exit(0); });
 }
 
 bootstrap().catch((err) => { console.error("❌ Fatal:", err); process.exit(1); });

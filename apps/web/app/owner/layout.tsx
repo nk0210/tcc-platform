@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { getEffectiveRole, isAdmin } from "@/lib/auth/roles";
 import { useReportStore } from "@/store/reportStore";
-import { useMasterRegistryStore } from "@/store/copyTradingStore";
 
 const ownerNavItems = [
   { icon: "🏠", label: "Dashboard",     path: "/owner"                 },
@@ -20,7 +19,6 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
   const router   = useRouter();
   const pathname = usePathname();
   const { reports } = useReportStore();
-  const { getPendingApplications } = useMasterRegistryStore();
 
   const [accessChecked, setAccessChecked] = useState(false);
   const [hasAccess,     setHasAccess]     = useState(false);
@@ -39,7 +37,10 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
   const pendingReports  = reports.filter((r) => r.status === "pending").length;
   const criticalReports = reports.filter((r) => r.priority === "critical" && r.status === "pending").length;
-  const pendingApps     = getPendingApplications().length;
+  // TODO(Phase Alpha follow-up): wire this to GET /copy-trading/admin/applications
+  // (status=SUBMITTED) — the copyTradingStore migration only covers the
+  // follower-facing surface, not admin moderation counts.
+  const pendingApps     = 0;
 
   if (!accessChecked) {
     return (

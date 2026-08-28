@@ -24,7 +24,7 @@ function formatVol(vol: number): string {
 }
 
 export default function WatchlistPage() {
-  const { items, getAvailableToAdd, addSymbol, removeSymbol, addAlert, removeAlert } = useWatchlistStore();
+  const { items, getAvailableToAdd, addSymbol, removeSymbol, addAlert, removeAlert, isLoading, isInitialized, error } = useWatchlistStore();
   const { loading, wsConnected } = useMarketPrices();
   const { addNotification } = useNotificationStore();
   const { setActiveSymbol } = useSymbolStore();
@@ -76,6 +76,41 @@ export default function WatchlistPage() {
       router.push("/");
     }
   };
+
+  if (!isInitialized || isLoading) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+        <Topbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-white/30 text-sm animate-pulse">Loading watchlist...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+        <Topbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex flex-col items-center justify-center gap-3">
+            <p className="text-red-400 text-sm">{error}</p>
+            <button
+              type="button"
+              onClick={() => useWatchlistStore.getState().init()}
+              className="text-white/40 text-xs border border-white/10 px-3 py-1 rounded hover:text-white/70 hover:border-white/20 transition"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">

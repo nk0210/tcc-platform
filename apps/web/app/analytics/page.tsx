@@ -77,7 +77,7 @@ const TABS: { key: TabKey; label: string }[] = [
 ];
 
 export default function AnalyticsPage() {
-  const { closedTrades, positions, balance, equity, floatingPnl } = useTradeStore();
+  const { closedTrades, positions, balance, equity, floatingPnl, isLoading, isInitialized, error } = useTradeStore();
   const { entries } = useJournalStore();
 
   const [activeTab,    setActiveTab]    = useState<TabKey>("overview");
@@ -117,6 +117,41 @@ export default function AnalyticsPage() {
 
   const prevMonth = () => { if (calendarMonth === 0) { setCalendarMonth(11); setCalendarYear(y => y - 1); } else setCalendarMonth(m => m - 1); };
   const nextMonth = () => { if (calendarMonth === 11) { setCalendarMonth(0);  setCalendarYear(y => y + 1); } else setCalendarMonth(m => m + 1); };
+
+  if (!isInitialized || isLoading) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+        <Topbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-white/30 text-sm animate-pulse">Loading analytics...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+        <Topbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex flex-col items-center justify-center gap-3">
+            <p className="text-red-400 text-sm">{error}</p>
+            <button
+              type="button"
+              onClick={() => useTradeStore.getState().init()}
+              className="text-white/40 text-xs border border-white/10 px-3 py-1 rounded hover:text-white/70 hover:border-white/20 transition"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">

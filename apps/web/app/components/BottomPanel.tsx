@@ -28,7 +28,8 @@ function formatPrice(price: number): string {
 function SLTPEditor({
   positionId, field, currentValue
 }: { positionId: string; field: "sl" | "tp"; currentValue: number | null }) {
-  const { updateSLTP, positions } = useTradeStore();
+  const updateSLTP = useTradeStore((s) => s.updateSLTP);
+  const positions  = useTradeStore((s) => s.positions);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(currentValue?.toString() || "");
 
@@ -165,7 +166,9 @@ function HistoryRow({ trade }: { trade: ClosedTrade }) {
 // ── Main Component ─────────────────────────────────────────────────────
 
 export default function BottomPanel() {
-  const { positions, closedTrades, closeAllPositions } = useTradeStore();
+  const positions         = useTradeStore((s) => s.positions);
+  const closedTrades      = useTradeStore((s) => s.closedTrades);
+  const closeAllPositions = useTradeStore((s) => s.closeAllPositions);
   const [activeTab, setActiveTab] = useState<Tab>("positions");
 
   const totalPnl = positions.reduce((s, p) => s + p.floatingPnl, 0);

@@ -17,7 +17,7 @@
  * - Fixed NotificationType mismatch: "risk_warning" replaced with "system".
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import TradingViewChart from "@/components/TradingViewChart";
 import { useLivePrice } from "@/hooks/useLivePrice";
 import { usePriceStore } from "@/store/priceStore";
@@ -47,7 +47,7 @@ const CATEGORY_BADGE: Record<SymbolCategory, string> = {
   index: "text-purple-400 bg-purple-500/10 border-purple-500/20",
 };
 
-export default function CenterChart() {
+function CenterChart() {
   const [mounted, setMounted] = useState(false);
 
   const [lotSize, setLotSize] = useState("0.01");
@@ -61,7 +61,14 @@ export default function CenterChart() {
   const [pendingSide, setPendingSide] = useState<"BUY" | "SELL" | null>(null);
 
   const { activeSymbol, setActiveSymbol } = useSymbolStore();
-  const { openPosition, freeMargin, leverage, positions } = useTradeStore();
+  // Individual selectors — plain useTradeStore() subscribes to the whole
+  // store, so this component (heavy: chart + form) would re-render on every
+  // WS price tick's closedTrades/isLoading/isSyncing churn too, not just
+  // these 4 fields it actually reads.
+  const openPosition = useTradeStore((s) => s.openPosition);
+  const freeMargin   = useTradeStore((s) => s.freeMargin);
+  const leverage     = useTradeStore((s) => s.leverage);
+  const positions    = useTradeStore((s) => s.positions);
   const { addNotification } = useNotificationStore();
   const { currentPrice, change, changePct } = usePriceStore();
 
@@ -479,3 +486,7 @@ export default function CenterChart() {
     </div>
   );
 }
+
+// CenterChart takes no props — memo insulates it from parent re-renders,
+// leaving only its own (now field-level) store subscriptions as triggers.
+export default memo(CenterChart);

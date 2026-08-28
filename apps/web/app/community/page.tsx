@@ -2,27 +2,32 @@
 /**
  * TCC Community Page — /community
  *
- * Real local-first community feed.
- * Posts are stored in a global localStorage key (shared across users on same browser).
- * No fake posts, fake likes, fake users, or fake comments.
+ * API-backed via communityStore.ts (Phase Alpha Frontend Integration).
  *
- * Phase Alpha: replace with WebSocket + PostgreSQL backend.
+ * Notable shape changes from the old local-only store:
+ *   - post.likes/savedBy arrays → post.isLiked/isBookmarked booleans + _count.
+ *   - post.comments is no longer embedded on the post — fetched on demand via
+ *     getComments()/addComment(), so CommentSection now owns its own list.
+ *   - post.reportCount no longer exists on the API response (moderation
+ *     counts aren't exposed to regular users) — the report badge was removed.
+ *   - The store holds one active feed (`posts`) selected via feedType
+ *     ("global" | "following" | "saved"), not a client-side derived saved
+ *     list — switching to the Saved tab now calls setFeedType("saved").
  */
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   useCommunityStore,
-  CommunityPost,
-  CommunityComment,
-  CommunityPostType,
-  PostVisibility,
+  type CommunityPost,
+  type CommunityComment,
+  type CommunityPostType,
+  type PostVisibility,
 } from "@/store/communityStore";
 import { useAuthStore } from "@/store/authStore";
 import { useTradeStore } from "@/store/tradeStore";
 import { useStrategyStore } from "@/store/strategyStore";
 import { useAcademyStore } from "@/store/academyStore";
 import { useNotificationStore } from "@/store/notificationStore";
-import { useReportStore } from "@/store/reportStore";
 import Topbar from "@/components/Topbar";
 import Sidebar from "@/components/Sidebar";
 import ReportButton from "@/components/ReportButton";
@@ -44,12 +49,12 @@ function formatPnl(val: number) {
 }
 
 const POST_TYPE_LABELS: Record<CommunityPostType, string> = {
-  text:                "💬 Thought",
-  trade_idea:          "💡 Trade Idea",
-  shared_trade:        "📊 Shared Trade",
-  academy_completion:  "🎓 Academy",
-  strategy_share:      "📋 Strategy",
-  competition_update:  "🏆 Competition",
+  TEXT:                "💬 Thought",
+  TRADE_IDEA:          "💡 Trade Idea",
+  SHARED_TRADE:        "📊 Shared Trade",
+  ACADEMY_COMPLETION:  "🎓 Academy",
+  STRATEGY_SHARE:      "📋 Strategy",
+  COMPETITION_UPDATE:  "🏆 Competition",
 };
 
 // ── Post Composer ─────────────────────────────────────────────────────────
@@ -59,28 +64,28 @@ function PostComposer({ onPost }: { onPost: () => void }) {
   const { createPost } = useCommunityStore();
   const { closedTrades } = useTradeStore();
   const { strategies } = useStrategyStore();
-  const publishedStrategies = strategies.filter((s) => s.type === "creator_published");
-  const { courses, userProgress } = useAcademyStore();
+  const publishedStrategies = strategies.filter((s) => s.type === "CREATOR_PUBLISHED");
+  const { courses, myProgress } = useAcademyStore();
   const { addNotification } = useNotificationStore();
 
-  const [type,       setType]       = useState<CommunityPostType>("text");
+  const [type,       setType]       = useState<CommunityPostType>("TEXT");
   const [content,    setContent]    = useState("");
-  const [visibility, setVisibility] = useState<PostVisibility>("public");
+  const [visibility, setVisibility] = useState<PostVisibility>("PUBLIC");
   const [linkedTrade,    setLinkedTrade]    = useState("");
   const [linkedStrategy, setLinkedStrategy] = useState("");
   const [linkedCourse,   setLinkedCourse]   = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const completedCourses = courses.filter(c => {
-    const p = userProgress[c.id];
-    return p && p.completedLessons.length >= c.lessons.length;
+    const p = myProgress[c.id];
+    return p && c.lessons.length > 0 && p.completedLessons.length >= c.lessons.length;
   });
 
   const canShareTrade    = closedTrades.length > 0;
   const canShareStrategy = publishedStrategies.length > 0;
   const canShareAcademy  = completedCourses.length > 0;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!user || !content.trim()) return;
     setSubmitting(true);
 
@@ -89,7 +94,7 @@ function PostComposer({ onPost }: { onPost: () => void }) {
     let linkedStrategyTitle: string | undefined;
     let linkedCourseTitle: string | undefined;
 
-    if (type === "shared_trade" && linkedTrade) {
+    if (type === "SHARED_TRADE" && linkedTrade) {
       const trade = closedTrades.find(t => t.id === linkedTrade);
       if (trade) {
         tradeSnapshot = {
@@ -106,29 +111,30 @@ function PostComposer({ onPost }: { onPost: () => void }) {
       }
     }
 
-    if (type === "strategy_share" && linkedStrategy) {
+    if (type === "STRATEGY_SHARE" && linkedStrategy) {
       const strat = publishedStrategies.find(s => s.id === linkedStrategy);
       linkedStrategyTitle = strat?.title;
     }
 
-    if (type === "academy_completion" && linkedCourse) {
+    if (type === "ACADEMY_COMPLETION" && linkedCourse) {
       const course = completedCourses.find(c => c.id === linkedCourse);
       linkedCourseTitle = course?.title;
     }
 
-    createPost({
-      authorId:            user.id,
-      authorHandle:        user.handle || user.email,
+    const post = await createPost({
       type,
       content:             content.trim(),
       visibility,
-      linkedTradeId:       type === "shared_trade"       ? linkedTrade    : undefined,
-      linkedStrategyId:    type === "strategy_share"     ? linkedStrategy : undefined,
-      linkedCourseId:      type === "academy_completion" ? linkedCourse   : undefined,
+      linkedTradeId:       type === "SHARED_TRADE"       ? linkedTrade    : undefined,
+      linkedStrategyId:    type === "STRATEGY_SHARE"     ? linkedStrategy : undefined,
+      linkedCourseId:      type === "ACADEMY_COMPLETION" ? linkedCourse   : undefined,
       tradeSnapshot,
       linkedStrategyTitle,
       linkedCourseTitle,
     });
+
+    setSubmitting(false);
+    if (!post) return;
 
     addNotification({
       type:     "community",
@@ -138,8 +144,7 @@ function PostComposer({ onPost }: { onPost: () => void }) {
     });
 
     setContent(""); setLinkedTrade(""); setLinkedStrategy(""); setLinkedCourse("");
-    setType("text");
-    setSubmitting(false);
+    setType("TEXT");
     onPost();
   };
 
@@ -149,12 +154,12 @@ function PostComposer({ onPost }: { onPost: () => void }) {
 
       {/* Post type selector */}
       <div className="flex flex-wrap gap-1.5 mb-3">
-        {(["text","trade_idea","shared_trade","strategy_share","academy_completion"] as CommunityPostType[]).map(pt => {
+        {(["TEXT","TRADE_IDEA","SHARED_TRADE","STRATEGY_SHARE","ACADEMY_COMPLETION"] as CommunityPostType[]).map(pt => {
           let disabled = false;
           let disabledReason = "";
-          if (pt === "shared_trade"    && !canShareTrade)    { disabled = true; disabledReason = "No closed trades yet"; }
-          if (pt === "strategy_share"  && !canShareStrategy) { disabled = true; disabledReason = "No published strategies"; }
-          if (pt === "academy_completion" && !canShareAcademy) { disabled = true; disabledReason = "No completed courses yet"; }
+          if (pt === "SHARED_TRADE"       && !canShareTrade)    { disabled = true; disabledReason = "No closed trades yet"; }
+          if (pt === "STRATEGY_SHARE"     && !canShareStrategy) { disabled = true; disabledReason = "No published strategies"; }
+          if (pt === "ACADEMY_COMPLETION" && !canShareAcademy)  { disabled = true; disabledReason = "No completed courses yet"; }
 
           return (
             <button key={pt}
@@ -192,7 +197,7 @@ function PostComposer({ onPost }: { onPost: () => void }) {
       )}
 
       {/* Linked data selectors */}
-      {type === "shared_trade" && canShareTrade && (
+      {type === "SHARED_TRADE" && canShareTrade && (
         <div className="mb-3">
           <p className="text-white/40 text-xs mb-1">Select trade to share</p>
           <select value={linkedTrade} onChange={e => setLinkedTrade(e.target.value)}
@@ -217,7 +222,7 @@ function PostComposer({ onPost }: { onPost: () => void }) {
         </div>
       )}
 
-      {type === "strategy_share" && canShareStrategy && (
+      {type === "STRATEGY_SHARE" && canShareStrategy && (
         <div className="mb-3">
           <p className="text-white/40 text-xs mb-1">Select strategy to share</p>
           <select value={linkedStrategy} onChange={e => setLinkedStrategy(e.target.value)}
@@ -230,7 +235,7 @@ function PostComposer({ onPost }: { onPost: () => void }) {
         </div>
       )}
 
-      {type === "academy_completion" && canShareAcademy && (
+      {type === "ACADEMY_COMPLETION" && canShareAcademy && (
         <div className="mb-3">
           <p className="text-white/40 text-xs mb-1">Select completed course</p>
           <select value={linkedCourse} onChange={e => setLinkedCourse(e.target.value)}
@@ -248,10 +253,10 @@ function PostComposer({ onPost }: { onPost: () => void }) {
         value={content}
         onChange={e => setContent(e.target.value)}
         placeholder={
-          type === "text"          ? "Share a trading thought, lesson, or insight..."
-          : type === "trade_idea"  ? "Share your trade idea, analysis, or market view..."
-          : type === "shared_trade"? "Add context to your trade: what was your thesis? What happened?"
-          : type === "strategy_share" ? "Tell the community about your strategy approach..."
+          type === "TEXT"          ? "Share a trading thought, lesson, or insight..."
+          : type === "TRADE_IDEA"  ? "Share your trade idea, analysis, or market view..."
+          : type === "SHARED_TRADE"? "Add context to your trade: what was your thesis? What happened?"
+          : type === "STRATEGY_SHARE" ? "Tell the community about your strategy approach..."
           : "Share your academy milestone..."
         }
         rows={4}
@@ -262,9 +267,9 @@ function PostComposer({ onPost }: { onPost: () => void }) {
         <div className="flex items-center gap-2">
           <select value={visibility} onChange={e => setVisibility(e.target.value as PostVisibility)}
             className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs">
-            <option value="public" className="bg-[#0a0a0f]">🌐 Public</option>
-            <option value="followers_only" className="bg-[#0a0a0f]">👥 Followers only</option>
-            <option value="private" className="bg-[#0a0a0f]">🔒 Private</option>
+            <option value="PUBLIC" className="bg-[#0a0a0f]">🌐 Public</option>
+            <option value="FOLLOWERS_ONLY" className="bg-[#0a0a0f]">👥 Followers only</option>
+            <option value="PRIVATE" className="bg-[#0a0a0f]">🔒 Private</option>
           </select>
           <span className="text-white/20 text-xs">·</span>
           <span className="text-white/30 text-xs">{content.length} chars</span>
@@ -278,7 +283,7 @@ function PostComposer({ onPost }: { onPost: () => void }) {
       </div>
 
       <p className="text-white/15 text-xs mt-3">
-        Posts are stored locally on this device (Phase Beta). All content is your own and not financial advice.
+        All content is your own and not financial advice.
       </p>
     </div>
   );
@@ -288,40 +293,64 @@ function PostComposer({ onPost }: { onPost: () => void }) {
 
 function CommentSection({ post }: { post: CommunityPost }) {
   const { user } = useAuthStore();
-  const { addComment, deleteComment, toggleLikeComment, reportComment } = useCommunityStore();
-  const { submitReport } = useReportStore();
-  const [input, setInput] = useState("");
+  const { addComment, deleteComment, toggleCommentLike, getComments } = useCommunityStore();
+  const [input, setInput]         = useState("");
+  const [comments, setComments]   = useState<CommunityComment[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleAddComment = () => {
+  const refetch = useCallback(async () => {
+    const res = await getComments(post.id);
+    if (res) setComments(res.items);
+    setIsLoading(false);
+  }, [post.id, getComments]);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  const handleAddComment = async () => {
     if (!user || !input.trim()) return;
-    addComment(post.id, user.id, user.handle || user.email, input.trim());
+    const comment = await addComment(post.id, input.trim());
+    if (comment) setComments((prev) => [...prev, comment]);
     setInput("");
   };
 
-  const visibleComments = post.comments.filter(c => !c.isHiddenByAdmin);
+  const handleDelete = async (commentId: string) => {
+    await deleteComment(commentId);
+    setComments((prev) => prev.filter((c) => c.id !== commentId));
+  };
+
+  const handleToggleLike = async (commentId: string) => {
+    const result = await toggleCommentLike(commentId);
+    if (!result) return;
+    setComments((prev) =>
+      prev.map((c) => (c.id !== commentId ? c : { ...c, isLiked: result.liked, _count: { ...c._count, likes: result.likeCount } }))
+    );
+  };
+
+  const visibleComments = comments.filter(c => !c.isHiddenByAdmin);
 
   return (
     <div className="mt-4 border-t border-white/5 pt-4">
+      {isLoading && <p className="text-white/20 text-xs mb-2">Loading comments...</p>}
       {visibleComments.map(comment => (
         <div key={comment.id} className="flex gap-2 mb-3">
           <div className="w-7 h-7 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white/50 text-xs font-bold shrink-0">
-            {comment.authorHandle[0]?.toUpperCase() ?? "?"}
+            {comment.author.handle[0]?.toUpperCase() ?? "?"}
           </div>
           <div className="glass border border-white/5 rounded-xl px-3 py-2 flex-1">
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-2">
-                <span className="text-white/70 text-xs font-semibold">{comment.authorHandle}</span>
+                <span className="text-white/70 text-xs font-semibold">{comment.author.handle}</span>
                 <span className="text-white/20 text-xs">{timeAgo(comment.createdAt)}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <button
-                  onClick={() => user && toggleLikeComment(post.id, comment.id, user.id)}
-                  className={`text-xs transition ${comment.likes.includes(user?.id ?? "") ? "text-red-400" : "text-white/20 hover:text-red-400"}`}>
-                  ♥ {comment.likes.length > 0 ? comment.likes.length : ""}
+                  onClick={() => handleToggleLike(comment.id)}
+                  className={`text-xs transition ${comment.isLiked ? "text-red-400" : "text-white/20 hover:text-red-400"}`}>
+                  ♥ {comment._count.likes > 0 ? comment._count.likes : ""}
                 </button>
                 {user && comment.authorId === user.id && (
                   <button
-                    onClick={() => deleteComment(post.id, comment.id, user.id)}
+                    onClick={() => handleDelete(comment.id)}
                     className="text-white/20 hover:text-red-400 text-xs transition">🗑</button>
                 )}
                 <ReportButton
@@ -364,12 +393,12 @@ function CommentSection({ post }: { post: CommunityPost }) {
 
 function PostCard({ post }: { post: CommunityPost }) {
   const { user } = useAuthStore();
-  const { toggleLikePost, toggleSavePost, deletePost } = useCommunityStore();
+  const { toggleLike, toggleBookmark, deletePost } = useCommunityStore();
   const [showComments, setShowComments] = useState(false);
 
   const userId  = user?.id ?? "";
-  const isLiked = post.likes.includes(userId);
-  const isSaved = post.savedBy.includes(userId);
+  const isLiked = post.isLiked;
+  const isSaved = post.isBookmarked;
   const isOwn   = post.authorId === userId;
 
   return (
@@ -378,20 +407,20 @@ function PostCard({ post }: { post: CommunityPost }) {
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center text-green-400 text-sm font-bold shrink-0">
-            {post.authorHandle[0]?.toUpperCase() ?? "?"}
+            {post.author.handle[0]?.toUpperCase() ?? "?"}
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-white font-semibold text-sm">{post.authorHandle}</span>
+              <span className="text-white font-semibold text-sm">{post.author.handle}</span>
               <span className="text-xs text-white/30 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
                 {POST_TYPE_LABELS[post.type]}
               </span>
               <span className={`text-xs ${
-                post.visibility === "public" ? "text-white/20"
-                : post.visibility === "followers_only" ? "text-amber-400/40"
+                post.visibility === "PUBLIC" ? "text-white/20"
+                : post.visibility === "FOLLOWERS_ONLY" ? "text-amber-400/40"
                 : "text-red-400/40"
               }`}>
-                {post.visibility === "public" ? "🌐" : post.visibility === "followers_only" ? "👥" : "🔒"}
+                {post.visibility === "PUBLIC" ? "🌐" : post.visibility === "FOLLOWERS_ONLY" ? "👥" : "🔒"}
               </span>
             </div>
             <p className="text-white/30 text-xs mt-0.5">{timeAgo(post.createdAt)}</p>
@@ -401,7 +430,7 @@ function PostCard({ post }: { post: CommunityPost }) {
         <div className="flex items-center gap-1.5 shrink-0">
           {isOwn && (
             <button
-              onClick={() => deletePost(post.id, userId)}
+              onClick={() => deletePost(post.id)}
               className="text-white/20 hover:text-red-400 text-xs transition px-2 py-1 rounded-lg">
               🗑
             </button>
@@ -410,7 +439,7 @@ function PostCard({ post }: { post: CommunityPost }) {
             <ReportButton
               reportedItemType="post"
               reportedItemId={post.id}
-              reportedItemTitle={`${post.authorHandle}: ${post.content.slice(0, 60)}`}
+              reportedItemTitle={`${post.author.handle}: ${post.content.slice(0, 60)}`}
               reportedUserId={post.authorId}
               sourceFeature="Community Feed"
               compact
@@ -446,7 +475,7 @@ function PostCard({ post }: { post: CommunityPost }) {
       )}
 
       {/* Strategy share */}
-      {post.type === "strategy_share" && post.linkedStrategyTitle && (
+      {post.type === "STRATEGY_SHARE" && post.linkedStrategyTitle && (
         <div className="glass border border-indigo-500/20 bg-indigo-500/3 rounded-xl p-3 mb-3">
           <p className="text-indigo-400/70 text-xs font-semibold">📋 Strategy: {post.linkedStrategyTitle}</p>
           <p className="text-white/20 text-xs mt-0.5">Educational content · Not verified performance</p>
@@ -454,10 +483,10 @@ function PostCard({ post }: { post: CommunityPost }) {
       )}
 
       {/* Academy share */}
-      {post.type === "academy_completion" && post.linkedCourseTitle && (
+      {post.type === "ACADEMY_COMPLETION" && post.linkedCourseTitle && (
         <div className="glass border border-amber-500/20 bg-amber-500/3 rounded-xl p-3 mb-3">
           <p className="text-amber-400/70 text-xs font-semibold">🎓 Completed: {post.linkedCourseTitle}</p>
-          <p className="text-white/20 text-xs mt-0.5">Course completed locally · Certificates coming soon</p>
+          <p className="text-white/20 text-xs mt-0.5">Course completed · Certificates coming soon</p>
         </div>
       )}
 
@@ -466,21 +495,18 @@ function PostCard({ post }: { post: CommunityPost }) {
 
       {/* Actions */}
       <div className="flex items-center gap-3 border-t border-white/5 pt-3 flex-wrap">
-        <button onClick={() => toggleLikePost(post.id, userId)}
+        <button onClick={() => toggleLike(post.id)}
           className={`flex items-center gap-1.5 text-xs transition ${isLiked ? "text-red-400" : "text-white/40 hover:text-red-400"}`}>
-          {isLiked ? "❤️" : "🤍"} {post.likes.length > 0 ? post.likes.length : "Like"}
+          {isLiked ? "❤️" : "🤍"} {post._count.likes > 0 ? post._count.likes : "Like"}
         </button>
         <button onClick={() => setShowComments(!showComments)}
           className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/60 transition">
-          💬 {post.comments.filter(c => !c.isHiddenByAdmin).length > 0 ? post.comments.filter(c => !c.isHiddenByAdmin).length : "Comment"}
+          💬 {post._count.comments > 0 ? post._count.comments : "Comment"}
         </button>
-        <button onClick={() => toggleSavePost(post.id, userId)}
+        <button onClick={() => toggleBookmark(post.id)}
           className={`flex items-center gap-1.5 text-xs transition ${isSaved ? "text-amber-400" : "text-white/40 hover:text-amber-400"}`}>
           {isSaved ? "🔖 Saved" : "📌 Save"}
         </button>
-        {post.reportCount > 0 && (
-          <span className="text-white/15 text-xs ml-auto">⚑ {post.reportCount} report{post.reportCount !== 1 ? "s" : ""}</span>
-        )}
       </div>
 
       {/* Comments */}
@@ -493,8 +519,8 @@ function PostCard({ post }: { post: CommunityPost }) {
 
 export default function CommunityPage() {
   const { user }            = useAuthStore();
-  const { getVisiblePosts, getSavedPosts } = useCommunityStore();
-  const router              = useRouter();
+  const { posts, feedType, setFeedType, isLoading, isInitialized, error } = useCommunityStore();
+  const router               = useRouter();
 
   const [activeTab,   setActiveTab]   = useState<CommunityTab>("feed");
   const [filterType,  setFilterType]  = useState<CommunityPostType | "all">("all");
@@ -504,26 +530,59 @@ export default function CommunityPage() {
     if (!user) router.push("/login");
   }, [user, router]);
 
-  const userId = user?.id ?? "";
+  // The store holds one active feed at a time — switch it when the tab changes.
+  useEffect(() => {
+    if (activeTab === "feed"  && feedType !== "global") setFeedType("global");
+    if (activeTab === "saved" && feedType !== "saved")  setFeedType("saved");
+  }, [activeTab, feedType, setFeedType]);
 
-  const feedPosts  = useMemo(
-    () => {
-      const all = getVisiblePosts(userId);
-      return filterType === "all" ? all : all.filter(p => p.type === filterType);
-    },
-    [userId, getVisiblePosts, filterType]
+  const feedPosts = useMemo(
+    () => (feedType !== "global" ? [] : filterType === "all" ? posts : posts.filter(p => p.type === filterType)),
+    [posts, feedType, filterType]
   );
 
-  const savedPosts = useMemo(
-    () => getSavedPosts(userId),
-    [userId, getSavedPosts]
-  );
+  const savedPosts = feedType === "saved" ? posts : [];
 
   if (!user) return null;
 
+  if (!isInitialized || isLoading) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+        <Topbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-white/30 text-sm animate-pulse">Loading community...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+        <Topbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex flex-col items-center justify-center gap-3">
+            <p className="text-red-400 text-sm">{error}</p>
+            <button
+              type="button"
+              onClick={() => useCommunityStore.getState().init()}
+              className="text-white/40 text-xs border border-white/10 px-3 py-1 rounded hover:text-white/70 hover:border-white/20 transition"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const TABS: { key: CommunityTab; label: string; count?: number }[] = [
-    { key: "feed",     label: `🌐 Feed`,    count: feedPosts.length  },
-    { key: "saved",    label: `🔖 Saved`,   count: savedPosts.length },
+    { key: "feed",     label: `🌐 Feed`,    count: feedType === "global" ? posts.length : undefined },
+    { key: "saved",    label: `🔖 Saved`,   count: feedType === "saved"  ? posts.length : undefined },
     { key: "groups",   label: "👥 Groups"   },
     { key: "stories",  label: "✨ Stories"  },
     { key: "messages", label: "✉️ Messages" },
@@ -543,7 +602,7 @@ export default function CommunityPage() {
               <div>
                 <h1 className="text-2xl font-bold text-white">Community</h1>
                 <p className="text-white/30 text-xs mt-0.5">
-                  Local community feed · Shared on this device · Phase Beta
+                  Global feed · Live via TCC API
                 </p>
               </div>
               <button
@@ -578,7 +637,7 @@ export default function CommunityPage() {
 
                 {/* Filter by type */}
                 <div className="flex gap-1.5 flex-wrap mb-4">
-                  {(["all","text","trade_idea","shared_trade","strategy_share","academy_completion"] as const).map(ft => (
+                  {(["all","TEXT","TRADE_IDEA","SHARED_TRADE","STRATEGY_SHARE","ACADEMY_COMPLETION"] as const).map(ft => (
                     <button key={ft}
                       onClick={() => setFilterType(ft)}
                       className={`text-xs px-2.5 py-1 rounded-full border transition ${

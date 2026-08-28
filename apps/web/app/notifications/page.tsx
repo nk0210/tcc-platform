@@ -31,6 +31,9 @@ const TYPE_ICON: Record<NotificationType, string> = {
   academy:       "🎓",
   copy_trade:    "📡",
   community:     "👥",
+  marketplace:   "🛒",
+  competition:   "🏆",
+  admin:         "🛡",
   report_update: "🚨",
   trade:         "📊",
   price_alert:   "🔔",
@@ -43,6 +46,9 @@ const TYPE_LABEL: Record<NotificationType, string> = {
   academy:       "Academy",
   copy_trade:    "Copy Trading",
   community:     "Community",
+  marketplace:   "Marketplace",
+  competition:   "Competition",
+  admin:         "Admin",
   report_update: "Reports",
   trade:         "Trade",
   price_alert:   "Price Alert",
@@ -83,7 +89,7 @@ function NotificationCard({
   onDelete:      (id: string) => void;
   onAction:      (path: string) => void;
 }) {
-  const { id, type, priority, title, message, action, read, createdAt } = notification;
+  const { id, type, priority, title, message, actionLabel, actionPath, read, createdAt } = notification;
 
   return (
     <div
@@ -108,7 +114,7 @@ function NotificationCard({
               {title}
             </p>
             <span className="text-white/20 text-xs shrink-0 mt-0.5">
-              {timeAgo(createdAt)}
+              {timeAgo(new Date(createdAt).getTime())}
             </span>
           </div>
 
@@ -121,11 +127,11 @@ function NotificationCard({
               {TYPE_LABEL[type] ?? type}
             </span>
 
-            {action && (
+            {actionLabel && actionPath && (
               <button
-                onClick={() => onAction(action.path)}
+                onClick={() => onAction(actionPath)}
                 className="text-xs text-green-400/80 hover:text-green-400 bg-green-500/5 border border-green-500/20 px-2 py-0.5 rounded-full transition">
-                {action.label} →
+                {actionLabel} →
               </button>
             )}
 
@@ -160,6 +166,9 @@ export default function NotificationsPage() {
     deleteNotification,
     clearAll,
     unreadCount,
+    isLoading,
+    isInitialized,
+    error,
   } = useNotificationStore();
 
   const [activeTab, setActiveTab] = useState<TabFilter>("all");
@@ -200,7 +209,42 @@ export default function NotificationsPage() {
     [filtered]
   );
 
-  const totalUnread = unreadCount();
+  const totalUnread = unreadCount;
+
+  if (!isInitialized || isLoading) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+        <Topbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-white/30 text-sm animate-pulse">Loading notifications...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+        <Topbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex flex-col items-center justify-center gap-3">
+            <p className="text-red-400 text-sm">{error}</p>
+            <button
+              type="button"
+              onClick={() => useNotificationStore.getState().init()}
+              className="text-white/40 text-xs border border-white/10 px-3 py-1 rounded hover:text-white/70 hover:border-white/20 transition"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">

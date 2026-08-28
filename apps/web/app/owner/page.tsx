@@ -23,7 +23,7 @@ const priorityColor: Record<string, string> = {
 export default function OwnerDashboard() {
   const { reports } = useReportStore();
   const { logs } = useAdminActionLogStore();
-  const { relationships } = useCopyTradingStore();
+  const { myRelationships: relationships } = useCopyTradingStore();
   const { entries } = useJournalStore();
   const router = useRouter();
 

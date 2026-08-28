@@ -1,16 +1,14 @@
 /**
- * TCC Notification Store
+ * TCC Notification Store — Phase Alpha
+ * API-backed. Real-time updates are pushed in via addNotification(), called by
+ * the WebSocket client on a NOTIFICATION message (see lib/websocket/client.ts).
  *
- * Fix: ID generation changed from Date.now().toString() to crypto.randomUUID()
- * to prevent duplicate key errors in notifications/page.tsx when multiple
- * notifications are added within the same millisecond.
- *
- * NotificationType union expanded to include all values used across TCC modules:
- * system, academy, copy_trade, community, report_update, trade, price_alert
+ * NotificationType / NotificationPriority stay as the original lowercase unions
+ * for backward compatibility with existing components — the mapper below
+ * lowercases the uppercase enum values the API returns.
  */
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-import { getUserScopedStorage } from "@/lib/persistence/storage";
+import { api }    from "@/lib/api/client";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -19,6 +17,9 @@ export type NotificationType =
   | "academy"
   | "copy_trade"
   | "community"
+  | "marketplace"
+  | "competition"
+  | "admin"
   | "report_update"
   | "trade"
   | "price_alert"
@@ -28,102 +29,284 @@ export type NotificationType =
 export type NotificationPriority = "low" | "medium" | "high" | "critical";
 
 export interface TNotification {
-  id:        string;
-  type:      NotificationType;
-  priority:  NotificationPriority;
-  title:     string;
-  message:   string;
-  action?:   { label: string; path: string };
-  read:      boolean;
-  createdAt: number;
+  id:          string;
+  userId:      string;
+  type:        NotificationType;
+  priority:    NotificationPriority;
+  title:       string;
+  message:     string;
+  actionLabel: string | null;
+  actionPath:  string | null;
+  read:        boolean;
+  createdAt:   string;
 }
 
-// ── Unique ID helper ──────────────────────────────────────────────────────
-// Uses crypto.randomUUID when available (all modern browsers + Node ≥ 19).
-// Falls back to a timestamp+random composite that is sufficiently unique for
-// a localStorage-only prototype and never collides within the same session.
-
-function generateNotificationId(): string {
-  if (
-    typeof crypto !== "undefined" &&
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    typeof (crypto as any).randomUUID === "function"
-  ) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (crypto as any).randomUUID() as string;
-  }
-  return `notif-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+export interface AddNotificationInput {
+  id?:          string;
+  userId?:      string;
+  type:         NotificationType;
+  priority:     NotificationPriority;
+  title:        string;
+  message:      string;
+  actionLabel?: string | null;
+  actionPath?:  string | null;
+  read?:        boolean;
+  createdAt?:   string;
 }
 
-// ── Store interface ───────────────────────────────────────────────────────
+interface PaginatedResult<T> {
+  items:      T[];
+  total:      number;
+  page:       number;
+  pageSize:   number;
+  totalPages: number;
+  hasNext:    boolean;
+  hasPrev:    boolean;
+}
 
-interface NotificationStore {
-  notifications: TNotification[];
+const PAGE_SIZE = 20;
 
-  addNotification: (params: {
-    type:     NotificationType;
-    priority: NotificationPriority;
-    title:    string;
-    message:  string;
-    action?:  { label: string; path: string };
-  }) => void;
+function generateId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `notif_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
 
-  markAsRead:         (id: string) => void;
-  markAllAsRead:      ()           => void;
-  deleteNotification: (id: string) => void;
-  clearAll:           ()           => void;
-  unreadCount:        ()           => number;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapNotification(n: any): TNotification {
+  return {
+    id:          n.id,
+    userId:      n.userId ?? "",
+    type:        String(n.type).toLowerCase() as NotificationType,
+    priority:    String(n.priority).toLowerCase() as NotificationPriority,
+    title:       n.title,
+    message:     n.message,
+    actionLabel: n.actionLabel ?? null,
+    actionPath:  n.actionPath  ?? null,
+    read:        n.read ?? false,
+    createdAt:   typeof n.createdAt === "string" ? n.createdAt : new Date(n.createdAt ?? Date.now()).toISOString(),
+  };
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────
 
-export const useNotificationStore = create<NotificationStore>()(
-  persist(
-    (set, get) => ({
-      notifications: [],
+interface NotificationStore {
+  notifications: TNotification[];
+  unreadCount:   number;
+  page:          number;
+  hasMore:       boolean;
+  isLoading:     boolean;
+  isInitialized: boolean;
+  error:         string | null;
 
-      addNotification: ({ type, priority, title, message, action }) => {
-        const notification: TNotification = {
-          id:        generateNotificationId(),
-          type,
-          priority,
-          title,
-          message,
-          action,
-          read:      false,
-          createdAt: Date.now(),
-        };
-        set((state) => ({
-          // Keep latest 200 notifications max
-          notifications: [notification, ...state.notifications].slice(0, 200),
-        }));
-      },
+  init:     () => Promise<void>;
+  reset:    () => void;
+  loadMore: () => Promise<void>;
 
-      markAsRead: (id) =>
-        set((state) => ({
-          notifications: state.notifications.map((n) =>
-            n.id === id ? { ...n, read: true } : n
-          ),
-        })),
+  markAsRead:         (id: string) => Promise<void>;
+  markAllAsRead:       () => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
+  /** Best-effort client-side "clear all" — deletes every currently-loaded notification. */
+  clearAll:           () => Promise<void>;
+  refreshUnreadCount: () => Promise<void>;
 
-      markAllAsRead: () =>
-        set((state) => ({
-          notifications: state.notifications.map((n) => ({ ...n, read: true })),
-        })),
+  /** Prepend a notification (called by the WebSocket client on a NOTIFICATION message). */
+  addNotification: (notification: AddNotificationInput) => void;
+}
 
-      deleteNotification: (id) =>
-        set((state) => ({
-          notifications: state.notifications.filter((n) => n.id !== id),
-        })),
+export const useNotificationStore = create<NotificationStore>()((set, get) => ({
+  notifications: [],
+  unreadCount:   0,
+  page:          1,
+  hasMore:       false,
+  isLoading:     false,
+  isInitialized: false,
+  error:         null,
 
-      clearAll: () => set({ notifications: [] }),
+  // ── Init ──────────────────────────────────────────────────────────────
 
-      unreadCount: () =>
-        get().notifications.filter((n) => !n.read).length,
-    }),
-    {
-      name:    "notifications",
-      storage: createJSONStorage(() => getUserScopedStorage("notifications")),
+  init: async () => {
+    if (get().isInitialized) return;
+    set({ isLoading: true, error: null });
+
+    try {
+      const [listRes, countRes] = await Promise.all([
+        api.get<PaginatedResult<TNotification>>(`/notifications?pageSize=${PAGE_SIZE}&page=1`),
+        api.get<{ count: number }>("/notifications/unread-count"),
+      ]);
+
+      if (!listRes.success) {
+        set({ isLoading: false, error: listRes.error, isInitialized: true });
+        return;
+      }
+
+      set({
+        notifications: (listRes.data.items ?? []).map(mapNotification),
+        unreadCount:   countRes.success ? countRes.data.count : 0,
+        page:          1,
+        hasMore:       listRes.data.hasNext ?? false,
+        isLoading:     false,
+        isInitialized: true,
+        error:         null,
+      });
+    } catch (err) {
+      console.error("[notificationStore.init]", err);
+      set({ isLoading: false, error: "Failed to load notifications", isInitialized: true });
     }
-  )
-);
+  },
+
+  reset: () =>
+    set({
+      notifications: [], unreadCount: 0, page: 1, hasMore: false,
+      isLoading: false, isInitialized: false, error: null,
+    }),
+
+  loadMore: async () => {
+    const { page, hasMore, isLoading } = get();
+    if (!hasMore || isLoading) return;
+
+    const next = page + 1;
+    set({ isLoading: true });
+
+    try {
+      const res = await api.get<PaginatedResult<TNotification>>(`/notifications?pageSize=${PAGE_SIZE}&page=${next}`);
+      if (!res.success) { set({ isLoading: false }); return; }
+
+      set((s) => ({
+        notifications: [...s.notifications, ...(res.data.items ?? []).map(mapNotification)],
+        page:          next,
+        hasMore:       res.data.hasNext ?? false,
+        isLoading:     false,
+      }));
+    } catch (err) {
+      console.error("[notificationStore.loadMore]", err);
+      set({ isLoading: false });
+    }
+  },
+
+  // ── Mark as read ──────────────────────────────────────────────────────
+
+  markAsRead: async (id) => {
+    const target = get().notifications.find((n) => n.id === id);
+    if (!target || target.read) return;
+
+    set((s) => ({
+      notifications: s.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)),
+      unreadCount:   Math.max(0, s.unreadCount - 1),
+    }));
+
+    try {
+      const res = await api.post<null>(`/notifications/${id}/read`);
+      if (!res.success) {
+        set((s) => ({
+          notifications: s.notifications.map((n) => (n.id === id ? { ...n, read: false } : n)),
+          unreadCount:   s.unreadCount + 1,
+          error:         res.error,
+        }));
+      }
+    } catch (err) {
+      console.error("[notificationStore.markAsRead]", err);
+      set((s) => ({
+        notifications: s.notifications.map((n) => (n.id === id ? { ...n, read: false } : n)),
+        unreadCount:   s.unreadCount + 1,
+        error:         "Failed to mark notification as read",
+      }));
+    }
+  },
+
+  markAllAsRead: async () => {
+    const prevNotifications = get().notifications;
+    const prevUnread        = get().unreadCount;
+    set({ notifications: prevNotifications.map((n) => ({ ...n, read: true })), unreadCount: 0 });
+
+    try {
+      const res = await api.post<null>("/notifications/read-all");
+      if (!res.success) set({ notifications: prevNotifications, unreadCount: prevUnread, error: res.error });
+    } catch (err) {
+      console.error("[notificationStore.markAllAsRead]", err);
+      set({ notifications: prevNotifications, unreadCount: prevUnread, error: "Failed to mark all as read" });
+    }
+  },
+
+  // ── Delete ────────────────────────────────────────────────────────────
+
+  deleteNotification: async (id) => {
+    const prev = get().notifications;
+    const wasUnread = prev.find((n) => n.id === id)?.read === false;
+    set((s) => ({
+      notifications: s.notifications.filter((n) => n.id !== id),
+      unreadCount:   wasUnread ? Math.max(0, s.unreadCount - 1) : s.unreadCount,
+    }));
+
+    try {
+      const res = await api.delete<null>(`/notifications/${id}`);
+      if (!res.success) set({ notifications: prev, error: res.error });
+    } catch (err) {
+      console.error("[notificationStore.deleteNotification]", err);
+      set({ notifications: prev, error: "Failed to delete notification" });
+    }
+  },
+
+  clearAll: async () => {
+    const prev = get().notifications;
+    set({ notifications: [], unreadCount: 0 });
+
+    try {
+      await Promise.all(prev.map((n) => api.delete<null>(`/notifications/${n.id}`)));
+    } catch (err) {
+      console.error("[notificationStore.clearAll]", err);
+    }
+  },
+
+  // ── Unread count ──────────────────────────────────────────────────────
+
+  refreshUnreadCount: async () => {
+    try {
+      const res = await api.get<{ count: number }>("/notifications/unread-count");
+      if (res.success) set({ unreadCount: res.data.count });
+    } catch (err) {
+      console.error("[notificationStore.refreshUnreadCount]", err);
+    }
+  },
+
+  // ── Real-time push (WebSocket) ────────────────────────────────────────
+
+  addNotification: (notification) => {
+    const mapped: TNotification = {
+      id:          notification.id ?? generateId(),
+      userId:      notification.userId ?? "",
+      type:        notification.type,
+      priority:    notification.priority,
+      title:       notification.title,
+      message:     notification.message,
+      actionLabel: notification.actionLabel ?? null,
+      actionPath:  notification.actionPath  ?? null,
+      read:        notification.read ?? false,
+      createdAt:   notification.createdAt ?? new Date().toISOString(),
+    };
+
+    set((s) => ({
+      notifications: [mapped, ...s.notifications].slice(0, 200),
+      unreadCount:   mapped.read ? s.unreadCount : s.unreadCount + 1,
+    }));
+  },
+}));
+
+// ── Auto-init / reset (single-arg subscribe) ──────────────────────────────
+
+if (typeof window !== "undefined") {
+  import("@/store/authStore").then(({ useAuthStore }) => {
+    let prevUserId: string | undefined;
+
+    useAuthStore.subscribe((state) => {
+      const userId = state.user?.id;
+      if (userId !== prevUserId) {
+        prevUserId = userId;
+        if (userId) {
+          useNotificationStore.getState().init();
+        } else {
+          useNotificationStore.getState().reset();
+        }
+      }
+    });
+  });
+}

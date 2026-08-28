@@ -12,9 +12,8 @@
  *   if (result.success) { ... } else { ... }
  */
 
-const API_BASE =
-  (typeof process !== "undefined" && process.env?.["NEXT_PUBLIC_API_URL"]) ??
-  "http://localhost:4000/api";
+const API_BASE: string =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
 
 // ── Token state (module-level = in-memory only) ────────────────────────────
 
@@ -47,6 +46,10 @@ export function setTokens(tokens: {
   _accessToken = tokens.accessToken;
   _expiresAt   = Date.now() + tokens.expiresIn * 1000 - 30_000; // 30s buffer
   saveRT(tokens.refreshToken);
+}
+
+export function getAccessToken(): string | null {
+  return _accessToken;
 }
 
 export function clearTokens(): void {

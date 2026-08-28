@@ -1,761 +1,420 @@
 /**
- * TCC Copy Trading Store — Day 8
+ * TCC Copy Trading Store — Phase Alpha
+ * API-backed. Paper-copy mode only — no real broker execution.
  *
- * Two stores:
- *   useMasterRegistryStore — global (tcc:master-registry)
- *   useCopyTradingStore    — user-scoped (tcc:{userId}:copy-trading)
- *
- * NO FAKE DATA. NO FAKE MASTER TRADERS. NO FAKE WIN RATES.
- * Paper-copy mode only. No real broker execution.
- * Phase Alpha: PostgreSQL + WebSocket + broker API.
+ * Replaces the old two-store split (useMasterRegistryStore + useCopyTradingStore):
+ * masters now come straight from the API instead of a client-side "registry",
+ * so there is a single store here. Admin moderation (approve/reject/suspend
+ * applications, suspend/remove masters) is a separate concern served by
+ * /copy-trading/admin/* routes and is not part of this follower-facing store.
  */
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-import { getUserScopedStorage } from "@/lib/persistence/storage";
+import { api }    from "@/lib/api/client";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
-export type MasterTraderApplicationStatus =
-  | "draft"
-  | "submitted"
-  | "under_review"
-  | "approved"
-  | "rejected"
-  | "more_info_required"
-  | "suspended";
+export type ApplicationStatus =
+  | "DRAFT" | "SUBMITTED" | "UNDER_REVIEW" | "APPROVED" | "REJECTED" | "MORE_INFO_REQUIRED" | "SUSPENDED";
+
+export type MasterStatus        = "ACTIVE" | "SUSPENDED" | "REMOVED";
+export type CopyMode            = "PAPER_COPY" | "LIVE_COPY";
+export type RelationshipStatus  = "ACTIVE" | "PAUSED" | "STOPPED" | "BLOCKED" | "PENDING_BROKER_CONNECTION";
+export type CopyLotMode         = "FIXED_LOT" | "RISK_MULTIPLIER" | "EQUITY_RATIO";
+export type CopyTradeStatus     = "COPIED_PAPER" | "SKIPPED" | "BLOCKED" | "PENDING" | "FAILED";
 
 export interface MasterTraderApplication {
-  id: string;
-  userId: string;
-  tccId: string;
-  displayName: string;
-  status: MasterTraderApplicationStatus;
-  marketsTraded: string[];
-  strategiesUsed: string[];
-  experienceSummary: string;
-  riskManagementSummary: string;
-  reasonForApplying: string;
-  hasAcceptedRiskDisclosure: boolean;
-  hasAcceptedPerformanceTruthPolicy: boolean;
-  hasAcceptedCopyTradingTerms: boolean;
-  adminNotes?: string;
-  rejectionReason?: string;
-  moreInfoRequest?: string;
-  reviewedBy?: string;
-  reviewedAt?: string;
-  submittedAt?: string;
-  createdAt: string;
-  updatedAt: string;
+  id:                                 string;
+  userId:                             string;
+  tccId:                              string;
+  displayName:                        string;
+  status:                             ApplicationStatus;
+  marketsTraded:                      string[];
+  strategiesUsed:                     string[];
+  experienceSummary:                  string;
+  riskManagementSummary:              string;
+  reasonForApplying:                  string;
+  hasAcceptedRiskDisclosure:          boolean;
+  hasAcceptedPerformanceTruthPolicy:  boolean;
+  hasAcceptedCopyTradingTerms:        boolean;
+  adminNotes:                         string | null;
+  rejectionReason:                    string | null;
+  moreInfoRequest:                    string | null;
+  reviewedBy:                         string | null;
+  reviewedAt:                         string | null;
+  submittedAt:                        string | null;
+  createdAt:                          string;
+  updatedAt:                          string;
 }
 
-export type MasterTraderStatus = "active" | "suspended" | "removed";
-
-export interface BrokerCompatibility {
-  requiredBrokerId?: string;
-  requiredBrokerName?: string;
-  sameBrokerRequired: boolean;
-  status: "not_connected" | "placeholder" | "connected";
-}
-
-export type MasterTrustScoreStatus =
-  | "unavailable"
-  | "insufficient_verified_data"
-  | "calculating"
-  | "available";
-
-export interface ApprovedMasterTrader {
-  id: string;
-  userId: string;
-  tccId: string;
-  applicationId: string;
-  displayName: string;
-  status: MasterTraderStatus;
-  approvedAt: string;
-  approvedBy: string;
-  marketsTraded: string[];
-  strategiesUsed: string[];
-  brokerCompatibility: BrokerCompatibility;
-  publicProfileRequired: boolean;
-  trustScoreStatus: MasterTrustScoreStatus;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export type CopyMode = "paper_copy" | "live_copy";
-
-export type CopyRelationshipStatus =
-  | "active"
-  | "paused"
-  | "stopped"
-  | "blocked"
-  | "pending_broker_connection";
-
-export type CopyLotMode = "fixed_lot" | "risk_multiplier" | "equity_ratio";
-
-export type NewsFilterImpactSetting =
-  | "off"
-  | "high_impact_only"
-  | "medium_and_high_impact";
-
-export type NewsFilterBufferMinutes = 15 | 30 | 60;
-
-export interface NewsFilterSettings {
-  impactLevel: NewsFilterImpactSetting;
-  bufferMinutesBefore: NewsFilterBufferMinutes;
-  bufferMinutesAfter: NewsFilterBufferMinutes;
+export interface MasterTrader {
+  id:                     string;
+  userId:                 string;
+  applicationId:          string;
+  tccId:                  string;
+  displayName:            string;
+  status:                 MasterStatus;
+  marketsTraded:          string[];
+  strategiesUsed:         string[];
+  brokerName:             string | null;
+  sameBrokerRequired:     boolean;
+  brokerStatus:           string;
+  publicProfileRequired:  boolean;
+  trustScoreStatus:       string;
+  approvedAt:             string;
+  approvedBy:             string;
+  createdAt:              string;
+  updatedAt:              string;
 }
 
 export interface CopyRiskSettings {
-  maxRiskPerTradePercent: number;
-  maxDailyLossPercent: number;
+  maxRiskPerTradePercent:  number;
+  maxDailyLossPercent:     number;
   maxTotalDrawdownPercent: number;
-  maxOpenCopiedTrades: number;
-  copyLotMode: CopyLotMode;
-  fixedLotSize: number;
-  riskMultiplier: number;
-  maxSlippagePoints: number;
-  requireStopLoss: boolean;
-  newsFilterEnabled: boolean;
-  newsFilterSettings: NewsFilterSettings;
-}
-
-export interface CopyRelationship {
-  id: string;
-  followerUserId: string;
-  masterTraderUserId: string;
-  masterTraderId: string;
-  masterDisplayName: string;
-  mode: CopyMode;
-  status: CopyRelationshipStatus;
-  riskSettings: CopyRiskSettings;
-  startedAt: string;
-  updatedAt: string;
-  stoppedAt?: string;
-  stopReason?: string;
-}
-
-export type CopyTradeStatus =
-  | "copied_paper"
-  | "skipped"
-  | "blocked"
-  | "pending"
-  | "failed";
-
-export interface CopySafetyCheck {
-  id: string;
-  label: string;
-  status: "passed" | "warning" | "failed" | "not_available";
-  message: string;
-}
-
-export interface CopySafetyCheckResult {
-  canCopy: boolean;
-  checks: CopySafetyCheck[];
-}
-
-export interface CopyTradeHistoryItem {
-  id: string;
-  relationshipId: string;
-  masterTraderUserId: string;
-  masterDisplayName: string;
-  followerUserId: string;
-  sourceTradeId?: string;
-  copiedTradeId?: string;
-  symbol: string;
-  displayName: string;
-  side: "BUY" | "SELL";
-  lotSize: number;
-  entryPrice: number;
-  status: CopyTradeStatus;
-  reason?: string;
-  riskCheckResult?: CopySafetyCheckResult;
-  mode: CopyMode;
-  createdAt: string;
+  maxOpenCopiedTrades:     number;
+  copyLotMode:             CopyLotMode;
+  fixedLotSize:            number;
+  riskMultiplier:          number;
+  maxSlippagePoints:       number;
+  requireStopLoss:         boolean;
+  newsFilterEnabled:       boolean;
 }
 
 export interface CopyFeeModel {
-  relationshipId: string;
-  performanceFeePercent: number;
-  highWaterMark: number;
+  id:                     string;
+  relationshipId:         string;
+  userId:                 string;
+  performanceFeePercent:  number;
+  highWaterMark:          number;
   currentBalanceSnapshot: number;
-  totalFeesAccrued: number;
-  lastCalculatedAt?: string;
+  totalFeesAccrued:       number;
+  lastCalculatedAt:       string | null;
+  createdAt:              string;
+  updatedAt:              string;
 }
 
-// ── Defaults ──────────────────────────────────────────────────────────────
+export interface CopyRelationship extends CopyRiskSettings {
+  id:                 string;
+  followerUserId:     string;
+  masterTraderId:     string;
+  masterDisplayName:  string;
+  mode:               CopyMode;
+  status:             RelationshipStatus;
+  feeModel?:          CopyFeeModel | null;
+  startedAt:          string;
+  updatedAt:          string;
+  stoppedAt:          string | null;
+  stopReason:         string | null;
+}
 
-export const DEFAULT_COPY_RISK_SETTINGS: CopyRiskSettings = {
-  maxRiskPerTradePercent: 1,
-  maxDailyLossPercent: 3,
-  maxTotalDrawdownPercent: 10,
-  maxOpenCopiedTrades: 3,
-  copyLotMode: "fixed_lot",
-  fixedLotSize: 0.01,
-  riskMultiplier: 1,
-  maxSlippagePoints: 5,
-  requireStopLoss: true,
-  newsFilterEnabled: false,
-  newsFilterSettings: {
-    impactLevel: "high_impact_only",
-    bufferMinutesBefore: 30,
-    bufferMinutesAfter: 30,
+export interface CopyTradeHistory {
+  id:              string;
+  relationshipId:  string;
+  masterUserId:    string;
+  followerUserId:  string;
+  symbol:          string;
+  displayName:     string;
+  side:            "BUY" | "SELL";
+  lotSize:         number;
+  entryPrice:      number;
+  status:          CopyTradeStatus;
+  reason:          string | null;
+  mode:            CopyMode;
+  riskCheckResult: unknown;
+  createdAt:       string;
+}
+
+export interface ApplicationUpdateInput {
+  marketsTraded?:                     string[];
+  strategiesUsed?:                    string[];
+  experienceSummary?:                 string;
+  riskManagementSummary?:             string;
+  reasonForApplying?:                 string;
+  hasAcceptedRiskDisclosure?:         boolean;
+  hasAcceptedPerformanceTruthPolicy?: boolean;
+  hasAcceptedCopyTradingTerms?:       boolean;
+}
+
+export interface StartCopyingInput {
+  masterTraderId: string;
+  riskSettings?:  Partial<CopyRiskSettings>;
+}
+
+export interface MasterFilters {
+  marketsTraded?:  string[];
+  strategiesUsed?: string[];
+}
+
+interface PaginatedResult<T> {
+  items:      T[];
+  total:      number;
+  page:       number;
+  pageSize:   number;
+  totalPages: number;
+  hasNext:    boolean;
+  hasPrev:    boolean;
+}
+
+const PAGE_SIZE = 20;
+
+function buildMastersQuery(filters?: MasterFilters): string {
+  const qs = new URLSearchParams();
+  qs.set("page", "1");
+  qs.set("pageSize", String(PAGE_SIZE));
+  if (filters?.marketsTraded?.length)  qs.set("marketsTraded", filters.marketsTraded.join(","));
+  if (filters?.strategiesUsed?.length) qs.set("strategiesUsed", filters.strategiesUsed.join(","));
+  return qs.toString();
+}
+
+// ── Store ─────────────────────────────────────────────────────────────────
+
+interface CopyTradingStore {
+  masters:          MasterTrader[];
+  myApplication:    MasterTraderApplication | null;
+  myRelationships:  CopyRelationship[];
+  copyHistory:      CopyTradeHistory[];
+  isLoading:        boolean;
+  isSyncing:        boolean;
+  isInitialized:    boolean;
+  error:            string | null;
+
+  init:  () => Promise<void>;
+  reset: () => void;
+
+  getMasters: (filters?: MasterFilters) => Promise<void>;
+  getMaster:  (masterId: string) => Promise<MasterTrader | null>;
+
+  createApplication:  () => Promise<MasterTraderApplication | null>;
+  updateApplication:  (input: ApplicationUpdateInput) => Promise<void>;
+  submitApplication:  () => Promise<void>;
+
+  startCopying:       (input: StartCopyingInput) => Promise<CopyRelationship | null>;
+  stopCopying:        (relationshipId: string, reason?: string) => Promise<void>;
+  pauseCopying:       (relationshipId: string) => Promise<void>;
+  resumeCopying:      (relationshipId: string) => Promise<void>;
+  updateRiskSettings: (relationshipId: string, settings: Partial<CopyRiskSettings>) => Promise<void>;
+
+  getCopyHistory: (page?: number) => Promise<void>;
+}
+
+export const useCopyTradingStore = create<CopyTradingStore>()((set, get) => ({
+  masters:         [],
+  myApplication:   null,
+  myRelationships: [],
+  copyHistory:     [],
+  isLoading:       false,
+  isSyncing:       false,
+  isInitialized:   false,
+  error:           null,
+
+  // ── Init ──────────────────────────────────────────────────────────────
+
+  init: async () => {
+    if (get().isInitialized) return;
+    set({ isLoading: true, error: null });
+
+    try {
+      const [mastersRes, applicationRes, relationshipsRes] = await Promise.all([
+        api.get<PaginatedResult<MasterTrader>>(`/copy-trading/masters?${buildMastersQuery()}`),
+        api.get<MasterTraderApplication | null>("/copy-trading/application"),
+        api.get<PaginatedResult<CopyRelationship>>(`/copy-trading/relationships?page=1&pageSize=${PAGE_SIZE}`),
+      ]);
+
+      set({
+        masters:         mastersRes.success ? (mastersRes.data.items ?? []) : [],
+        myApplication:   applicationRes.success ? (applicationRes.data ?? null) : null,
+        myRelationships: relationshipsRes.success ? (relationshipsRes.data.items ?? []) : [],
+        isLoading:       false,
+        isInitialized:   true,
+        error:           null,
+      });
+    } catch (err) {
+      console.error("[copyTradingStore.init]", err);
+      set({ isLoading: false, error: "Failed to load copy trading data", isInitialized: true });
+    }
   },
-};
 
-// ── Safety Check Engine ───────────────────────────────────────────────────
+  reset: () =>
+    set({
+      masters: [], myApplication: null, myRelationships: [], copyHistory: [],
+      isLoading: false, isSyncing: false, isInitialized: false, error: null,
+    }),
 
-export interface CopySafetyParams {
-  relationship: CopyRelationship;
-  masterTrader: ApprovedMasterTrader | null;
-  followerBalance: number;
-  currentOpenCopiedTrades: number;
-  todayLossAmount: number;
-  proposedLotSize: number;
-  hasStopLoss: boolean;
-  currentDrawdownPercent: number;
-}
+  // ── Masters ───────────────────────────────────────────────────────────
 
-export function runCopySafetyChecks(params: CopySafetyParams): CopySafetyCheckResult {
-  const {
-    relationship, masterTrader, followerBalance,
-    currentOpenCopiedTrades, todayLossAmount,
-    proposedLotSize, hasStopLoss, currentDrawdownPercent,
-  } = params;
+  getMasters: async (filters) => {
+    try {
+      const res = await api.get<PaginatedResult<MasterTrader>>(`/copy-trading/masters?${buildMastersQuery(filters)}`);
+      if (res.success) set({ masters: res.data.items ?? [] });
+      else set({ error: res.error });
+    } catch (err) {
+      console.error("[copyTradingStore.getMasters]", err);
+      set({ error: "Failed to load masters" });
+    }
+  },
 
-  const checks: CopySafetyCheck[] = [];
+  getMaster: async (masterId) => {
+    try {
+      const res = await api.get<MasterTrader>(`/copy-trading/masters/${masterId}`);
+      return res.success ? res.data : null;
+    } catch (err) {
+      console.error("[copyTradingStore.getMaster]", err);
+      return null;
+    }
+  },
 
-  checks.push({
-    id: "relationship_active",
-    label: "Copy relationship is active",
-    status: relationship.status === "active" ? "passed" : "failed",
-    message: relationship.status === "active"
-      ? "Relationship is active."
-      : `Relationship status: ${relationship.status}.`,
-  });
+  // ── Application ───────────────────────────────────────────────────────
 
-  checks.push({
-    id: "master_approved",
-    label: "Master trader approved and active",
-    status: masterTrader && masterTrader.status === "active" ? "passed" : "failed",
-    message: masterTrader?.status === "active"
-      ? "Master trader is approved and active."
-      : masterTrader
-        ? `Master trader status: ${masterTrader.status}.`
-        : "Master trader not found in approved registry.",
-  });
+  createApplication: async () => {
+    set({ isSyncing: true, error: null });
+    try {
+      const res = await api.post<MasterTraderApplication>("/copy-trading/application");
+      if (!res.success) { set({ isSyncing: false, error: res.error }); return null; }
+      set({ myApplication: res.data, isSyncing: false });
+      return res.data;
+    } catch (err) {
+      console.error("[copyTradingStore.createApplication]", err);
+      set({ isSyncing: false, error: "Failed to create application" });
+      return null;
+    }
+  },
 
-  checks.push({
-    id: "mode_check",
-    label: "Copy mode available",
-    status: relationship.mode === "paper_copy" ? "passed" : "warning",
-    message: relationship.mode === "paper_copy"
-      ? "Paper-copy mode — no real broker execution."
-      : "Live copy requires broker API. Not available yet.",
-  });
+  updateApplication: async (input) => {
+    const prev = get().myApplication;
+    if (prev) set({ myApplication: { ...prev, ...input } });
+    set({ isSyncing: true, error: null });
 
-  if (relationship.riskSettings.requireStopLoss) {
-    checks.push({
-      id: "stop_loss",
-      label: "Stop loss required",
-      status: hasStopLoss ? "passed" : "failed",
-      message: hasStopLoss
-        ? "Stop loss present."
-        : "This copy relationship requires a stop loss on all trades.",
+    try {
+      const res = await api.put<MasterTraderApplication>("/copy-trading/application", input);
+      if (!res.success) { set({ myApplication: prev, isSyncing: false, error: res.error }); return; }
+      set({ myApplication: res.data, isSyncing: false });
+    } catch (err) {
+      console.error("[copyTradingStore.updateApplication]", err);
+      set({ myApplication: prev, isSyncing: false, error: "Failed to update application" });
+    }
+  },
+
+  submitApplication: async () => {
+    const prev = get().myApplication;
+    if (prev) set({ myApplication: { ...prev, status: "SUBMITTED" } });
+    set({ isSyncing: true, error: null });
+
+    try {
+      const res = await api.post<MasterTraderApplication>("/copy-trading/application/submit");
+      if (!res.success) { set({ myApplication: prev, isSyncing: false, error: res.error }); return; }
+      set({ myApplication: res.data, isSyncing: false });
+    } catch (err) {
+      console.error("[copyTradingStore.submitApplication]", err);
+      set({ myApplication: prev, isSyncing: false, error: "Failed to submit application" });
+    }
+  },
+
+  // ── Copy relationships ────────────────────────────────────────────────
+
+  startCopying: async (input) => {
+    set({ isSyncing: true, error: null });
+    try {
+      const res = await api.post<CopyRelationship>("/copy-trading/relationships", input);
+      if (!res.success) { set({ isSyncing: false, error: res.error }); return null; }
+      set((s) => ({
+        myRelationships: [res.data, ...s.myRelationships.filter((r) => r.id !== res.data.id)],
+        isSyncing:       false,
+      }));
+      return res.data;
+    } catch (err) {
+      console.error("[copyTradingStore.startCopying]", err);
+      set({ isSyncing: false, error: "Failed to start copying" });
+      return null;
+    }
+  },
+
+  stopCopying: async (relationshipId, reason) => {
+    const prev = get().myRelationships;
+    set({
+      myRelationships: prev.map((r) => (r.id === relationshipId ? { ...r, status: "STOPPED" as const, stopReason: reason ?? null } : r)),
     });
-  }
 
-  const maxOpen = relationship.riskSettings.maxOpenCopiedTrades;
-  checks.push({
-    id: "max_open_trades",
-    label: "Max open copied trades",
-    status: currentOpenCopiedTrades < maxOpen ? "passed" : "failed",
-    message: currentOpenCopiedTrades < maxOpen
-      ? `${currentOpenCopiedTrades}/${maxOpen} max open trades used.`
-      : `Max open copied trades (${maxOpen}) reached.`,
-  });
-
-  const dailyLossLimit = followerBalance * (relationship.riskSettings.maxDailyLossPercent / 100);
-  checks.push({
-    id: "daily_loss",
-    label: "Daily loss limit",
-    status: todayLossAmount < dailyLossLimit ? "passed" : "failed",
-    message: todayLossAmount < dailyLossLimit
-      ? `Daily loss $${todayLossAmount.toFixed(2)} within limit.`
-      : `Daily loss limit reached ($${todayLossAmount.toFixed(2)}/$${dailyLossLimit.toFixed(2)}).`,
-  });
-
-  const maxDD = relationship.riskSettings.maxTotalDrawdownPercent;
-  checks.push({
-    id: "drawdown",
-    label: "Total drawdown limit",
-    status: currentDrawdownPercent <= maxDD ? "passed" : "failed",
-    message: currentDrawdownPercent <= maxDD
-      ? `Drawdown ${currentDrawdownPercent.toFixed(1)}% within ${maxDD}% limit.`
-      : `Drawdown limit exceeded: ${currentDrawdownPercent.toFixed(1)}% > ${maxDD}%.`,
-  });
-
-  checks.push({
-    id: "lot_size_valid",
-    label: "Lot size valid",
-    status: proposedLotSize > 0 ? "passed" : "failed",
-    message: proposedLotSize > 0 ? `Lot size ${proposedLotSize} valid.` : "Lot size must be > 0.",
-  });
-
-  checks.push({
-    id: "broker_compat",
-    label: "Broker compatibility",
-    status: "not_available",
-    message: "Broker API not connected. Paper-copy bypasses broker requirement.",
-  });
-
-  checks.push({
-    id: "news_filter",
-    label: "News filter",
-    status: relationship.riskSettings.newsFilterEnabled ? "not_available" : "passed",
-    message: relationship.riskSettings.newsFilterEnabled
-      ? "News filter enabled — economic calendar not connected yet."
-      : "News filter disabled.",
-  });
-
-  checks.push({
-    id: "slippage",
-    label: "Slippage check",
-    status: "not_available",
-    message: "Slippage check requires live broker data. Not available in paper-copy mode.",
-  });
-
-  const hasFailed = checks.some(c => c.status === "failed");
-  return { canCopy: !hasFailed, checks };
-}
-
-/**
- * Slippage-adjusted lot — Phase Alpha placeholder.
- * Rules (when broker connected):
- *   actual <= max           → full lot
- *   actual <= 1.5 × max     → reduced: finalLot × (max / actual)
- *   actual > 1.5 × max      → block trade
- */
-export function calculateSlippageAdjustedLot(
-  finalLot: number,
-  _maxSlippagePoints: number,
-  _actualSlippagePoints: number
-): { adjustedLot: number | null; blocked: boolean; reason: string } {
-  return {
-    adjustedLot: finalLot,
-    blocked: false,
-    reason: "Slippage check not available — broker not connected (paper-copy mode).",
-  };
-}
-
-// ── Global master registry storage ────────────────────────────────────────
-
-const masterRegistryStorage = {
-  getItem: (_: string): string | null => {
-    if (typeof window === "undefined") return null;
-    try { return localStorage.getItem("tcc:master-registry"); } catch { return null; }
-  },
-  setItem: (_: string, value: string): void => {
-    if (typeof window === "undefined") return;
-    try { localStorage.setItem("tcc:master-registry", value); } catch {}
-  },
-  removeItem: (_: string): void => {
-    if (typeof window === "undefined") return;
-    try { localStorage.removeItem("tcc:master-registry"); } catch {}
-  },
-};
-
-// ── Master Registry Store — GLOBAL ────────────────────────────────────────
-
-interface MasterRegistryState {
-  approvedMasters: ApprovedMasterTrader[];
-  allApplications: MasterTraderApplication[];
-
-  upsertApplication:  (application: MasterTraderApplication) => void;
-  approveApplication: (applicationId: string, adminHandle: string) => ApprovedMasterTrader | null;
-  rejectApplication:  (applicationId: string, adminHandle: string, reason: string) => void;
-  requestMoreInfo:    (applicationId: string, adminHandle: string, request: string) => void;
-  suspendMaster:      (masterTraderId: string, adminHandle: string, reason: string) => void;
-  removeMaster:       (masterTraderId: string) => void;
-  addAdminNote:       (applicationId: string, note: string) => void;
-  markUnderReview:    (applicationId: string, adminHandle: string) => void;
-
-  getActiveMasters:       () => ApprovedMasterTrader[];
-  getApplicationByUserId: (userId: string) => MasterTraderApplication | undefined;
-  getMasterByUserId:      (userId: string) => ApprovedMasterTrader | undefined;
-  getMasterById:          (masterId: string) => ApprovedMasterTrader | undefined;
-  getPendingApplications: () => MasterTraderApplication[];
-}
-
-export const useMasterRegistryStore = create<MasterRegistryState>()(
-  persist(
-    (set, get) => ({
-      approvedMasters: [],
-      allApplications: [],
-
-      upsertApplication: (application) => {
-        set((state) => {
-          const idx = state.allApplications.findIndex(a => a.id === application.id);
-          if (idx >= 0) {
-            const next = [...state.allApplications];
-            next[idx] = application;
-            return { allApplications: next };
-          }
-          return { allApplications: [application, ...state.allApplications] };
-        });
-      },
-
-      approveApplication: (applicationId, adminHandle) => {
-        const app = get().allApplications.find(a => a.id === applicationId);
-        if (!app) return null;
-        const now = new Date().toISOString();
-        const updatedApp: MasterTraderApplication = {
-          ...app, status: "approved", reviewedBy: adminHandle, reviewedAt: now, updatedAt: now,
-        };
-        const master: ApprovedMasterTrader = {
-          id:           `master_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          userId:       app.userId,
-          tccId:        app.tccId,
-          applicationId: app.id,
-          displayName:  app.displayName,
-          status:       "active",
-          approvedAt:   now,
-          approvedBy:   adminHandle,
-          marketsTraded:  app.marketsTraded,
-          strategiesUsed: app.strategiesUsed,
-          brokerCompatibility: { sameBrokerRequired: true, status: "not_connected" },
-          publicProfileRequired: true,
-          trustScoreStatus: "insufficient_verified_data",
-          createdAt: now,
-          updatedAt: now,
-        };
-        set((state) => ({
-          allApplications: state.allApplications.map(a => a.id === applicationId ? updatedApp : a),
-          approvedMasters: [master, ...state.approvedMasters.filter(m => m.userId !== app.userId)],
-        }));
-        return master;
-      },
-
-      rejectApplication: (applicationId, adminHandle, reason) => {
-        const now = new Date().toISOString();
-        set((state) => ({
-          allApplications: state.allApplications.map(a =>
-            a.id !== applicationId ? a : {
-              ...a, status: "rejected" as MasterTraderApplicationStatus,
-              rejectionReason: reason, reviewedBy: adminHandle, reviewedAt: now, updatedAt: now,
-            }
-          ),
-        }));
-      },
-
-      requestMoreInfo: (applicationId, adminHandle, request) => {
-        const now = new Date().toISOString();
-        set((state) => ({
-          allApplications: state.allApplications.map(a =>
-            a.id !== applicationId ? a : {
-              ...a, status: "more_info_required" as MasterTraderApplicationStatus,
-              moreInfoRequest: request, reviewedBy: adminHandle, reviewedAt: now, updatedAt: now,
-            }
-          ),
-        }));
-      },
-
-      suspendMaster: (masterTraderId, adminHandle, reason) => {
-        const now = new Date().toISOString();
-        const master = get().approvedMasters.find(m => m.id === masterTraderId);
-        set((state) => ({
-          approvedMasters: state.approvedMasters.map(m =>
-            m.id !== masterTraderId ? m : { ...m, status: "suspended" as MasterTraderStatus, updatedAt: now }
-          ),
-          allApplications: state.allApplications.map(a =>
-            master && a.userId !== master.userId ? a : {
-              ...a, status: "suspended" as MasterTraderApplicationStatus,
-              adminNotes: `Suspended by ${adminHandle}: ${reason}`, updatedAt: now,
-            }
-          ),
-        }));
-      },
-
-      removeMaster: (masterTraderId) => {
-        const now = new Date().toISOString();
-        set((state) => ({
-          approvedMasters: state.approvedMasters.map(m =>
-            m.id !== masterTraderId ? m : { ...m, status: "removed" as MasterTraderStatus, updatedAt: now }
-          ),
-        }));
-      },
-
-      addAdminNote: (applicationId, note) => {
-        const now = new Date().toISOString();
-        set((state) => ({
-          allApplications: state.allApplications.map(a =>
-            a.id !== applicationId ? a : { ...a, adminNotes: note, updatedAt: now }
-          ),
-        }));
-      },
-
-      markUnderReview: (applicationId, adminHandle) => {
-        const now = new Date().toISOString();
-        set((state) => ({
-          allApplications: state.allApplications.map(a =>
-            a.id !== applicationId ? a : {
-              ...a, status: "under_review" as MasterTraderApplicationStatus,
-              reviewedBy: adminHandle, updatedAt: now,
-            }
-          ),
-        }));
-      },
-
-      getActiveMasters:       () => get().approvedMasters.filter(m => m.status === "active"),
-      getApplicationByUserId: (userId) => get().allApplications.find(a => a.userId === userId),
-      getMasterByUserId:      (userId) => get().approvedMasters.find(m => m.userId === userId),
-      getMasterById:          (id) => get().approvedMasters.find(m => m.id === id),
-      getPendingApplications: () => get().allApplications.filter(
-        a => a.status === "submitted" || a.status === "under_review" || a.status === "more_info_required"
-      ),
-    }),
-    {
-      name: "master-registry",
-      storage: createJSONStorage(() => masterRegistryStorage),
+    try {
+      const res = await api.post<CopyRelationship>(`/copy-trading/relationships/${relationshipId}/stop`, { stopReason: reason });
+      if (!res.success) { set({ myRelationships: prev, error: res.error }); return; }
+      set((s) => ({ myRelationships: s.myRelationships.map((r) => (r.id === relationshipId ? res.data : r)) }));
+    } catch (err) {
+      console.error("[copyTradingStore.stopCopying]", err);
+      set({ myRelationships: prev, error: "Failed to stop copying" });
     }
-  )
-);
+  },
 
-// ── User-scoped Copy Trading Store ────────────────────────────────────────
+  pauseCopying: async (relationshipId) => {
+    const prev = get().myRelationships;
+    set({ myRelationships: prev.map((r) => (r.id === relationshipId ? { ...r, status: "PAUSED" as const } : r)) });
 
-interface CopyTradingState {
-  myApplication: MasterTraderApplication | null;
-  relationships: CopyRelationship[];
-  copyHistory:   CopyTradeHistoryItem[];
-  feeModels:     CopyFeeModel[];
-
-  submitApplication: (params: {
-    userId: string; tccId: string; displayName: string;
-    marketsTraded: string[]; strategiesUsed: string[];
-    experienceSummary: string; riskManagementSummary: string;
-    reasonForApplying: string;
-    hasAcceptedRiskDisclosure: boolean;
-    hasAcceptedPerformanceTruthPolicy: boolean;
-    hasAcceptedCopyTradingTerms: boolean;
-  }) => MasterTraderApplication;
-
-  resubmitApplication: () => void;
-
-  startCopyRelationship: (params: {
-    followerUserId: string;
-    masterTraderUserId: string;
-    masterTraderId: string;
-    masterDisplayName: string;
-    mode: CopyMode;
-    riskSettings: CopyRiskSettings;
-  }) => CopyRelationship;
-
-  updateRiskSettings: (relationshipId: string, settings: Partial<CopyRiskSettings>) => void;
-  pauseRelationship:  (relationshipId: string) => void;
-  resumeRelationship: (relationshipId: string) => void;
-  stopRelationship:   (relationshipId: string, reason?: string) => void;
-
-  executePaperCopy: (params: {
-    relationshipId: string;
-    masterTraderUserId: string;
-    masterDisplayName: string;
-    followerUserId: string;
-    symbol: string;
-    displayName: string;
-    side: "BUY" | "SELL";
-    lotSize: number;
-    entryPrice: number;
-    safetyResult: CopySafetyCheckResult;
-  }) => CopyTradeHistoryItem;
-
-  recordBlockedCopy: (params: {
-    relationshipId: string;
-    masterTraderUserId: string;
-    masterDisplayName: string;
-    followerUserId: string;
-    symbol: string;
-    displayName: string;
-    side: "BUY" | "SELL";
-    lotSize: number;
-    entryPrice: number;
-    reason: string;
-    safetyResult: CopySafetyCheckResult;
-  }) => void;
-
-  initFeeModel: (relationshipId: string, balance: number, feePercent: number) => void;
-
-  getActiveRelationships:  () => CopyRelationship[];
-  getRelationshipByMaster: (masterTraderId: string) => CopyRelationship | undefined;
-  getOpenCopiedTradeCount: (relationshipId: string) => number;
-  getFeeModel:             (relationshipId: string) => CopyFeeModel | undefined;
-}
-
-export const useCopyTradingStore = create<CopyTradingState>()(
-  persist(
-    (set, get) => ({
-      myApplication: null,
-      relationships: [],
-      copyHistory:   [],
-      feeModels:     [],
-
-      submitApplication: (params) => {
-        const now = new Date().toISOString();
-        const app: MasterTraderApplication = {
-          id:          `app_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          userId:      params.userId,
-          tccId:       params.tccId,
-          displayName: params.displayName,
-          status:      "submitted",
-          marketsTraded:  params.marketsTraded,
-          strategiesUsed: params.strategiesUsed,
-          experienceSummary:     params.experienceSummary,
-          riskManagementSummary: params.riskManagementSummary,
-          reasonForApplying:     params.reasonForApplying,
-          hasAcceptedRiskDisclosure:         params.hasAcceptedRiskDisclosure,
-          hasAcceptedPerformanceTruthPolicy: params.hasAcceptedPerformanceTruthPolicy,
-          hasAcceptedCopyTradingTerms:       params.hasAcceptedCopyTradingTerms,
-          submittedAt: now,
-          createdAt:   now,
-          updatedAt:   now,
-        };
-        set({ myApplication: app });
-        useMasterRegistryStore.getState().upsertApplication(app);
-        return app;
-      },
-
-      resubmitApplication: () => {
-        const { myApplication } = get();
-        if (!myApplication) return;
-        const now = new Date().toISOString();
-        const updated: MasterTraderApplication = {
-          ...myApplication, status: "submitted", submittedAt: now, updatedAt: now,
-        };
-        set({ myApplication: updated });
-        useMasterRegistryStore.getState().upsertApplication(updated);
-      },
-
-      startCopyRelationship: (params) => {
-        const now = new Date().toISOString();
-        const relationship: CopyRelationship = {
-          id:                 `rel_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          followerUserId:     params.followerUserId,
-          masterTraderUserId: params.masterTraderUserId,
-          masterTraderId:     params.masterTraderId,
-          masterDisplayName:  params.masterDisplayName,
-          mode:               params.mode,
-          status:             "active",
-          riskSettings:       params.riskSettings,
-          startedAt:          now,
-          updatedAt:          now,
-        };
-        set((state) => ({
-          relationships: [relationship, ...state.relationships.filter(r => r.masterTraderId !== params.masterTraderId)],
-        }));
-        return relationship;
-      },
-
-      updateRiskSettings: (relationshipId, settings) => {
-        set((state) => ({
-          relationships: state.relationships.map(r =>
-            r.id !== relationshipId ? r : {
-              ...r, riskSettings: { ...r.riskSettings, ...settings }, updatedAt: new Date().toISOString(),
-            }
-          ),
-        }));
-      },
-
-      pauseRelationship: (relationshipId) => {
-        set((state) => ({
-          relationships: state.relationships.map(r =>
-            r.id !== relationshipId ? r : { ...r, status: "paused" as CopyRelationshipStatus, updatedAt: new Date().toISOString() }
-          ),
-        }));
-      },
-
-      resumeRelationship: (relationshipId) => {
-        set((state) => ({
-          relationships: state.relationships.map(r =>
-            r.id !== relationshipId ? r : { ...r, status: "active" as CopyRelationshipStatus, updatedAt: new Date().toISOString() }
-          ),
-        }));
-      },
-
-      stopRelationship: (relationshipId, reason) => {
-        const now = new Date().toISOString();
-        set((state) => ({
-          relationships: state.relationships.map(r =>
-            r.id !== relationshipId ? r : {
-              ...r, status: "stopped" as CopyRelationshipStatus,
-              stoppedAt: now, stopReason: reason, updatedAt: now,
-            }
-          ),
-        }));
-      },
-
-      executePaperCopy: (params) => {
-        const now = new Date().toISOString();
-        const item: CopyTradeHistoryItem = {
-          id:                 `copy_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          relationshipId:     params.relationshipId,
-          masterTraderUserId: params.masterTraderUserId,
-          masterDisplayName:  params.masterDisplayName,
-          followerUserId:     params.followerUserId,
-          symbol:             params.symbol,
-          displayName:        params.displayName,
-          side:               params.side,
-          lotSize:            params.lotSize,
-          entryPrice:         params.entryPrice,
-          status:             "copied_paper",
-          mode:               "paper_copy",
-          riskCheckResult:    params.safetyResult,
-          createdAt:          now,
-        };
-        set((state) => ({ copyHistory: [item, ...state.copyHistory] }));
-        return item;
-      },
-
-      recordBlockedCopy: (params) => {
-        const now = new Date().toISOString();
-        const item: CopyTradeHistoryItem = {
-          id:                 `blocked_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          relationshipId:     params.relationshipId,
-          masterTraderUserId: params.masterTraderUserId,
-          masterDisplayName:  params.masterDisplayName,
-          followerUserId:     params.followerUserId,
-          symbol:             params.symbol,
-          displayName:        params.displayName,
-          side:               params.side,
-          lotSize:            params.lotSize,
-          entryPrice:         params.entryPrice,
-          status:             "blocked",
-          reason:             params.reason,
-          mode:               "paper_copy",
-          riskCheckResult:    params.safetyResult,
-          createdAt:          now,
-        };
-        set((state) => ({ copyHistory: [item, ...state.copyHistory] }));
-      },
-
-      initFeeModel: (relationshipId, balance, feePercent) => {
-        if (get().feeModels.find(f => f.relationshipId === relationshipId)) return;
-        set((state) => ({
-          feeModels: [...state.feeModels, {
-            relationshipId,
-            performanceFeePercent:  feePercent,
-            highWaterMark:          balance,
-            currentBalanceSnapshot: balance,
-            totalFeesAccrued:       0,
-          }],
-        }));
-      },
-
-      getActiveRelationships:  () => get().relationships.filter(r => r.status === "active" || r.status === "paused"),
-      getRelationshipByMaster: (masterTraderId) => get().relationships.find(r => r.masterTraderId === masterTraderId),
-      getOpenCopiedTradeCount: (relationshipId) => get().copyHistory.filter(h => h.relationshipId === relationshipId && h.status === "copied_paper").length,
-      getFeeModel:             (relationshipId) => get().feeModels.find(f => f.relationshipId === relationshipId),
-    }),
-    {
-      name:    "copy-trading",
-      storage: createJSONStorage(() => getUserScopedStorage("copy-trading")),
+    try {
+      const res = await api.post<CopyRelationship>(`/copy-trading/relationships/${relationshipId}/pause`);
+      if (!res.success) { set({ myRelationships: prev, error: res.error }); return; }
+      set((s) => ({ myRelationships: s.myRelationships.map((r) => (r.id === relationshipId ? res.data : r)) }));
+    } catch (err) {
+      console.error("[copyTradingStore.pauseCopying]", err);
+      set({ myRelationships: prev, error: "Failed to pause copying" });
     }
-  )
-);
+  },
+
+  resumeCopying: async (relationshipId) => {
+    const prev = get().myRelationships;
+    set({ myRelationships: prev.map((r) => (r.id === relationshipId ? { ...r, status: "ACTIVE" as const } : r)) });
+
+    try {
+      const res = await api.post<CopyRelationship>(`/copy-trading/relationships/${relationshipId}/resume`);
+      if (!res.success) { set({ myRelationships: prev, error: res.error }); return; }
+      set((s) => ({ myRelationships: s.myRelationships.map((r) => (r.id === relationshipId ? res.data : r)) }));
+    } catch (err) {
+      console.error("[copyTradingStore.resumeCopying]", err);
+      set({ myRelationships: prev, error: "Failed to resume copying" });
+    }
+  },
+
+  updateRiskSettings: async (relationshipId, settings) => {
+    const prev = get().myRelationships;
+    set({ myRelationships: prev.map((r) => (r.id === relationshipId ? { ...r, ...settings } : r)) });
+
+    try {
+      const res = await api.put<CopyRelationship>(`/copy-trading/relationships/${relationshipId}/risk`, settings);
+      if (!res.success) { set({ myRelationships: prev, error: res.error }); return; }
+      set((s) => ({ myRelationships: s.myRelationships.map((r) => (r.id === relationshipId ? res.data : r)) }));
+    } catch (err) {
+      console.error("[copyTradingStore.updateRiskSettings]", err);
+      set({ myRelationships: prev, error: "Failed to update risk settings" });
+    }
+  },
+
+  // ── History ───────────────────────────────────────────────────────────
+
+  getCopyHistory: async (page = 1) => {
+    try {
+      const res = await api.get<PaginatedResult<CopyTradeHistory>>(`/copy-trading/history?page=${page}&pageSize=${PAGE_SIZE}`);
+      if (res.success) set({ copyHistory: res.data.items ?? [] });
+      else set({ error: res.error });
+    } catch (err) {
+      console.error("[copyTradingStore.getCopyHistory]", err);
+      set({ error: "Failed to load copy history" });
+    }
+  },
+}));
+
+// ── Auto-init / reset (single-arg subscribe) ──────────────────────────────
+
+if (typeof window !== "undefined") {
+  import("@/store/authStore").then(({ useAuthStore }) => {
+    let prevUserId: string | undefined;
+
+    useAuthStore.subscribe((state) => {
+      const userId = state.user?.id;
+      if (userId !== prevUserId) {
+        prevUserId = userId;
+        if (userId) {
+          useCopyTradingStore.getState().init();
+        } else {
+          useCopyTradingStore.getState().reset();
+        }
+      }
+    });
+  });
+}

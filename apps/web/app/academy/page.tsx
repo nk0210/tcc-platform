@@ -2,62 +2,92 @@
 /**
  * TCC Academy Page
  *
- * Honest labels:
- * - No fake ratings or enrolled counts
- * - Certificate status is real (coming_soon / unavailable / earned)
- * - Progress persisted per user
- * - Linked to strategy templates where applicable
+ * API-backed via academyStore.ts (Phase Alpha Frontend Integration).
+ *
+ * NOTE — data model gaps vs. the old hardcoded catalog (flagged for product
+ * follow-up, not something a type fix can paper over):
+ *   - The backend Lesson model has no `keyPoints` or `quizQuestions` fields —
+ *     only `content: string | null`. The old multiple-choice "Knowledge Check"
+ *     UI had no server-side data to render, so it's replaced with a plain
+ *     content view + a "Mark Complete" action. Quiz-type lessons show a note
+ *     instead of fabricating a scoring UI with no real questions behind it.
+ *   - Course has no `instructor`/`instructorHandle`/`isFree`/`certificateAvailable`/
+ *     `linkedStrategyIds` fields anymore — mapped to the closest real fields
+ *     (creatorName/creatorId, !isPaid, certificateStatus !== "UNAVAILABLE",
+ *     linkedStrategyId singular).
+ *   - There is no unenroll endpoint on the backend, so the "Unenroll" button
+ *     was removed.
+ *   - The course list endpoint doesn't include lessons (only single-course
+ *     fetch does), so lesson counts on cards read 0 until a course is opened.
  */
 import { useState, useMemo } from "react";
 import {
-  useAcademyStore, Course, Lesson, CourseLevel, CourseType,
+  useAcademyStore, type Course, type Lesson, type CourseLevel, type CourseType, type AcademyProgress,
 } from "@/store/academyStore";
 import { useStrategyStore } from "@/store/strategyStore";
 import { useNotificationStore } from "@/store/notificationStore";
-import { useAuthStore } from "@/store/authStore";
 import ReportButton from "@/components/ReportButton";
 import Topbar from "@/components/Topbar";
 import Sidebar from "@/components/Sidebar";
 
+// ── Progress helpers (the new store keeps raw myProgress only) ────────────
+
+function isEnrolled(myProgress: Record<string, AcademyProgress>, courseId: string): boolean {
+  return !!myProgress[courseId];
+}
+
+function getProgressPct(myProgress: Record<string, AcademyProgress>, course: Course): number {
+  const p = myProgress[course.id];
+  if (!p || course.lessons.length === 0) return 0;
+  return Math.round((p.completedLessons.length / course.lessons.length) * 100);
+}
+
+function hasCert(myProgress: Record<string, AcademyProgress>, courseId: string): boolean {
+  return myProgress[courseId]?.certificateStatus === "EARNED";
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 const LEVEL_COLORS: Record<CourseLevel, string> = {
-  beginner:     "text-green-400 bg-green-500/10 border-green-500/20",
-  intermediate: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-  advanced:     "text-red-400   bg-red-500/10   border-red-500/20",
+  BEGINNER:     "text-green-400 bg-green-500/10 border-green-500/20",
+  INTERMEDIATE: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+  ADVANCED:     "text-red-400   bg-red-500/10   border-red-500/20",
 };
 
 const TYPE_LABELS: Record<CourseType, string> = {
-  official:           "Official TCC Course",
-  free_resource:      "Free Resource",
-  creator_published:  "Creator Published",
+  OFFICIAL:          "Official TCC Course",
+  FREE_RESOURCE:     "Free Resource",
+  CREATOR_PUBLISHED: "Creator Published",
 };
 
 const TYPE_COLORS: Record<CourseType, string> = {
-  official:           "text-blue-400 bg-blue-500/10 border-blue-500/20",
-  free_resource:      "text-green-400 bg-green-500/10 border-green-500/20",
-  creator_published:  "text-purple-400 bg-purple-500/10 border-purple-500/20",
+  OFFICIAL:          "text-blue-400 bg-blue-500/10 border-blue-500/20",
+  FREE_RESOURCE:     "text-green-400 bg-green-500/10 border-green-500/20",
+  CREATOR_PUBLISHED: "text-purple-400 bg-purple-500/10 border-purple-500/20",
 };
 
 // ── Learning Path config ──────────────────────────────────────────────────
+// NOTE: these course IDs matched the old hardcoded catalog. The new API's
+// courses have server-generated IDs, so paths will show empty until seed
+// data (or a real course-tagging mechanism) exists — not a compile issue.
 
 const LEARNING_PATHS = [
   {
-    level: "beginner" as CourseLevel,
+    level: "BEGINNER" as CourseLevel,
     label: "📗 Beginner Path",
     description: "Start here. No prior knowledge required.",
     courseIds: ["c_fundamentals", "c_tech_analysis", "c_risk"],
     color: "border-green-500/20 bg-green-500/3",
   },
   {
-    level: "intermediate" as CourseLevel,
+    level: "INTERMEDIATE" as CourseLevel,
     label: "📙 Intermediate Path",
     description: "Build on fundamentals with real trading frameworks.",
     courseIds: ["c1", "c2"],
     color: "border-amber-500/20 bg-amber-500/3",
   },
   {
-    level: "advanced" as CourseLevel,
+    level: "ADVANCED" as CourseLevel,
     label: "📕 Advanced Path",
     description: "Advanced techniques for experienced paper traders.",
     courseIds: ["c_advanced"],
@@ -70,45 +100,22 @@ const LEARNING_PATHS = [
 function LessonPlayer({
   course, lesson, onBack,
 }: { course: Course; lesson: Lesson; onBack: () => void }) {
-  const { completeLesson, submitQuiz, userProgress } = useAcademyStore();
+  const { completeLesson, myProgress } = useAcademyStore();
   const { addNotification } = useNotificationStore();
-  const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
-  const [quizSubmitted, setQuizSubmitted] = useState(false);
 
-  const progress = userProgress[course.id];
-  const isCompleted = progress?.completedLessons.includes(lesson.id);
-  const quizScore = progress?.quizScores[lesson.id];
+  const progress = myProgress[course.id];
+  const isCompleted = !!progress?.completedLessons.includes(lesson.id);
 
-  const handleComplete = () => {
-    completeLesson(course.id, lesson.id);
+  const handleComplete = async () => {
+    await completeLesson(course.id, lesson.id);
     addNotification({
-      type: "academy",
-      priority: "low",
-      title: `✓ Lesson Completed`,
-      message: `"${lesson.title}" marked complete in ${course.title}`,
-      action: { label: "Continue Learning", path: "/academy" },
+      type:        "academy",
+      priority:    "low",
+      title:       `✓ Lesson Completed`,
+      message:     `"${lesson.title}" marked complete in ${course.title}`,
+      actionLabel: "Continue Learning",
+      actionPath:  "/academy",
     });
-  };
-
-  const handleQuizSubmit = () => {
-    if (!lesson.quizQuestions) return;
-    let correct = 0;
-    lesson.quizQuestions.forEach(q => {
-      if (quizAnswers[q.id] === q.correctIndex) correct++;
-    });
-    const score = Math.round((correct / lesson.quizQuestions.length) * 100);
-    submitQuiz(course.id, lesson.id, score);
-    if (score >= 70) {
-      completeLesson(course.id, lesson.id);
-      addNotification({
-        type: "academy",
-        priority: "medium",
-        title: `🎓 Quiz Passed — ${score}%`,
-        message: `"${lesson.title}" completed with ${score}% score.`,
-        action: { label: "Continue Learning", path: "/academy" },
-      });
-    }
-    setQuizSubmitted(true);
   };
 
   return (
@@ -130,66 +137,30 @@ function LessonPlayer({
             <span className="text-green-400 text-2xl">▶</span>
           </div>
           <p className="text-white/40 text-sm">{lesson.title}</p>
-          <p className="text-white/20 text-xs mt-1">{course.instructor} · {lesson.duration}</p>
+          <p className="text-white/20 text-xs mt-1">{course.creatorName ?? "TCC Academy"} · {lesson.duration}</p>
           <p className="text-white/15 text-xs mt-3 italic">Video player coming in Phase Alpha</p>
         </div>
 
-        {/* Description */}
+        {/* Lesson content */}
         <div className="glass border border-white/5 rounded-xl p-5 mb-5">
-          <p className="text-white/60 text-sm leading-relaxed mb-4">{lesson.description}</p>
-          {lesson.keyPoints.length > 0 && (
-            <>
-              <p className="text-white/40 text-xs uppercase tracking-wider mb-3">Key Points</p>
-              <div className="flex flex-col gap-2">
-                {lesson.keyPoints.map((pt, i) => (
-                  <div key={i} className="flex items-start gap-2">
-                    <span className="text-green-400 text-xs mt-0.5">✓</span>
-                    <p className="text-white/60 text-xs">{pt}</p>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+          <p className="text-white/60 text-sm leading-relaxed whitespace-pre-line">
+            {lesson.content || lesson.description}
+          </p>
         </div>
 
-        {/* Quiz */}
-        {lesson.quizQuestions && lesson.quizQuestions.length > 0 && !isCompleted && (
+        {/* Quiz-type lessons — no structured question data on the backend yet */}
+        {lesson.type === "QUIZ" && !isCompleted && (
           <div className="glass border border-white/5 rounded-xl p-5 mb-5">
-            <p className="text-white font-semibold mb-4">📝 Knowledge Check</p>
-            {!quizSubmitted ? (
-              <>
-                {lesson.quizQuestions.map(q => (
-                  <div key={q.id} className="mb-4">
-                    <p className="text-white/70 text-sm mb-2">{q.question}</p>
-                    <div className="flex flex-col gap-2">
-                      {q.options.map((opt, i) => (
-                        <button key={i} onClick={() => setQuizAnswers({ ...quizAnswers, [q.id]: i })}
-                          className={`text-left px-3 py-2 rounded-lg text-xs border transition ${quizAnswers[q.id] === i ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-white/5 text-white/60 border-white/10 hover:border-white/20"}`}>
-                          {opt}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-                <button
-                  onClick={handleQuizSubmit}
-                  disabled={Object.keys(quizAnswers).length < lesson.quizQuestions.length}
-                  className="bg-green-500/20 text-green-400 border border-green-500/30 px-4 py-2 rounded-lg text-xs font-semibold disabled:opacity-40 hover:bg-green-500/30 transition">
-                  Submit Quiz
-                </button>
-              </>
-            ) : (
-              <div className={`p-4 rounded-xl ${quizScore && quizScore >= 70 ? "bg-green-500/10 border border-green-500/20" : "bg-amber-500/10 border border-amber-500/20"}`}>
-                <p className={`font-semibold text-sm ${quizScore && quizScore >= 70 ? "text-green-400" : "text-amber-400"}`}>
-                  Score: {quizScore}% — {quizScore && quizScore >= 70 ? "Lesson Completed! 🎉" : "Score 70%+ to complete this lesson"}
-                </p>
-              </div>
-            )}
+            <p className="text-white font-semibold mb-2">📝 Knowledge Check</p>
+            <p className="text-white/40 text-xs leading-relaxed">
+              Interactive quiz questions aren't available yet for this lesson. Review the material
+              above, then mark it complete.
+            </p>
           </div>
         )}
 
         {/* Mark Complete */}
-        {!isCompleted && (!lesson.quizQuestions || quizSubmitted) && (
+        {!isCompleted && (
           <button onClick={handleComplete}
             className="bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 px-6 py-2.5 rounded-xl text-sm font-semibold transition">
             ✓ Mark Lesson Complete
@@ -215,49 +186,34 @@ function CourseDetail({
   onBack: () => void;
   onSelectLesson: (lesson: Lesson) => void;
 }) {
-  const { enrollCourse, unenrollCourse, isEnrolled, getProgress, userProgress, hasEarnedCert } = useAcademyStore();
+  const { enrollInCourse, myProgress } = useAcademyStore();
   const { strategies } = useStrategyStore();
   const { addNotification } = useNotificationStore();
-  const { user } = useAuthStore();
 
-  const enrolled = isEnrolled(course.id);
-  const progress = getProgress(course.id);
-  const certEarned = hasEarnedCert(course.id);
-  const progressData = userProgress[course.id];
+  const enrolled = isEnrolled(myProgress, course.id);
+  const progress = getProgressPct(myProgress, course);
+  const certEarned = hasCert(myProgress, course.id);
+  const progressData = myProgress[course.id];
 
-  const linkedStrategies = strategies.filter(s => course.linkedStrategyIds.includes(s.id));
+  const linkedStrategies = course.linkedStrategyId
+    ? strategies.filter(s => s.id === course.linkedStrategyId)
+    : [];
 
-  const handleEnroll = () => {
-    enrollCourse(course.id);
+  const handleEnroll = async () => {
+    await enrollInCourse(course.id);
     addNotification({
-      type: "academy",
-      priority: "low",
-      title: `📚 Enrolled — ${course.title}`,
-      message: `You are now enrolled. Progress is saved locally.`,
-      action: { label: "Start Learning", path: "/academy" },
+      type:        "academy",
+      priority:    "low",
+      title:       `📚 Enrolled — ${course.title}`,
+      message:     `You are now enrolled.`,
+      actionLabel: "Start Learning",
+      actionPath:  "/academy",
     });
   };
 
-  const handleCourseComplete = () => {
-    if (progress === 100) {
-      addNotification({
-        type: "academy",
-        priority: "medium",
-        title: `🎓 Course Completed — ${course.title}`,
-        message: course.certificateAvailable
-          ? "Certificate earned! Coming soon to your profile."
-          : "Course completed. Certificate not available for this course.",
-        action: { label: "View Academy", path: "/academy" },
-      });
-    }
-  };
-
-  // Notify on first completion
-  if (progress === 100) handleCourseComplete();
-
   const certStatusLabel = certEarned
     ? "🏆 Certificate Earned"
-    : course.certificateAvailable
+    : course.certificateStatus !== "UNAVAILABLE"
       ? "🎓 Certificate available on completion"
       : "Certificate not available for this course";
 
@@ -271,8 +227,8 @@ function CourseDetail({
           <div className="flex-1">
             <div className="flex items-center gap-2 flex-wrap mb-2">
               <span className={`text-xs px-2 py-0.5 rounded-full border ${TYPE_COLORS[course.type]}`}>{TYPE_LABELS[course.type]}</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full border capitalize ${LEVEL_COLORS[course.level]}`}>{course.level}</span>
-              {course.isFree ? (
+              <span className={`text-xs px-2 py-0.5 rounded-full border capitalize ${LEVEL_COLORS[course.level]}`}>{course.level.toLowerCase()}</span>
+              {!course.isPaid ? (
                 <span className="text-xs text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full">Free</span>
               ) : (
                 <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">${course.price}</span>
@@ -281,7 +237,7 @@ function CourseDetail({
             <h1 className="text-xl font-bold text-white mb-2">{course.title}</h1>
             <p className="text-white/50 text-sm mb-3 leading-relaxed">{course.description}</p>
             <div className="flex items-center gap-4 text-xs text-white/30">
-              <span>👤 {course.instructor}</span>
+              <span>👤 {course.creatorName ?? "TCC Academy"}</span>
               <span>⏱ {course.totalDuration}</span>
               <span>📚 {course.lessons.length} lessons</span>
             </div>
@@ -291,7 +247,7 @@ function CourseDetail({
               reportedItemType="course"
               reportedItemId={course.id}
               reportedItemTitle={course.title}
-              reportedUserId={course.instructorHandle}
+              reportedUserId={course.creatorId ?? undefined}
               sourceFeature="Academy Course Detail"
             />
           </div>
@@ -316,21 +272,15 @@ function CourseDetail({
           </div>
         )}
 
-        {/* Enroll / unenroll buttons */}
+        {/* Enroll button (no unenroll endpoint on the backend) */}
         <div className="mt-4 flex gap-3">
           {!enrolled ? (
             <button onClick={handleEnroll}
               className="bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 px-6 py-2 rounded-lg text-sm font-semibold transition">
-              {course.isFree ? "Enroll Free" : `Enroll — $${course.price} (Payment not connected)`}
+              {!course.isPaid ? "Enroll Free" : `Enroll — $${course.price} (Payment not connected)`}
             </button>
           ) : (
-            <div className="flex gap-3">
-              <span className="text-xs text-green-400 bg-green-500/10 border border-green-500/20 px-4 py-2 rounded-lg font-semibold">✓ Enrolled</span>
-              <button onClick={() => unenrollCourse(course.id)}
-                className="text-xs text-white/30 hover:text-red-400 border border-white/10 hover:border-red-500/20 px-3 py-2 rounded-lg transition">
-                Unenroll
-              </button>
-            </div>
+            <span className="text-xs text-green-400 bg-green-500/10 border border-green-500/20 px-4 py-2 rounded-lg font-semibold">✓ Enrolled</span>
           )}
         </div>
       </div>
@@ -355,7 +305,7 @@ function CourseDetail({
                 <p className="text-white/30 text-xs mt-0.5">{lesson.description.slice(0, 60)}...</p>
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                {lesson.quizQuestions && (
+                {lesson.type === "QUIZ" && (
                   <span className="text-xs text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full">📝 Quiz</span>
                 )}
                 <span className="text-white/30 text-xs">{lesson.duration}</span>
@@ -390,9 +340,9 @@ function CourseDetail({
 function CourseCard({
   course, onClick,
 }: { course: Course; onClick: () => void }) {
-  const { isEnrolled, getProgress } = useAcademyStore();
-  const enrolled = isEnrolled(course.id);
-  const progress = getProgress(course.id);
+  const { myProgress } = useAcademyStore();
+  const enrolled = isEnrolled(myProgress, course.id);
+  const progress = getProgressPct(myProgress, course);
 
   return (
     <div onClick={onClick}
@@ -403,7 +353,7 @@ function CourseCard({
           reportedItemType="course"
           reportedItemId={course.id}
           reportedItemTitle={course.title}
-          reportedUserId={course.instructorHandle}
+          reportedUserId={course.creatorId ?? undefined}
           sourceFeature="Academy Course Listing"
           compact
         />
@@ -414,7 +364,7 @@ function CourseCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
             <span className={`text-xs px-1.5 py-0.5 rounded-full border ${TYPE_COLORS[course.type]}`}>{TYPE_LABELS[course.type]}</span>
-            <span className={`text-xs px-1.5 py-0.5 rounded-full border capitalize ${LEVEL_COLORS[course.level]}`}>{course.level}</span>
+            <span className={`text-xs px-1.5 py-0.5 rounded-full border capitalize ${LEVEL_COLORS[course.level]}`}>{course.level.toLowerCase()}</span>
           </div>
           <h3 className="text-white font-semibold text-sm leading-tight">{course.title}</h3>
         </div>
@@ -423,7 +373,7 @@ function CourseCard({
       <p className="text-white/40 text-xs mb-3 line-clamp-2 leading-relaxed">{course.description}</p>
 
       <div className="flex items-center gap-3 text-xs text-white/30 mb-3">
-        <span>👤 {course.instructor}</span>
+        <span>👤 {course.creatorName ?? "TCC Academy"}</span>
         <span>⏱ {course.totalDuration}</span>
         <span>📚 {course.lessons.length}</span>
       </div>
@@ -447,8 +397,8 @@ function CourseCard({
           ))}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className={`text-xs font-bold ${course.isFree ? "text-green-400" : "text-amber-400"}`}>
-            {course.isFree ? "Free" : `$${course.price}`}
+          <span className={`text-xs font-bold ${!course.isPaid ? "text-green-400" : "text-amber-400"}`}>
+            {!course.isPaid ? "Free" : `$${course.price}`}
           </span>
           {enrolled
             ? <span className="text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/20">Enrolled</span>
@@ -468,10 +418,9 @@ function LearningPathCard({
   courses: Course[];
   onCourseSelect: (course: Course) => void;
 }) {
-  const { isEnrolled, getProgress } = useAcademyStore();
+  const { myProgress } = useAcademyStore();
   const pathCourses = courses.filter(c => path.courseIds.includes(c.id));
-  const enrolledCount = pathCourses.filter(c => isEnrolled(c.id)).length;
-  const completedCount = pathCourses.filter(c => getProgress(c.id) === 100).length;
+  const completedCount = pathCourses.filter(c => getProgressPct(myProgress, c) === 100).length;
 
   return (
     <div className={`glass border rounded-2xl p-5 ${path.color}`}>
@@ -486,14 +435,14 @@ function LearningPathCard({
       </div>
 
       <div className="w-full bg-white/5 rounded-full h-1.5 mb-4">
-        <div className={`h-1.5 rounded-full transition-all ${path.level === "beginner" ? "bg-green-400" : path.level === "intermediate" ? "bg-amber-400" : "bg-red-400"}`}
+        <div className={`h-1.5 rounded-full transition-all ${path.level === "BEGINNER" ? "bg-green-400" : path.level === "INTERMEDIATE" ? "bg-amber-400" : "bg-red-400"}`}
           style={{ width: `${pathCourses.length > 0 ? (completedCount / pathCourses.length) * 100 : 0}%` }} />
       </div>
 
       <div className="flex flex-col gap-2">
         {pathCourses.map((course, i) => {
-          const enrolled = isEnrolled(course.id);
-          const prog = getProgress(course.id);
+          const enrolled = isEnrolled(myProgress, course.id);
+          const prog = getProgressPct(myProgress, course);
           const done = prog === 100;
           return (
             <div key={course.id}
@@ -529,8 +478,7 @@ type LevelFilter = "all" | CourseLevel;
 type TypeFilter  = "all" | CourseType;
 
 export default function AcademyPage() {
-  const { courses, userProgress, isEnrolled, getProgress } = useAcademyStore();
-  const { addNotification } = useNotificationStore();
+  const { courses, myProgress, isLoading, isInitialized, error } = useAcademyStore();
 
   const [activeTab,    setActiveTab]    = useState<AcademyTab>("paths");
   const [levelFilter,  setLevelFilter]  = useState<LevelFilter>("all");
@@ -538,8 +486,8 @@ export default function AcademyPage() {
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
 
-  const enrolledCourses  = courses.filter(c => isEnrolled(c.id));
-  const completedCourses = courses.filter(c => getProgress(c.id) === 100);
+  const enrolledCourses  = courses.filter(c => isEnrolled(myProgress, c.id));
+  const completedCourses = courses.filter(c => getProgressPct(myProgress, c) === 100);
 
   const filteredCourses = useMemo(() => {
     return courses.filter(c => {
@@ -548,6 +496,41 @@ export default function AcademyPage() {
       return true;
     });
   }, [courses, levelFilter, typeFilter]);
+
+  if (!isInitialized || isLoading) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+        <Topbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-white/30 text-sm animate-pulse">Loading academy...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+        <Topbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex flex-col items-center justify-center gap-3">
+            <p className="text-red-400 text-sm">{error}</p>
+            <button
+              type="button"
+              onClick={() => useAcademyStore.getState().init()}
+              className="text-white/40 text-xs border border-white/10 px-3 py-1 rounded hover:text-white/70 hover:border-white/20 transition"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Lesson player
   if (selectedCourse && selectedLesson) {
@@ -563,15 +546,15 @@ export default function AcademyPage() {
                 <button onClick={() => setSelectedLesson(null)} className="text-white/40 hover:text-white text-xs mb-2 transition block">← Back to course</button>
                 <p className="text-white font-semibold text-xs">{selectedCourse.title}</p>
                 <div className="mt-2">
-                  <div className="flex justify-between mb-1"><span className="text-white/30 text-xs">Progress</span><span className="text-green-400 text-xs">{getProgress(selectedCourse.id)}%</span></div>
+                  <div className="flex justify-between mb-1"><span className="text-white/30 text-xs">Progress</span><span className="text-green-400 text-xs">{getProgressPct(myProgress, selectedCourse)}%</span></div>
                   <div className="w-full bg-white/5 rounded-full h-1.5">
-                    <div className="bg-green-400 h-1.5 rounded-full" style={{ width: `${getProgress(selectedCourse.id)}%` }} />
+                    <div className="bg-green-400 h-1.5 rounded-full" style={{ width: `${getProgressPct(myProgress, selectedCourse)}%` }} />
                   </div>
                 </div>
               </div>
               <div className="p-2">
                 {selectedCourse.lessons.map((lesson, i) => {
-                  const done = userProgress[selectedCourse.id]?.completedLessons.includes(lesson.id);
+                  const done = myProgress[selectedCourse.id]?.completedLessons.includes(lesson.id);
                   const isActive = lesson.id === selectedLesson.id;
                   return (
                     <button key={lesson.id} onClick={() => setSelectedLesson(lesson)}
@@ -630,7 +613,6 @@ export default function AcademyPage() {
               <h1 className="text-2xl font-bold text-white">🎓 TCC Academy</h1>
               <p className="text-white/40 text-sm mt-1">
                 Official learning resources, technical frameworks, and creator courses.
-                Progress saved locally.
               </p>
             </div>
             <div className="flex gap-3 text-xs text-center">
@@ -653,7 +635,7 @@ export default function AcademyPage() {
           <div className="bg-blue-500/5 border border-blue-500/10 rounded-xl p-3 mb-5 flex items-center gap-3">
             <span className="text-blue-400 text-lg shrink-0">ℹ</span>
             <p className="text-white/40 text-xs leading-relaxed">
-              TCC Academy is in Beta. Progress saved locally per device. Certificates are not yet issued — they will be available in Phase Alpha.
+              TCC Academy is in Beta. Certificates are not yet issued — they will be available in Phase Alpha.
               Course ratings are not shown — they would be inaccurate in Beta. Creator-published courses are community contributions, not TCC-verified content.
             </p>
           </div>
@@ -694,16 +676,16 @@ export default function AcademyPage() {
                 <select value={levelFilter} onChange={e => setLevelFilter(e.target.value as LevelFilter)}
                   className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs">
                   <option value="all">All Levels</option>
-                  <option value="beginner">Beginner</option>
-                  <option value="intermediate">Intermediate</option>
-                  <option value="advanced">Advanced</option>
+                  <option value="BEGINNER">Beginner</option>
+                  <option value="INTERMEDIATE">Intermediate</option>
+                  <option value="ADVANCED">Advanced</option>
                 </select>
                 <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as TypeFilter)}
                   className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs">
                   <option value="all">All Types</option>
-                  <option value="official">Official TCC</option>
-                  <option value="free_resource">Free Resource</option>
-                  <option value="creator_published">Creator Published</option>
+                  <option value="OFFICIAL">Official TCC</option>
+                  <option value="FREE_RESOURCE">Free Resource</option>
+                  <option value="CREATOR_PUBLISHED">Creator Published</option>
                 </select>
               </div>
 

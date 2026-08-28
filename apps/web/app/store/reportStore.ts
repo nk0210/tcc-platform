@@ -101,7 +101,8 @@ export const useReportStore = create<ReportStore>((set, get) => ({
           priority: priority === "critical" || priority === "high" ? "high" : "medium",
           title: `🚨 New Report Submitted`,
           message: `${params.reportedItemType.replace("_", " ")} reported: "${params.reason}" by ${params.reporterHandle}`,
-          action: { label: "Review in Owner Panel", path: "/owner/reports" },
+          actionLabel: "Review in Owner Panel",
+          actionPath: "/owner/reports",
         });
       });
     } catch {}

@@ -1,33 +1,41 @@
 "use client";
 /**
  * TCC Trader Profile — /profile
- * Day-9: Complete implementation
  *
- * 7 tabs: Overview / Portfolio / Posts / Strategies / Academy / Copy Trading / Settings
+ * API-backed via profileStore.ts (Phase Alpha Frontend Integration).
  *
- * All data from real local stores only.
- * No fake data. Paper trading only. Local-only.
- * Visibility enforced locally — backend enforcement in Phase Alpha.
- *
- * Fixed:
- * - Combined split code segments into one full file.
- * - Fixed broken social link <a> tags.
- * - Removed course.certificateStatus usage because Course type does not contain it.
+ * Key shape changes from the old local-only profile model:
+ *   - myProfile.username → myProfile.handle
+ *   - tradingIdentity.experienceLevel moved up to myProfile.experienceLevel
+ *   - profileVisibility/portfolioVisibility/experienceLevel/roles are all
+ *     uppercase enums now (server-driven, not client-invented strings)
+ *   - Follower/following counts come from myProfile._count (server-computed)
+ *     — there's no client-side follow-relationship list to derive them from
+ *     anymore, so this page shows counts only, not member lists.
+ *   - updateProfile/updateSocialLinks/updateTradingIdentity are three
+ *     separate API calls now instead of one combined local update.
+ *   - "My strategies" now comes from strategyStore's myStrategies (a real
+ *     /strategy/my fetch) instead of filtering the discover feed by handle.
+ *   - "My posts" has no dedicated store action, so this page calls the
+ *     /community/users/:handle/posts endpoint directly via `api`.
+ *   - copyTradingStore no longer exposes a master-trader-by-userId lookup
+ *     (that lived in the old, now-deleted useMasterRegistryStore) — master
+ *     status is read from the auth role (MASTER_TRADER) instead of a full
+ *     master profile fetch, so the detailed master-profile card was
+ *     simplified to a status banner + link to /copy-trading.
  */
 
 import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 // ── Stores ─────────────────────────────────────────────────────────────────
-import { useAuthStore } from "@/store/authStore";
+import { useAuthStore, type UserRole } from "@/store/authStore";
 import {
   useProfileStore,
-  type TCCUserProfile,
-  type TCCUserRole,
-  type ProfileVisibility,
-  type PortfolioVisibility,
+  type UserProfile,
+  type Visibility,
   type ExperienceLevel,
-  type TCCTradingIdentity,
+  type TradingIdentity,
 } from "@/store/profileStore";
 import { useTradeStore } from "@/store/tradeStore";
 import { useJournalStore } from "@/store/journalStore";
@@ -39,10 +47,9 @@ import {
   type CommunityPostType,
 } from "@/store/communityStore";
 import { useNotificationStore } from "@/store/notificationStore";
-import {
-  useMasterRegistryStore,
-  useCopyTradingStore,
-} from "@/store/copyTradingStore";
+import { useCopyTradingStore } from "@/store/copyTradingStore";
+import { api } from "@/lib/api/client";
+import { ROLE_LABELS } from "@/lib/auth/roles";
 
 // ── Analytics ──────────────────────────────────────────────────────────────
 import {
@@ -86,45 +93,35 @@ const TABS: { key: ProfileTab; label: string }[] = [
 // DISPLAY CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────
 
-const ROLE_LABEL: Record<TCCUserRole, string> = {
-  normal_user: "Trader",
-  follower_trader: "Follower",
-  verified_trader: "Verified",
-  master_trader: "Master Trader",
-  mentor: "Mentor",
-  admin: "Admin",
-  owner: "Owner",
-};
-
-const ROLE_CLASS: Record<TCCUserRole, string> = {
-  normal_user: "text-white/50 bg-white/5 border-white/10",
-  follower_trader: "text-blue-400 bg-blue-500/10 border-blue-500/20",
-  verified_trader: "text-green-400 bg-green-500/10 border-green-500/20",
-  master_trader: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-  mentor: "text-purple-400 bg-purple-500/10 border-purple-500/20",
-  admin: "text-red-400 bg-red-500/10 border-red-500/20",
-  owner: "text-red-400 bg-red-500/15 border-red-500/30",
+const ROLE_CLASS: Record<UserRole, string> = {
+  NORMAL_USER: "text-white/50 bg-white/5 border-white/10",
+  FOLLOWER_TRADER: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+  VERIFIED_TRADER: "text-green-400 bg-green-500/10 border-green-500/20",
+  MASTER_TRADER: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+  MENTOR: "text-purple-400 bg-purple-500/10 border-purple-500/20",
+  ADMIN: "text-red-400 bg-red-500/10 border-red-500/20",
+  OWNER: "text-red-400 bg-red-500/15 border-red-500/30",
 };
 
 const VIS_ICON: Record<string, string> = {
-  public: "🌐",
-  private: "🔒",
-  followers_only: "👥",
+  PUBLIC: "🌐",
+  PRIVATE: "🔒",
+  FOLLOWERS_ONLY: "👥",
 };
 
 const VIS_LABEL: Record<string, string> = {
-  public: "Public",
-  private: "Private",
-  followers_only: "Followers Only",
+  PUBLIC: "Public",
+  PRIVATE: "Private",
+  FOLLOWERS_ONLY: "Followers Only",
 };
 
 const POST_TYPE_LABEL: Record<CommunityPostType, string> = {
-  text: "💬 Text",
-  trade_idea: "💡 Trade Idea",
-  shared_trade: "📊 Shared Trade",
-  academy_completion: "🎓 Academy",
-  strategy_share: "📋 Strategy",
-  competition_update: "🏆 Competition",
+  TEXT: "💬 Text",
+  TRADE_IDEA: "💡 Trade Idea",
+  SHARED_TRADE: "📊 Shared Trade",
+  ACADEMY_COMPLETION: "🎓 Academy",
+  STRATEGY_SHARE: "📋 Strategy",
+  COMPETITION_UPDATE: "🏆 Competition",
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -273,14 +270,14 @@ function PostCard({ post }: { post: CommunityPost }) {
       )}
 
       <div className="flex items-center gap-4 text-xs text-white/25">
-        <span>❤ {post.likes.length}</span>
-        <span>💬 {post.comments.length}</span>
-        <span>🔖 {post.savedBy.length}</span>
+        <span>❤ {post._count.likes}</span>
+        <span>💬 {post._count.comments}</span>
+        <span>🔁 {post._count.shares}</span>
         <span
           className={`ml-auto ${
-            post.visibility === "public"
+            post.visibility === "PUBLIC"
               ? "text-green-400/40"
-              : post.visibility === "followers_only"
+              : post.visibility === "FOLLOWERS_ONLY"
                 ? "text-amber-400/40"
                 : "text-red-400/40"
           }`}
@@ -297,60 +294,50 @@ function PostCard({ post }: { post: CommunityPost }) {
 // ─────────────────────────────────────────────────────────────────────────
 
 function CopyTradingTab({
-  userId,
+  roles,
   onNavigate,
 }: {
-  userId: string;
+  roles: UserRole[];
   onNavigate: (path: string) => void;
 }) {
-  const { myApplication, getActiveRelationships } = useCopyTradingStore();
-  const { getMasterByUserId } = useMasterRegistryStore();
+  const { myApplication, myRelationships } = useCopyTradingStore();
 
-  const myMasterProfile = getMasterByUserId(userId);
-  const activeRels = getActiveRelationships();
-
-  const isMasterActive = myMasterProfile?.status === "active";
-  const isMasterSuspended = myMasterProfile?.status === "suspended";
-  const isFollower = activeRels.length > 0;
+  const isMaster = roles.includes("MASTER_TRADER");
+  const isFollower = myRelationships.length > 0;
 
   let bannerTitle = "👤 Not Participating";
   let bannerDesc = "You are not currently participating in copy trading.";
   let bannerCls = "border-white/5";
 
-  if (isMasterActive) {
+  if (isMaster) {
     bannerTitle = "🏆 Master Trader";
     bannerDesc =
-      "You are an approved master trader. Paper-copy only — no live broker execution.";
+      "You are an approved master trader. Paper-copy only — no live broker execution. Manage your master profile from Copy Trading.";
     bannerCls = "border-amber-500/20 bg-amber-500/3";
-  } else if (isMasterSuspended) {
-    bannerTitle = "🚫 Master Trader (Suspended)";
-    bannerDesc = "Your master trader status is suspended. Contact TCC admin.";
-    bannerCls = "border-red-500/20 bg-red-500/3";
   } else if (isFollower) {
-    bannerTitle = `📡 Active Follower — ${activeRels.length} copy relationship${
-      activeRels.length > 1 ? "s" : ""
+    bannerTitle = `📡 Active Follower — ${myRelationships.length} copy relationship${
+      myRelationships.length > 1 ? "s" : ""
     }`;
     bannerDesc =
       "Copying master traders in paper-copy mode. No real broker execution.";
     bannerCls = "border-green-500/15 bg-green-500/3";
   } else if (myApplication) {
     const statusLabel: Record<string, string> = {
-      draft: "📝 Draft Application",
-      submitted: "📬 Application Submitted",
-      under_review: "🔍 Under Review",
-      more_info_required: "❓ More Info Requested",
-      approved: "✅ Approved",
-      rejected: "❌ Application Rejected",
-      suspended: "🚫 Suspended",
+      DRAFT: "📝 Draft Application",
+      SUBMITTED: "📬 Application Submitted",
+      UNDER_REVIEW: "🔍 Under Review",
+      MORE_INFO_REQUIRED: "❓ More Info Requested",
+      APPROVED: "✅ Approved",
+      REJECTED: "❌ Application Rejected",
+      SUSPENDED: "🚫 Suspended",
     };
     bannerTitle = statusLabel[myApplication.status] ?? myApplication.status;
-    bannerDesc = `Application status: ${myApplication.status.replace(
-      /_/g,
-      " "
-    )}.`;
+    bannerDesc = `Application status: ${myApplication.status
+      .toLowerCase()
+      .replace(/_/g, " ")}.`;
     bannerCls =
-      myApplication.status === "submitted" ||
-      myApplication.status === "under_review"
+      myApplication.status === "SUBMITTED" ||
+      myApplication.status === "UNDER_REVIEW"
         ? "border-blue-500/15 bg-blue-500/3"
         : "border-white/5";
   }
@@ -378,52 +365,8 @@ function CopyTradingTab({
         </div>
       </div>
 
-      {/* Master trader profile detail */}
-      {myMasterProfile && (
-        <div className="glass border border-white/5 rounded-xl p-5">
-          <p className="text-white/40 text-xs uppercase tracking-wider mb-3">
-            Master Trader Profile
-          </p>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs mb-4">
-            {[
-              { l: "TCC ID", v: myMasterProfile.tccId },
-              { l: "Status", v: myMasterProfile.status },
-              {
-                l: "Markets",
-                v: myMasterProfile.marketsTraded.join(", ") || "—",
-              },
-              {
-                l: "Strategies",
-                v: myMasterProfile.strategiesUsed.join(", ") || "—",
-              },
-              {
-                l: "Trust Score",
-                v: myMasterProfile.trustScoreStatus.replace(/_/g, " "),
-              },
-              { l: "Broker", v: "Not connected (paper-copy only)" },
-              { l: "Performance", v: "Not verified — local approval only" },
-              {
-                l: "Approved",
-                v: new Date(myMasterProfile.approvedAt).toLocaleDateString(),
-              },
-            ].map((item) => (
-              <div key={item.l} className="flex gap-2">
-                <span className="text-white/30 w-24 shrink-0">{item.l}</span>
-                <span className="text-white/60 capitalize">{item.v}</span>
-              </div>
-            ))}
-          </div>
-          <div className="bg-amber-500/5 border border-amber-500/10 rounded-lg p-3">
-            <p className="text-amber-400/70 text-xs leading-relaxed">
-              ⚠ Local approval only. Performance not verified. Broker not
-              connected. Paper-copy mode only until Phase Alpha.
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Application status detail */}
-      {myApplication && !myMasterProfile && (
+      {myApplication && !isMaster && (
         <div className="glass border border-white/5 rounded-xl p-5">
           <p className="text-white/40 text-xs uppercase tracking-wider mb-3">
             Application Details
@@ -433,7 +376,7 @@ function CopyTradingTab({
               { l: "TCC ID", v: myApplication.tccId },
               {
                 l: "Status",
-                v: myApplication.status.replace(/_/g, " "),
+                v: myApplication.status.toLowerCase().replace(/_/g, " "),
               },
               {
                 l: "Markets",
@@ -478,13 +421,13 @@ function CopyTradingTab({
       )}
 
       {/* Active copy relationships */}
-      {activeRels.length > 0 && (
+      {myRelationships.length > 0 && (
         <div className="glass border border-white/5 rounded-xl p-5">
           <p className="text-white/40 text-xs uppercase tracking-wider mb-3">
-            Active Copy Relationships ({activeRels.length})
+            Active Copy Relationships ({myRelationships.length})
           </p>
 
-          {activeRels.map((rel) => (
+          {myRelationships.map((rel) => (
             <div
               key={rel.id}
               className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0"
@@ -494,19 +437,19 @@ function CopyTradingTab({
                   {rel.masterDisplayName}
                 </p>
                 <p className="text-white/30 text-xs">
-                  {rel.mode.replace(/_/g, " ")} · {rel.status}
+                  {rel.mode.toLowerCase().replace(/_/g, " ")} · {rel.status.toLowerCase()}
                 </p>
               </div>
               <Chip
                 className={
-                  rel.status === "active"
+                  rel.status === "ACTIVE"
                     ? "text-green-400 bg-green-500/10 border-green-500/20"
-                    : rel.status === "paused"
+                    : rel.status === "PAUSED"
                       ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
                       : "text-white/30 bg-white/5 border-white/10"
                 }
               >
-                {rel.status}
+                {rel.status.toLowerCase()}
               </Chip>
             </div>
           ))}
@@ -519,22 +462,19 @@ function CopyTradingTab({
       )}
 
       {/* Empty state — not participating at all */}
-      {!isMasterActive &&
-        !isMasterSuspended &&
-        !isFollower &&
-        !myApplication && (
-          <EmptyState
-            icon="📡"
-            title="Not participating in copy trading yet."
-            sub="Apply to become a master trader, or discover master traders to start paper-copy following. Paper-copy mode only."
-          />
-        )}
+      {!isMaster && !isFollower && !myApplication && (
+        <EmptyState
+          icon="📡"
+          title="Not participating in copy trading yet."
+          sub="Apply to become a master trader, or discover master traders to start paper-copy following. Paper-copy mode only."
+        />
+      )}
 
       <div className="p-3 bg-white/2 border border-white/5 rounded-xl">
         <p className="text-white/15 text-xs leading-relaxed">
-          Copy trading is paper-copy mode only. No real money involved. All data
-          is local to this browser. Phase Alpha will require verified broker
-          connections and real-time execution.
+          Copy trading is paper-copy mode only. No real money involved.
+          Phase Alpha will require verified broker connections and
+          real-time execution.
         </p>
       </div>
     </div>
@@ -545,42 +485,34 @@ function CopyTradingTab({
 // SETTINGS TAB
 // ─────────────────────────────────────────────────────────────────────────
 
-function SettingsTab({
-  profile,
-  onSave,
-}: {
-  profile: TCCUserProfile;
-  onSave: (updates: Partial<TCCUserProfile>) => void;
-}) {
+function SettingsTab({ profile }: { profile: UserProfile }) {
+  const { updateProfile, updateSocialLinks, updateTradingIdentity } = useProfileStore();
+  const { addNotification } = useNotificationStore();
+
+  const ti: TradingIdentity = profile.tradingIdentity ?? {
+    marketsTraded: [], symbolsTraded: [], strategiesUsed: [], preferredSessions: [],
+  };
+
   const [displayName, setDisplayName] = useState(profile.displayName);
   const [bio, setBio] = useState(profile.bio);
   const [location, setLocation] = useState(profile.location);
   const [profileVisibility, setProfileVisibility] =
-    useState<ProfileVisibility>(profile.profileVisibility);
+    useState<Visibility>(profile.profileVisibility);
   const [portfolioVisibility, setPortfolioVisibility] =
-    useState<PortfolioVisibility>(profile.portfolioVisibility);
-  const [experienceLevel, setExperienceLevel] = useState<
-    ExperienceLevel | ""
-  >(profile.tradingIdentity.experienceLevel);
-  const [marketsTraded, setMarketsTraded] = useState(
-    profile.tradingIdentity.marketsTraded.join(", ")
+    useState<Visibility>(profile.portfolioVisibility);
+  const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel | null>(
+    profile.experienceLevel
   );
-  const [symbolsTraded, setSymbolsTraded] = useState(
-    profile.tradingIdentity.symbolsTraded.join(", ")
-  );
-  const [strategiesUsed, setStrategiesUsed] = useState(
-    profile.tradingIdentity.strategiesUsed.join(", ")
-  );
-  const [preferredSessions, setPreferredSessions] = useState(
-    profile.tradingIdentity.preferredSessions.join(", ")
-  );
-  const [website, setWebsite] = useState(profile.socialLinks.website ?? "");
-  const [xHandle, setXHandle] = useState(profile.socialLinks.x ?? "");
-  const [linkedin, setLinkedin] = useState(
-    profile.socialLinks.linkedin ?? ""
-  );
-  const [youtube, setYoutube] = useState(profile.socialLinks.youtube ?? "");
+  const [marketsTraded, setMarketsTraded] = useState(ti.marketsTraded.join(", "));
+  const [symbolsTraded, setSymbolsTraded] = useState(ti.symbolsTraded.join(", "));
+  const [strategiesUsed, setStrategiesUsed] = useState(ti.strategiesUsed.join(", "));
+  const [preferredSessions, setPreferredSessions] = useState(ti.preferredSessions.join(", "));
+  const [website, setWebsite] = useState(profile.socialLinks?.website ?? "");
+  const [xHandle, setXHandle] = useState(profile.socialLinks?.x ?? "");
+  const [linkedin, setLinkedin] = useState(profile.socialLinks?.linkedin ?? "");
+  const [youtube, setYoutube] = useState(profile.socialLinks?.youtube ?? "");
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const split = (raw: string) =>
     raw
@@ -588,28 +520,37 @@ function SettingsTab({
       .map((s) => s.trim())
       .filter(Boolean);
 
-  const handleSave = () => {
-    const tradingIdentity: TCCTradingIdentity = {
-      marketsTraded: split(marketsTraded),
-      symbolsTraded: split(symbolsTraded),
-      strategiesUsed: split(strategiesUsed),
-      preferredSessions: split(preferredSessions),
-      experienceLevel,
-    };
+  const handleSave = async () => {
+    setSaving(true);
+    await Promise.all([
+      updateProfile({
+        displayName,
+        bio,
+        location,
+        profileVisibility,
+        portfolioVisibility,
+        experienceLevel,
+      }),
+      updateTradingIdentity({
+        marketsTraded: split(marketsTraded),
+        symbolsTraded: split(symbolsTraded),
+        strategiesUsed: split(strategiesUsed),
+        preferredSessions: split(preferredSessions),
+      }),
+      updateSocialLinks({
+        website: website || null,
+        x: xHandle || null,
+        linkedin: linkedin || null,
+        youtube: youtube || null,
+      }),
+    ]);
+    setSaving(false);
 
-    onSave({
-      displayName,
-      bio,
-      location,
-      profileVisibility,
-      portfolioVisibility,
-      tradingIdentity,
-      socialLinks: {
-        website: website || undefined,
-        x: xHandle || undefined,
-        linkedin: linkedin || undefined,
-        youtube: youtube || undefined,
-      },
+    addNotification({
+      type: "system",
+      priority: "low",
+      title: "✅ Profile Updated",
+      message: "Your profile changes have been saved.",
     });
 
     setSaved(true);
@@ -626,9 +567,9 @@ function SettingsTab({
     current,
     onChange,
   }: {
-    value: ProfileVisibility | PortfolioVisibility;
+    value: Visibility;
     current: string;
-    onChange: (v: string) => void;
+    onChange: (v: Visibility) => void;
   }) => (
     <button
       type="button"
@@ -687,20 +628,17 @@ function SettingsTab({
       <div className={sectionCls}>
         <p className="text-white/50 text-xs uppercase tracking-wider mb-4">
           Privacy & Visibility
-          <span className="text-white/20 ml-2 normal-case">
-            (locally enforced — backend in Phase Alpha)
-          </span>
         </p>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-white/40 text-xs mb-1.5">Profile</p>
-            {(["public", "followers_only", "private"] as ProfileVisibility[]).map(
+            {(["PUBLIC", "FOLLOWERS_ONLY", "PRIVATE"] as Visibility[]).map(
               (v) => (
                 <VisOption
                   key={v}
                   value={v}
                   current={profileVisibility}
-                  onChange={(x) => setProfileVisibility(x as ProfileVisibility)}
+                  onChange={setProfileVisibility}
                 />
               )
             )}
@@ -708,15 +646,13 @@ function SettingsTab({
 
           <div>
             <p className="text-white/40 text-xs mb-1.5">Portfolio</p>
-            {(["public", "followers_only", "private"] as PortfolioVisibility[]).map(
+            {(["PUBLIC", "FOLLOWERS_ONLY", "PRIVATE"] as Visibility[]).map(
               (v) => (
                 <VisOption
                   key={v}
                   value={v}
                   current={portfolioVisibility}
-                  onChange={(x) =>
-                    setPortfolioVisibility(x as PortfolioVisibility)
-                  }
+                  onChange={setPortfolioVisibility}
                 />
               )
             )}
@@ -739,10 +675,10 @@ function SettingsTab({
             <p className="text-white/40 text-xs mb-1.5">Experience Level</p>
             <div className="flex flex-wrap gap-1.5">
               {(
-                ["", "beginner", "intermediate", "advanced", "professional"] as const
+                [null, "BEGINNER", "INTERMEDIATE", "ADVANCED", "PROFESSIONAL"] as const
               ).map((lvl) => (
                 <button
-                  key={lvl}
+                  key={lvl ?? "none"}
                   type="button"
                   onClick={() => setExperienceLevel(lvl)}
                   className={`px-3 py-1.5 rounded-lg text-xs border capitalize transition ${
@@ -751,7 +687,7 @@ function SettingsTab({
                       : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"
                   }`}
                 >
-                  {lvl === "" ? "Not set" : lvl}
+                  {lvl === null ? "Not set" : lvl.toLowerCase()}
                 </button>
               ))}
             </div>
@@ -849,9 +785,10 @@ function SettingsTab({
       <button
         type="button"
         onClick={handleSave}
-        className="bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 py-3 rounded-xl text-sm font-semibold transition"
+        disabled={saving}
+        className="bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 py-3 rounded-xl text-sm font-semibold transition disabled:opacity-40"
       >
-        {saved ? "✓ Saved!" : "Save Changes"}
+        {saved ? "✓ Saved!" : saving ? "Saving..." : "Save Changes"}
       </button>
     </div>
   );
@@ -867,14 +804,8 @@ export default function ProfilePage() {
   // ── Auth ────────────────────────────────────────────────────────────────
   const { user } = useAuthStore();
 
-  // ── Profile ─────────────────────────────────────────────────────────────
-  const {
-    myProfile,
-    initProfile,
-    updateProfile,
-    getFollowers,
-    getFollowing,
-  } = useProfileStore();
+  // ── Profile (self-initializes on login via authStore subscribe) ─────────
+  const { myProfile, isLoading: profileLoading, isInitialized: profileInitialized, error: profileError, init: initProfile } = useProfileStore();
 
   // ── Trading data ─────────────────────────────────────────────────────────
   const { closedTrades, positions, balance, equity, floatingPnl } =
@@ -882,16 +813,13 @@ export default function ProfilePage() {
   const { entries } = useJournalStore();
 
   // ── Academy ─────────────────────────────────────────────────────────────
-  const { courses, userProgress } = useAcademyStore();
+  const { courses, myProgress } = useAcademyStore();
 
-  // ── Strategies — userStrategies is UserStrategyRecord[], NOT Strategy[] ──
-  const { strategies, userStrategies } = useStrategyStore();
+  // ── Strategies ────────────────────────────────────────────────────────
+  const { myStrategies, savedStrategies, getMyStrategies, getSavedStrategies } = useStrategyStore();
 
-  // ── Community posts ──────────────────────────────────────────────────────
-  const allPosts = useCommunityStore((state) => state.posts);
-
-  // ── Notifications ────────────────────────────────────────────────────────
-  const { addNotification } = useNotificationStore();
+  // ── Community posts (no dedicated store action — fetched directly) ──────
+  const [myPosts, setMyPosts] = useState<CommunityPost[]>([]);
 
   // ── Hydration guard ──────────────────────────────────────────────────────
   const [mounted, setMounted] = useState(false);
@@ -903,18 +831,27 @@ export default function ProfilePage() {
   // ── Active tab ───────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<ProfileTab>("overview");
 
-  // ── Init profile from auth user ──────────────────────────────────────────
+  // Defensive direct init — the store also auto-inits via an authStore
+  // subscribe (see bottom of profileStore.ts), but that relies on a dynamic
+  // import registering before the next auth state change fires. Calling
+  // init() here too is a no-op once already initialized/in-flight, and
+  // closes that race so this page never depends solely on timing.
   useEffect(() => {
-    if (!mounted) return;
+    if (user && !profileInitialized) initProfile();
+  }, [user, profileInitialized, initProfile]);
 
-    if (user && !myProfile) {
-      initProfile(
-        user.id,
-        user.tccId ?? "TCC-GL-TRD-XXXXXXXX",
-        user.handle ?? user.email
-      );
-    }
-  }, [mounted, user, myProfile, initProfile]);
+  // ── Load data that isn't covered by store auto-init ──────────────────────
+  useEffect(() => {
+    getMyStrategies();
+    getSavedStrategies();
+  }, [getMyStrategies, getSavedStrategies]);
+
+  useEffect(() => {
+    if (!user?.handle) return;
+    api.get<{ items: CommunityPost[] }>(`/community/users/${user.handle}/posts?pageSize=50`).then((res) => {
+      if (res.success) setMyPosts(res.data.items);
+    });
+  }, [user?.handle]);
 
   // ── Redirect if not logged in ────────────────────────────────────────────
   useEffect(() => {
@@ -945,6 +882,7 @@ export default function ProfilePage() {
   );
 
   const symbolStats = useMemo(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     () => calculateSymbolAnalytics(closedTrades, TCC_SYMBOL_MAP as any),
     [closedTrades]
   );
@@ -954,49 +892,14 @@ export default function ProfilePage() {
     [entries]
   );
 
-  const myFollowers = useMemo(
-    () => (user ? getFollowers(user.id) : []),
-    [user, getFollowers]
-  );
+  const publishedStrategies = myStrategies;
+  const savedStrategyCount = savedStrategies.length;
 
-  const myFollowing = useMemo(
-    () => (user ? getFollowing(user.id) : []),
-    [user, getFollowing]
-  );
-
-  const myPosts = useMemo(
-    () =>
-      user
-        ? allPosts
-            .filter((p) => p.authorId === user.id && !p.isHiddenByAdmin)
-            .sort(
-              (a, b) =>
-                new Date(b.createdAt).getTime() -
-                new Date(a.createdAt).getTime()
-            )
-        : [],
-    [allPosts, user]
-  );
-
-  const publishedStrategies = useMemo<Strategy[]>(
-    () =>
-      user
-        ? strategies.filter(
-            (s: Strategy) =>
-              s.type === "creator_published" &&
-              s.authorHandle === (user.handle ?? user.email ?? "")
-          )
-        : [],
-    [strategies, user]
-  );
-
-  const savedStrategyCount = userStrategies.length;
-
-  const enrolledCourseIds = Object.keys(userProgress);
+  const enrolledCourseIds = Object.keys(myProgress);
 
   const completedCourses = courses.filter((c: Course) => {
-    const p = userProgress[c.id];
-    return p && p.completedLessons.length >= c.lessons.length;
+    const p = myProgress[c.id];
+    return p && c.lessons.length > 0 && p.completedLessons.length >= c.lessons.length;
   });
 
   const bestSymbol = useMemo(
@@ -1036,7 +939,7 @@ export default function ProfilePage() {
   // LOADING / GUARD
   // ─────────────────────────────────────────────────────────────────────────
 
-  if (!mounted || !user || !myProfile) {
+  if (!mounted || !user || !profileInitialized || profileLoading) {
     return (
       <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
         <Topbar />
@@ -1052,18 +955,48 @@ export default function ProfilePage() {
     );
   }
 
+  // Fetch finished (isInitialized) but failed, or returned nothing — show an
+  // explicit, recoverable error instead of silently falling through to a
+  // loading spinner that would never resolve.
+  if (profileError || !myProfile) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+        <Topbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-red-400 text-sm mb-3">
+                {profileError ?? "Failed to load profile."}
+              </p>
+              <button
+                type="button"
+                onClick={() => useProfileStore.setState({ isInitialized: false })}
+                className="bg-white/5 hover:bg-white/10 text-white/60 border border-white/10 px-4 py-2 rounded-lg text-xs font-semibold transition"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────
 
-  const ti = myProfile.tradingIdentity;
+  const ti: TradingIdentity = myProfile.tradingIdentity ?? {
+    marketsTraded: [], symbolsTraded: [], strategiesUsed: [], preferredSessions: [],
+  };
 
   const hasIdentity =
     ti.marketsTraded.length > 0 ||
     ti.symbolsTraded.length > 0 ||
     ti.strategiesUsed.length > 0 ||
     ti.preferredSessions.length > 0 ||
-    !!ti.experienceLevel;
+    !!myProfile.experienceLevel;
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
@@ -1077,7 +1010,7 @@ export default function ProfilePage() {
           <div className="glass border-b border-white/5 px-6 py-5">
             <div className="flex items-start gap-6 flex-wrap">
               <Avatar
-                name={myProfile.displayName || myProfile.username}
+                name={myProfile.displayName || myProfile.handle}
                 size="xl"
               />
 
@@ -1086,10 +1019,10 @@ export default function ProfilePage() {
                 <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
                   <div>
                     <h1 className="text-2xl font-bold text-white leading-tight">
-                      {myProfile.displayName || myProfile.username}
+                      {myProfile.displayName || myProfile.handle}
                     </h1>
                     <p className="text-white/40 text-sm">
-                      @{myProfile.username}
+                      @{myProfile.handle}
                     </p>
                     {myProfile.tccId && (
                       <p className="text-green-400/60 font-mono text-xs mt-0.5">
@@ -1101,9 +1034,9 @@ export default function ProfilePage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <Chip
                       className={`${
-                        myProfile.profileVisibility === "public"
+                        myProfile.profileVisibility === "PUBLIC"
                           ? "text-green-400/70 border-green-500/20"
-                          : myProfile.profileVisibility === "private"
+                          : myProfile.profileVisibility === "PRIVATE"
                             ? "text-red-400/60 border-red-500/20"
                             : "text-amber-400/60 border-amber-500/20"
                       } bg-transparent`}
@@ -1148,7 +1081,7 @@ export default function ProfilePage() {
                     )}
                   </span>
 
-                  {myProfile.socialLinks.x && (
+                  {myProfile.socialLinks?.x && (
                     <a
                       href={`https://x.com/${myProfile.socialLinks.x.replace(
                         "@",
@@ -1162,7 +1095,7 @@ export default function ProfilePage() {
                     </a>
                   )}
 
-                  {myProfile.socialLinks.website && (
+                  {myProfile.socialLinks?.website && (
                     <a
                       href={myProfile.socialLinks.website}
                       target="_blank"
@@ -1173,7 +1106,7 @@ export default function ProfilePage() {
                     </a>
                   )}
 
-                  {myProfile.socialLinks.linkedin && (
+                  {myProfile.socialLinks?.linkedin && (
                     <a
                       href={
                         myProfile.socialLinks.linkedin.startsWith("http")
@@ -1188,7 +1121,7 @@ export default function ProfilePage() {
                     </a>
                   )}
 
-                  {myProfile.socialLinks.youtube && (
+                  {myProfile.socialLinks?.youtube && (
                     <a
                       href={
                         myProfile.socialLinks.youtube.startsWith("http")
@@ -1210,8 +1143,8 @@ export default function ProfilePage() {
                 {/* Role badges + social counts */}
                 <div className="flex items-center gap-3 mt-3 flex-wrap">
                   {myProfile.roles.map((role) => (
-                    <Chip key={role} className={ROLE_CLASS[role]}>
-                      {ROLE_LABEL[role]}
+                    <Chip key={role} className={ROLE_CLASS[role as UserRole]}>
+                      {ROLE_LABELS[role as UserRole] ?? role}
                     </Chip>
                   ))}
 
@@ -1220,14 +1153,14 @@ export default function ProfilePage() {
                   <div className="flex gap-4 text-xs text-white/50">
                     <span>
                       <span className="text-white font-bold">
-                        {myFollowers.length}
+                        {myProfile._count?.followedBy ?? 0}
                       </span>{" "}
                       followers
                     </span>
 
                     <span>
                       <span className="text-white font-bold">
-                        {myFollowing.length}
+                        {myProfile._count?.following ?? 0}
                       </span>{" "}
                       following
                     </span>
@@ -1288,13 +1221,13 @@ export default function ProfilePage() {
                     </p>
                   ) : (
                     <div className="flex flex-col gap-3">
-                      {ti.experienceLevel && (
+                      {myProfile.experienceLevel && (
                         <div className="flex items-start gap-3">
                           <span className="text-white/30 text-xs w-28 shrink-0 pt-0.5">
                             Experience
                           </span>
                           <Chip className="text-white/70 bg-white/5 border-white/10 capitalize">
-                            {ti.experienceLevel}
+                            {myProfile.experienceLevel.toLowerCase()}
                           </Chip>
                         </div>
                       )}
@@ -1508,7 +1441,7 @@ export default function ProfilePage() {
                           {savedStrategyCount} saved
                         </p>
                         <p className="text-white/30 text-xs mt-0.5">
-                          Local-only
+                          &nbsp;
                         </p>
                       </>
                     )}
@@ -1518,8 +1451,8 @@ export default function ProfilePage() {
                 {/* Disclaimer */}
                 <div className="p-3 bg-white/2 border border-white/5 rounded-xl">
                   <p className="text-white/15 text-xs leading-relaxed">
-                    All stats are derived from local paper trading data only.
-                    Not verified. Not broker-connected. Phase Beta — local only.
+                    All stats are derived from your paper trading data. Not
+                    verified. Not broker-connected.
                   </p>
                 </div>
               </div>
@@ -1532,15 +1465,15 @@ export default function ProfilePage() {
                   <div>
                     <h2 className="text-lg font-bold text-white">Portfolio</h2>
                     <p className="text-white/30 text-xs mt-0.5">
-                      Paper trading performance · Local data only
+                      Paper trading performance
                     </p>
                   </div>
 
                   <Chip
                     className={`${
-                      myProfile.portfolioVisibility === "public"
+                      myProfile.portfolioVisibility === "PUBLIC"
                         ? "text-green-400/70 border-green-500/20"
-                        : myProfile.portfolioVisibility === "private"
+                        : myProfile.portfolioVisibility === "PRIVATE"
                           ? "text-red-400/60 border-red-500/20"
                           : "text-amber-400/60 border-amber-500/20"
                     } bg-transparent`}
@@ -1752,8 +1685,7 @@ export default function ProfilePage() {
                 <div className="p-3 bg-white/2 border border-white/5 rounded-xl">
                   <p className="text-white/15 text-xs leading-relaxed">
                     Paper trading only. Not broker-verified. Not real money.
-                    Portfolio visibility is "{myProfile.portfolioVisibility}" —
-                    enforced locally until backend is connected in Phase Alpha.
+                    Portfolio visibility is "{myProfile.portfolioVisibility.toLowerCase()}".
                   </p>
                 </div>
               </div>
@@ -1767,8 +1699,7 @@ export default function ProfilePage() {
                     My Posts
                   </h2>
                   <p className="text-white/30 text-xs">
-                    {myPosts.length} post{myPosts.length !== 1 ? "s" : ""} ·
-                    Local community only
+                    {myPosts.length} post{myPosts.length !== 1 ? "s" : ""}
                   </p>
                 </div>
 
@@ -1796,7 +1727,7 @@ export default function ProfilePage() {
                     Published Strategies
                   </h2>
                   <p className="text-white/30 text-xs">
-                    Local-only · Not verified · Creator-published by you
+                    Creator-published by you
                   </p>
                 </div>
 
@@ -1817,9 +1748,11 @@ export default function ProfilePage() {
                           <h3 className="text-white font-semibold text-sm leading-snug flex-1 pr-2">
                             {s.title}
                           </h3>
-                          <Chip className="text-amber-400 bg-amber-500/10 border-amber-500/20 shrink-0">
-                            Not verified
-                          </Chip>
+                          {!s.verified && (
+                            <Chip className="text-amber-400 bg-amber-500/10 border-amber-500/20 shrink-0">
+                              Not verified
+                            </Chip>
+                          )}
                         </div>
 
                         <p className="text-white/40 text-xs leading-relaxed line-clamp-2 mb-3">
@@ -1828,7 +1761,7 @@ export default function ProfilePage() {
 
                         <div className="flex flex-wrap gap-1.5">
                           <Chip className="text-white/30 bg-white/5 border-white/10 capitalize">
-                            {s.riskLevel} risk
+                            {s.riskLevel.toLowerCase()} risk
                           </Chip>
 
                           <Chip className="text-white/30 bg-white/5 border-white/10">
@@ -1841,10 +1774,10 @@ export default function ProfilePage() {
                               : s.assetCategory}
                           </Chip>
 
-                          {s.reviews.length > 0 && (
+                          {s._count.reviews > 0 && (
                             <Chip className="text-white/30 bg-white/5 border-white/10">
-                              {s.reviews.length} review
-                              {s.reviews.length !== 1 ? "s" : ""}
+                              {s._count.reviews} review
+                              {s._count.reviews !== 1 ? "s" : ""}
                             </Chip>
                           )}
                         </div>
@@ -1877,7 +1810,7 @@ export default function ProfilePage() {
                     Academy Progress
                   </h2>
                   <p className="text-white/30 text-xs">
-                    Saved locally per user · Progress persists after refresh
+                    Progress persists across sessions
                   </p>
                 </div>
 
@@ -1892,7 +1825,8 @@ export default function ProfilePage() {
                     {courses
                       .filter((c: Course) => enrolledCourseIds.includes(c.id))
                       .map((course: Course) => {
-                        const progress = userProgress[course.id];
+                        const progress = myProgress[course.id];
+                        if (!progress) return null;
 
                         const pct =
                           course.lessons.length > 0
@@ -1929,8 +1863,8 @@ export default function ProfilePage() {
 
                               <div className="flex items-center justify-between mb-1.5">
                                 <span className="text-white/40 text-xs capitalize">
-                                  {course.type.replace(/_/g, " ")} ·{" "}
-                                  {course.level}
+                                  {course.type.toLowerCase().replace(/_/g, " ")} ·{" "}
+                                  {course.level.toLowerCase()}
                                 </span>
 
                                 <span
@@ -1978,7 +1912,7 @@ export default function ProfilePage() {
                 </div>
 
                 <CopyTradingTab
-                  userId={user.id}
+                  roles={user.roles}
                   onNavigate={(path) => router.push(path)}
                 />
               </div>
@@ -1993,23 +1927,11 @@ export default function ProfilePage() {
                   </h2>
                   <p className="text-white/30 text-xs">
                     Edit your profile, trading identity, and visibility
-                    settings. All data stored locally.
+                    settings.
                   </p>
                 </div>
 
-                <SettingsTab
-                  profile={myProfile}
-                  onSave={(updates) => {
-                    updateProfile(updates);
-
-                    addNotification({
-                      type: "system",
-                      priority: "low",
-                      title: "✅ Profile Updated",
-                      message: "Your profile changes have been saved locally.",
-                    });
-                  }}
-                />
+                <SettingsTab profile={myProfile} />
               </div>
             )}
           </div>

@@ -335,7 +335,7 @@ type FilterSession = "all" | "london" | "newyork" | "asian" | "sydney" | "unknow
 type SortKey = "date_desc" | "date_asc" | "pnl_desc" | "pnl_asc";
 
 export default function JournalPage() {
-  const { entries } = useJournalStore();
+  const { entries, isLoading, isInitialized, error } = useJournalStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filterResult, setFilterResult] = useState<FilterResult>("all");
   const [filterSide, setFilterSide] = useState<FilterSide>("all");
@@ -378,6 +378,41 @@ export default function JournalPage() {
   const winCount = entries.filter(e => e.result === "WIN").length;
   const closedCount = entries.filter(e => e.netPnl != null).length;
   const winRate = closedCount > 0 ? ((winCount / closedCount) * 100).toFixed(1) : null;
+
+  if (!isInitialized || isLoading) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+        <Topbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-white/30 text-sm animate-pulse">Loading journal...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+        <Topbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex flex-col items-center justify-center gap-3">
+            <p className="text-red-400 text-sm">{error}</p>
+            <button
+              type="button"
+              onClick={() => useJournalStore.getState().init()}
+              className="text-white/40 text-xs border border-white/10 px-3 py-1 rounded hover:text-white/70 hover:border-white/20 transition"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">

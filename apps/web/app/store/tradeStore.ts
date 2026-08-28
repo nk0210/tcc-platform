@@ -382,15 +382,21 @@ export const useTradeStore = create<TradeStore>()((set, get) => ({
   // ── Update SL/TP ──────────────────────────────────────────────────────
 
   updateSLTP: async (id, sl, tp) => {
-    // Optimistic
+    // Optimistic, snapshotted so a failed request can revert cleanly.
+    const prev = get().positions;
     set((s) => ({
       positions: s.positions.map((p) => (p.id === id ? { ...p, sl, tp } : p)),
+      error: null,
     }));
     try {
       const res = await api.put<any>(`/trade/${id}/sltp`, { sl, tp });
-      if (!res.success) console.error("[tradeStore.updateSLTP]", res.error);
+      if (!res.success) {
+        console.error("[tradeStore.updateSLTP]", res.error);
+        set({ positions: prev, error: res.error });
+      }
     } catch (err) {
       console.error("[tradeStore.updateSLTP]", err);
+      set({ positions: prev, error: "Failed to update SL/TP" });
     }
   },
 
@@ -399,7 +405,7 @@ export const useTradeStore = create<TradeStore>()((set, get) => ({
   deletePosition: async (id) => {
     const prev = get().positions;
     const next = prev.filter((p) => p.id !== id);
-    set((s) => ({ positions: next, ...recalcAccount(next, s.balance), isSyncing: true }));
+    set((s) => ({ positions: next, ...recalcAccount(next, s.balance), isSyncing: true, error: null }));
     try {
       const res = await api.delete<null>(`/trade/${id}`);
       if (!res.success) {

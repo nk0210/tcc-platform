@@ -58,7 +58,8 @@ export function useSystemNotifications() {
               undefined,
               { maximumFractionDigits: 4 }
             )} | Paper Mode`,
-            action: { label: "View Positions", path: "/" },
+            actionLabel: "View Positions",
+            actionPath: "/",
           });
 
           const risk = calculateRiskScore();
@@ -69,7 +70,8 @@ export function useSystemNotifications() {
               priority: risk.level === "EXTREME" ? "critical" : "high",
               title: `⚠ Risk Level: ${risk.level}`,
               message: risk.recommendation,
-              action: { label: "View Dashboard", path: "/" },
+              actionLabel: "View Dashboard",
+              actionPath: "/",
             });
           }
         }
@@ -96,7 +98,8 @@ export function useSystemNotifications() {
             message: `Paper ${trade.side} closed | P&L: ${formatPnl(
               trade.netPnl
             )} | Duration: ${formatDuration(trade.durationMs)}`,
-            action: { label: "Update Journal", path: "/journal" },
+            actionLabel: "Update Journal",
+            actionPath: "/journal",
           });
 
           try {
@@ -107,7 +110,8 @@ export function useSystemNotifications() {
               priority: "low",
               title: "📓 Journal Entry Created",
               message: `${trade.displayName} trade logged. Add your notes, emotion, and lessons.`,
-              action: { label: "Update Journal", path: "/journal" },
+              actionLabel: "Update Journal",
+              actionPath: "/journal",
             });
           } catch {
             // Keep silent so notification hook never breaks trading flow.
@@ -148,7 +152,8 @@ export function useSystemNotifications() {
               undefined,
               { maximumFractionDigits: 4 }
             )}`,
-            action: { label: "Open Chart", path: "/" },
+            actionLabel: "Open Chart",
+            actionPath: "/",
           });
         });
       });

@@ -1,4 +1,5 @@
 "use client";
+import { memo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 interface NavItem {
@@ -49,7 +50,7 @@ const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
   },
 ];
 
-export default function Sidebar() {
+function Sidebar() {
   const pathname = usePathname();
   const router   = useRouter();
 
@@ -109,3 +110,7 @@ export default function Sidebar() {
     </aside>
   );
 }
+
+// Sidebar takes no props — its only re-render triggers are its own hooks
+// (usePathname), so memo() fully insulates it from parent re-renders.
+export default memo(Sidebar);

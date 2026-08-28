@@ -63,7 +63,14 @@ export function calcGrossPnl(
     : (entryPrice - currentPrice) * qty;
 }
 
-/** Simulated commission: 0.01% of notional, both sides (open + close) */
+/**
+ * Simulated commission: 0.01% of the gross P&L magnitude.
+ * Must match `COMMISSION_RATE` in apps/api/src/server/services/tradeService.ts
+ * exactly — this function drives the *live* floating P&L shown while a
+ * position is open, and the backend's identical formula is what actually
+ * gets settled when the position closes. If these diverge, the number a
+ * trader watches in real time won't match what they're paid out.
+ */
 const COMMISSION_RATE = 0.0001;
 
 /** Calculate net P&L = gross - simulated commission */
@@ -72,7 +79,7 @@ export function calcNetPnl(
   lotSize: number, entryPrice: number, currentPrice: number
 ): number {
   const gross = calcGrossPnl(symbolId, side, lotSize, entryPrice, currentPrice);
-  const commission = calcNotional(symbolId, lotSize, entryPrice) * COMMISSION_RATE * 2;
+  const commission = Math.abs(gross) * COMMISSION_RATE;
   return gross - commission;
 }
 

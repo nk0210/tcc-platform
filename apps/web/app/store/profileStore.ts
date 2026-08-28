@@ -1,258 +1,294 @@
 /**
- * TCC Profile Store
- *
- * Manages each user's own profile settings and follow relationships.
- * Persisted per-user (user-scoped localStorage).
- * All stats are derived from real data stores — never hardcoded.
- *
- * Phase Alpha: replace with PostgreSQL + JWT auth session.
+ * TCC Profile Store — Phase Alpha
+ * API-backed own profile + visibility-gated public profile lookups.
  */
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-import { getUserScopedStorage } from "@/lib/persistence/storage";
+import { api }    from "@/lib/api/client";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
-export type TCCUserRole =
-  | "normal_user"
-  | "follower_trader"
-  | "verified_trader"
-  | "master_trader"
-  | "mentor"
-  | "admin"
-  | "owner";
+export type Visibility      = "PUBLIC" | "PRIVATE" | "FOLLOWERS_ONLY";
+export type ExperienceLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "PROFESSIONAL";
 
-export type ProfileVisibility  = "public" | "private" | "followers_only";
-export type PortfolioVisibility = "public" | "private" | "followers_only";
-export type ExperienceLevel     = "beginner" | "intermediate" | "advanced" | "professional";
-
-export interface TCCSocialLinks {
-  website?:   string;
-  x?:         string;
-  linkedin?:  string;
-  youtube?:   string;
-  instagram?: string;
+export interface SocialLinks {
+  website:   string | null;
+  x:         string | null;
+  linkedin:  string | null;
+  youtube:   string | null;
+  instagram: string | null;
 }
 
-export interface TCCTradingIdentity {
-  marketsTraded:     string[];   // e.g. ["Crypto", "Forex"]
-  symbolsTraded:     string[];   // e.g. ["BTCUSDT", "XAUUSD"]
-  strategiesUsed:    string[];   // e.g. ["SMC", "Price Action"]
-  preferredSessions: string[];   // e.g. ["london", "newyork"]
-  experienceLevel:   ExperienceLevel | "";
+export interface TradingIdentity {
+  marketsTraded:     string[];
+  symbolsTraded:     string[];
+  strategiesUsed:    string[];
+  preferredSessions: string[];
 }
 
-export interface TCCUserProfile {
-  userId:              string;
+export interface UserProfile {
+  id:                  string;
   tccId:               string;
-  username:            string;
+  email:               string;
+  handle:              string;
   displayName:         string;
   bio:                 string;
   location:            string;
-  avatarUrl:           string;
-  roles:               TCCUserRole[];
-  profileVisibility:   ProfileVisibility;
-  portfolioVisibility: PortfolioVisibility;
+  avatarUrl:           string | null;
+  roles:               string[];
+  status:              string;
+  isVerified:          boolean;
+  profileVisibility:   Visibility;
+  portfolioVisibility: Visibility;
+  experienceLevel:     ExperienceLevel | null;
+  permissions:         string[];
+  socialLinks:         SocialLinks | null;
+  tradingIdentity:     TradingIdentity | null;
+  _count?:             { followedBy: number; following: number; posts: number; strategies: number };
   createdAt:           string;
   updatedAt:           string;
-  socialLinks:         TCCSocialLinks;
-  tradingIdentity:     TCCTradingIdentity;
 }
 
-export interface FollowRelationship {
+/** May be a limited shape (id/handle/displayName/avatarUrl/isPrivate) when the profile is not visible to the viewer. */
+export interface PublicProfile {
+  id:                 string;
+  handle:             string;
+  displayName:        string;
+  avatarUrl:          string | null;
+  isPrivate?:         boolean;
+  bio?:               string;
+  location?:          string;
+  roles?:             string[];
+  isVerified?:        boolean;
+  profileVisibility?: Visibility;
+  experienceLevel?:   ExperienceLevel | null;
+  socialLinks?:       SocialLinks | null;
+  tradingIdentity?:   TradingIdentity | null;
+  _count?:            { followedBy: number; following: number };
+}
+
+export interface UpdateProfileInput {
+  displayName?:         string;
+  bio?:                 string;
+  location?:            string;
+  avatarUrl?:           string | null;
+  profileVisibility?:   Visibility;
+  portfolioVisibility?: Visibility;
+  experienceLevel?:     ExperienceLevel | null;
+}
+
+export interface TradingStats {
+  totalTrades:  number;
+  closedTrades: number;
+  openTrades:   number;
+  totalNetPnl:  number;
+}
+
+export interface CompletenessResult {
+  percentage:    number;
+  missingFields: string[];
+}
+
+export interface SearchUser {
   id:          string;
-  followerId:  string;
-  followingId: string;
-  status:      "active" | "pending" | "blocked";
-  createdAt:   string;
+  handle:      string;
+  displayName: string;
+  avatarUrl:   string | null;
+  bio:         string;
+  roles:       string[];
+  isVerified:  boolean;
+  _count:      { followedBy: number };
 }
 
-// ── Default values ────────────────────────────────────────────────────────
+interface PaginatedResult<T> {
+  items:      T[];
+  total:      number;
+  page:       number;
+  pageSize:   number;
+  totalPages: number;
+  hasNext:    boolean;
+  hasPrev:    boolean;
+}
 
-const DEFAULT_TRADING_IDENTITY: TCCTradingIdentity = {
-  marketsTraded:     [],
-  symbolsTraded:     [],
-  strategiesUsed:    [],
-  preferredSessions: [],
-  experienceLevel:   "",
-};
+const PAGE_SIZE = 20;
 
 // ── Store ─────────────────────────────────────────────────────────────────
 
 interface ProfileStore {
-  myProfile: TCCUserProfile | null;
-  follows:   FollowRelationship[];
+  myProfile:      UserProfile | null;
+  publicProfiles: Record<string, PublicProfile>;
+  isLoading:      boolean;
+  isSyncing:      boolean;
+  isInitialized:  boolean;
+  error:          string | null;
 
-  // Profile actions
-  initProfile: (userId: string, tccId: string, username: string) => void;
-  updateProfile: (updates: Partial<Omit<TCCUserProfile, "userId" | "tccId" | "createdAt">>) => void;
-  setProfileVisibility:  (visibility: ProfileVisibility)  => void;
-  setPortfolioVisibility: (visibility: PortfolioVisibility) => void;
+  init:  () => Promise<void>;
+  reset: () => void;
 
-  // Follow system
-  followUser:   (followingId: string) => void;
-  unfollowUser: (followingId: string) => void;
-  blockUser:    (userId: string)      => void;
+  updateProfile:         (input: UpdateProfileInput) => Promise<void>;
+  updateSocialLinks:     (links: Partial<SocialLinks>) => Promise<void>;
+  updateTradingIdentity: (identity: Partial<TradingIdentity>) => Promise<void>;
 
-  // Selectors
-  getFollowers: (userId: string) => FollowRelationship[];
-  getFollowing: (userId: string) => FollowRelationship[];
-  isFollowing:  (followerId: string, followingId: string) => boolean;
-  canViewProfile:   (targetUserId: string, viewerId: string, targetProfile: TCCUserProfile | null) => boolean;
-  canViewPortfolio: (targetUserId: string, viewerId: string, targetProfile: TCCUserProfile | null) => boolean;
+  getPublicProfile:  (handle: string) => Promise<PublicProfile | null>;
+  getMyStats:        () => Promise<TradingStats | null>;
+  getCompleteness:   () => Promise<CompletenessResult | null>;
+  searchUsers:       (query: string, page?: number) => Promise<PaginatedResult<SearchUser> | null>;
+  getSuggestedUsers: (page?: number) => Promise<PaginatedResult<SearchUser> | null>;
 }
 
-export const useProfileStore = create<ProfileStore>()(
-  persist(
-    (set, get) => ({
-      myProfile: null,
-      follows:   [],
+export const useProfileStore = create<ProfileStore>()((set, get) => ({
+  myProfile:      null,
+  publicProfiles: {},
+  isLoading:      false,
+  isSyncing:      false,
+  isInitialized:  false,
+  error:          null,
 
-      initProfile: (userId, tccId, username) => {
-        const existing = get().myProfile;
-        // Don't overwrite if same user already initialized
-        if (existing && existing.userId === userId) return;
-        const now = new Date().toISOString();
-        set({
-          myProfile: {
-            userId,
-            tccId,
-            username,
-            displayName:         username,
-            bio:                 "",
-            location:            "",
-            avatarUrl:           "",
-            roles:               ["normal_user"],
-            profileVisibility:   "public",
-            portfolioVisibility: "private",
-            createdAt:           now,
-            updatedAt:           now,
-            socialLinks:         {},
-            tradingIdentity:     DEFAULT_TRADING_IDENTITY,
-          },
-        });
-      },
+  // ── Init ──────────────────────────────────────────────────────────────
 
-      updateProfile: (updates) => {
-        set((state) => {
-          if (!state.myProfile) return state;
-          return {
-            myProfile: {
-              ...state.myProfile,
-              ...updates,
-              updatedAt: new Date().toISOString(),
-            },
-          };
-        });
-      },
+  init: async () => {
+    if (get().isInitialized) return;
+    set({ isLoading: true, error: null });
 
-      setProfileVisibility: (visibility) => {
-        set((state) => {
-          if (!state.myProfile) return state;
-          return {
-            myProfile: {
-              ...state.myProfile,
-              profileVisibility: visibility,
-              updatedAt: new Date().toISOString(),
-            },
-          };
-        });
-      },
-
-      setPortfolioVisibility: (visibility) => {
-        set((state) => {
-          if (!state.myProfile) return state;
-          return {
-            myProfile: {
-              ...state.myProfile,
-              portfolioVisibility: visibility,
-              updatedAt: new Date().toISOString(),
-            },
-          };
-        });
-      },
-
-      followUser: (followingId) => {
-        const { myProfile, follows } = get();
-        if (!myProfile) return;
-        if (myProfile.userId === followingId) return; // cannot follow self
-        const already = follows.find(
-          (f) => f.followerId === myProfile.userId && f.followingId === followingId
-        );
-        if (already) return;
-        const newFollow: FollowRelationship = {
-          id:          `follow_${Date.now()}`,
-          followerId:  myProfile.userId,
-          followingId,
-          status:      "active",
-          createdAt:   new Date().toISOString(),
-        };
-        set({ follows: [...follows, newFollow] });
-      },
-
-      unfollowUser: (followingId) => {
-        const { myProfile } = get();
-        if (!myProfile) return;
-        set((state) => ({
-          follows: state.follows.filter(
-            (f) => !(f.followerId === myProfile.userId && f.followingId === followingId)
-          ),
-        }));
-      },
-
-      blockUser: (userId) => {
-        const { myProfile } = get();
-        if (!myProfile) return;
-        set((state) => ({
-          follows: state.follows.map((f) =>
-            f.followerId === myProfile.userId && f.followingId === userId
-              ? { ...f, status: "blocked" as const }
-              : f
-          ),
-        }));
-      },
-
-      getFollowers: (userId) =>
-        get().follows.filter(
-          (f) => f.followingId === userId && f.status === "active"
-        ),
-
-      getFollowing: (userId) =>
-        get().follows.filter(
-          (f) => f.followerId === userId && f.status === "active"
-        ),
-
-      isFollowing: (followerId, followingId) =>
-        get().follows.some(
-          (f) =>
-            f.followerId === followerId &&
-            f.followingId === followingId &&
-            f.status === "active"
-        ),
-
-      canViewProfile: (targetUserId, viewerId, targetProfile) => {
-        if (!targetProfile) return false;
-        if (targetUserId === viewerId) return true;
-        if (targetProfile.profileVisibility === "public") return true;
-        if (targetProfile.profileVisibility === "followers_only") {
-          return get().isFollowing(viewerId, targetUserId);
-        }
-        return false; // private
-      },
-
-      canViewPortfolio: (targetUserId, viewerId, targetProfile) => {
-        if (!targetProfile) return false;
-        if (targetUserId === viewerId) return true;
-        if (targetProfile.portfolioVisibility === "public") return true;
-        if (targetProfile.portfolioVisibility === "followers_only") {
-          return get().isFollowing(viewerId, targetUserId);
-        }
-        return false; // private
-      },
-    }),
-    {
-      name:    "profile",
-      storage: createJSONStorage(() => getUserScopedStorage("profile")),
+    try {
+      const res = await api.get<UserProfile>("/profile/me");
+      if (!res.success) {
+        set({ isLoading: false, error: res.error, isInitialized: true });
+        return;
+      }
+      set({ myProfile: res.data, isLoading: false, isInitialized: true, error: null });
+    } catch (err) {
+      console.error("[profileStore.init]", err);
+      set({ isLoading: false, error: "Failed to load profile", isInitialized: true });
     }
-  )
-);
+  },
+
+  reset: () =>
+    set({
+      myProfile: null, publicProfiles: {}, isLoading: false, isSyncing: false,
+      isInitialized: false, error: null,
+    }),
+
+  // ── Updates (optimistic) ─────────────────────────────────────────────
+
+  updateProfile: async (input) => {
+    const prev = get().myProfile;
+    if (prev) set({ myProfile: { ...prev, ...input } });
+    set({ isSyncing: true, error: null });
+
+    try {
+      const res = await api.put<UserProfile>("/profile/me", input);
+      if (!res.success) { set({ myProfile: prev, isSyncing: false, error: res.error }); return; }
+      set({ myProfile: res.data, isSyncing: false });
+    } catch (err) {
+      console.error("[profileStore.updateProfile]", err);
+      set({ myProfile: prev, isSyncing: false, error: "Failed to update profile" });
+    }
+  },
+
+  updateSocialLinks: async (links) => {
+    const prev = get().myProfile;
+    if (prev) set({ myProfile: { ...prev, socialLinks: { ...prev.socialLinks, ...links } as SocialLinks } });
+    set({ isSyncing: true, error: null });
+
+    try {
+      const res = await api.put<SocialLinks>("/profile/me/social-links", links);
+      if (!res.success) { set({ myProfile: prev, isSyncing: false, error: res.error }); return; }
+      set((s) => ({ myProfile: s.myProfile ? { ...s.myProfile, socialLinks: res.data } : s.myProfile, isSyncing: false }));
+    } catch (err) {
+      console.error("[profileStore.updateSocialLinks]", err);
+      set({ myProfile: prev, isSyncing: false, error: "Failed to update social links" });
+    }
+  },
+
+  updateTradingIdentity: async (identity) => {
+    const prev = get().myProfile;
+    if (prev) set({ myProfile: { ...prev, tradingIdentity: { ...prev.tradingIdentity, ...identity } as TradingIdentity } });
+    set({ isSyncing: true, error: null });
+
+    try {
+      const res = await api.put<TradingIdentity>("/profile/me/trading-identity", identity);
+      if (!res.success) { set({ myProfile: prev, isSyncing: false, error: res.error }); return; }
+      set((s) => ({ myProfile: s.myProfile ? { ...s.myProfile, tradingIdentity: res.data } : s.myProfile, isSyncing: false }));
+    } catch (err) {
+      console.error("[profileStore.updateTradingIdentity]", err);
+      set({ myProfile: prev, isSyncing: false, error: "Failed to update trading identity" });
+    }
+  },
+
+  // ── Public lookups ────────────────────────────────────────────────────
+
+  getPublicProfile: async (handle) => {
+    try {
+      const res = await api.get<PublicProfile>(`/profile/${handle}`);
+      if (!res.success) { set({ error: res.error }); return null; }
+      set((s) => ({ publicProfiles: { ...s.publicProfiles, [handle]: res.data } }));
+      return res.data;
+    } catch (err) {
+      console.error("[profileStore.getPublicProfile]", err);
+      set({ error: "Failed to load profile" });
+      return null;
+    }
+  },
+
+  getMyStats: async () => {
+    try {
+      const res = await api.get<TradingStats>("/profile/me/stats");
+      return res.success ? res.data : null;
+    } catch (err) {
+      console.error("[profileStore.getMyStats]", err);
+      return null;
+    }
+  },
+
+  getCompleteness: async () => {
+    try {
+      const res = await api.get<CompletenessResult>("/profile/me/completeness");
+      return res.success ? res.data : null;
+    } catch (err) {
+      console.error("[profileStore.getCompleteness]", err);
+      return null;
+    }
+  },
+
+  searchUsers: async (query, page = 1) => {
+    try {
+      const res = await api.get<PaginatedResult<SearchUser>>(
+        `/profile/search?q=${encodeURIComponent(query)}&page=${page}&pageSize=${PAGE_SIZE}`
+      );
+      return res.success ? res.data : null;
+    } catch (err) {
+      console.error("[profileStore.searchUsers]", err);
+      return null;
+    }
+  },
+
+  getSuggestedUsers: async (page = 1) => {
+    try {
+      const res = await api.get<PaginatedResult<SearchUser>>(`/profile/suggested?page=${page}&pageSize=${PAGE_SIZE}`);
+      return res.success ? res.data : null;
+    } catch (err) {
+      console.error("[profileStore.getSuggestedUsers]", err);
+      return null;
+    }
+  },
+}));
+
+// ── Auto-init / reset (single-arg subscribe) ──────────────────────────────
+
+if (typeof window !== "undefined") {
+  import("@/store/authStore").then(({ useAuthStore }) => {
+    let prevUserId: string | undefined;
+
+    useAuthStore.subscribe((state) => {
+      const userId = state.user?.id;
+      if (userId !== prevUserId) {
+        prevUserId = userId;
+        if (userId) {
+          useProfileStore.getState().init();
+        } else {
+          useProfileStore.getState().reset();
+        }
+      }
+    });
+  });
+}

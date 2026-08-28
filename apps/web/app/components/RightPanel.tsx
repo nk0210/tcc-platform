@@ -11,7 +11,7 @@
  * - Added mounted guards so server and first client render match safely.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import { useTradeStore } from "@/store/tradeStore";
 import { useJournalStore } from "@/store/journalStore";
 import {
@@ -29,8 +29,15 @@ type RightTab = "risk" | "journal" | "news";
 function RiskPanel({ score }: { score: RiskScore }) {
   const [mounted, setMounted] = useState(false);
 
-  const { balance, equity, freeMargin, marginUsed, marginLevel, floatingPnl } =
-    useTradeStore();
+  // Individual selectors — RiskPanel only needs these 6 fields, but a plain
+  // useTradeStore() subscribes to the whole store and re-renders on every
+  // WS price tick's positions/events churn too, not just these values.
+  const balance     = useTradeStore((s) => s.balance);
+  const equity      = useTradeStore((s) => s.equity);
+  const freeMargin  = useTradeStore((s) => s.freeMargin);
+  const marginUsed  = useTradeStore((s) => s.marginUsed);
+  const marginLevel = useTradeStore((s) => s.marginLevel);
+  const floatingPnl = useTradeStore((s) => s.floatingPnl);
 
   useEffect(() => {
     setMounted(true);
@@ -542,7 +549,7 @@ function NewsPanel() {
 
 // ── Main Component ────────────────────────────────────────────────────
 
-export default function RightPanel() {
+function RightPanel() {
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<RightTab>("risk");
   const [riskScore, setRiskScore] = useState<RiskScore>(() =>
@@ -627,3 +634,8 @@ export default function RightPanel() {
     </div>
   );
 }
+
+// RightPanel takes no props — memo insulates it from parent re-renders,
+// leaving only its own store subscriptions (now field-level, see RiskPanel
+// above) as re-render triggers.
+export default memo(RightPanel);

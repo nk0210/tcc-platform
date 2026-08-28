@@ -2,27 +2,25 @@
 /**
  * TCC Strategy Marketplace
  *
- * Fixed all type mismatches against actual strategyStore.ts:
- *   StrategyRisk (not StrategyRiskLevel) with values "LOW" | "MEDIUM" | "HIGH"
- *   assetCategory (not assetClass)
- *   riskManagement (not riskManagementRules)
- *   disclaimer (not performanceDisclaimer)
- *   linkedCourseId (not linkedAcademyCourseId)
- *   pricingModel (not isPaid)
- *   review.handle (not review.authorHandle)
- *   review.timestamp (not review.createdAt)
- *   addReview({ handle, rating, comment })
- *   publishStrategy with all required Strategy fields
- *   userStrategies is UserStrategyRecord[] — never used as Strategy[]
+ * API-backed via strategyStore.ts (Phase Alpha Frontend Integration):
+ *   StrategyType / StrategyRiskLevel / StrategyPricing / PerformanceStatus are
+ *   all uppercase enums matching the Prisma schema.
+ *   isSaved / isInPlaybook are booleans on the Strategy object itself (no
+ *   longer store selector functions) — toggled via toggleSave / togglePlaybook.
+ *   Reviews are not embedded on Strategy anymore (only _count.reviews) —
+ *   fetched on demand via getReviews().
+ *   createStrategy() replaces publishStrategy() and only accepts the fields
+ *   the API allows (server derives author/verification/featured status).
  */
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   useStrategyStore,
   type Strategy,
   type StrategyType,
-  type StrategyRisk,
-  type PerformanceStatus,
+  type StrategyRiskLevel,
   type StrategyPricing,
+  type PerformanceStatus,
+  type StrategyReview,
 } from "@/store/strategyStore";
 import { useAcademyStore, type Course } from "@/store/academyStore";
 import { useNotificationStore } from "@/store/notificationStore";
@@ -32,42 +30,42 @@ import Topbar  from "@/components/Topbar";
 import Sidebar from "@/components/Sidebar";
 import ReportButton from "@/components/ReportButton";
 
-// ── Badge / label helpers (use StrategyRisk — uppercase) ──────────────────
+// ── Badge / label helpers (uppercase enum keys) ────────────────────────────
 
-const RISK_BADGE: Record<StrategyRisk, string> = {
+const RISK_BADGE: Record<StrategyRiskLevel, string> = {
   LOW:    "text-green-400  bg-green-500/10  border-green-500/20",
   MEDIUM: "text-amber-400  bg-amber-500/10  border-amber-500/20",
   HIGH:   "text-red-400    bg-red-500/10    border-red-500/20",
 };
 
-const RISK_LABEL: Record<StrategyRisk, string> = {
+const RISK_LABEL: Record<StrategyRiskLevel, string> = {
   LOW:    "Low",
   MEDIUM: "Medium",
   HIGH:   "High",
 };
 
 const TYPE_BADGE: Record<StrategyType, string> = {
-  official:             "text-blue-400   bg-blue-500/10   border-blue-500/20",
-  educational_template: "text-indigo-400 bg-indigo-500/10 border-indigo-500/20",
-  creator_published:    "text-purple-400 bg-purple-500/10 border-purple-500/20",
+  OFFICIAL:             "text-blue-400   bg-blue-500/10   border-blue-500/20",
+  EDUCATIONAL_TEMPLATE: "text-indigo-400 bg-indigo-500/10 border-indigo-500/20",
+  CREATOR_PUBLISHED:    "text-purple-400 bg-purple-500/10 border-purple-500/20",
 };
 
 const TYPE_LABEL: Record<StrategyType, string> = {
-  official:             "Official TCC",
-  educational_template: "Educational Template",
-  creator_published:    "Creator Published",
+  OFFICIAL:             "Official TCC",
+  EDUCATIONAL_TEMPLATE: "Educational Template",
+  CREATOR_PUBLISHED:    "Creator Published",
 };
 
 const PERF_BADGE: Record<PerformanceStatus, string> = {
-  unverified:    "text-white/40 bg-white/5 border-white/10",
-  self_reported: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-  verified:      "text-green-400 bg-green-500/10 border-green-500/20",
+  UNVERIFIED:    "text-white/40 bg-white/5 border-white/10",
+  SELF_REPORTED: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+  VERIFIED:      "text-green-400 bg-green-500/10 border-green-500/20",
 };
 
 const PERF_LABEL: Record<PerformanceStatus, string> = {
-  unverified:    "Educational — not verified",
-  self_reported: "Self-reported data",
-  verified:      "Verified",
+  UNVERIFIED:    "Educational — not verified",
+  SELF_REPORTED: "Self-reported data",
+  VERIFIED:      "Verified",
 };
 
 // ── Filter types ──────────────────────────────────────────────────────────
@@ -83,8 +81,7 @@ function StrategyDetail({
   strategy: Strategy;
   onClose:  () => void;
 }) {
-  const { saveStrategy, unsaveStrategy, togglePlaybook, addReview, isSaved, isInPlaybook } =
-    useStrategyStore();
+  const { toggleSave, togglePlaybook, addReview, getReviews } = useStrategyStore();
   const { courses }         = useAcademyStore();
   const { addNotification } = useNotificationStore();
   const { user }            = useAuthStore();
@@ -93,52 +90,61 @@ function StrategyDetail({
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [reviewRating,   setReviewRating]   = useState(5);
   const [reviewComment,  setReviewComment]  = useState("");
+  const [reviews,        setReviews]        = useState<StrategyReview[]>([]);
 
-  const saved      = isSaved(strategy.id);
-  const inPlaybook = isInPlaybook(strategy.id);
+  const saved      = strategy.isSaved;
+  const inPlaybook = strategy.isInPlaybook;
 
-  // Link to Academy course — uses linkedCourseId (not linkedAcademyCourseId)
+  useEffect(() => {
+    let cancelled = false;
+    getReviews(strategy.id).then((res) => {
+      if (!cancelled && res) setReviews(res.items);
+    });
+    return () => { cancelled = true; };
+  }, [strategy.id, getReviews]);
+
+  // Link to Academy course — uses linkedCourseId
   const linkedCourse: Course | undefined = strategy.linkedCourseId
     ? courses.find((c) => c.id === strategy.linkedCourseId)
     : undefined;
 
-  const handleSave = () => {
-    if (saved) {
-      unsaveStrategy(strategy.id);
-    } else {
-      saveStrategy(strategy.id);
+  const handleSave = async () => {
+    const wasSaved = saved;
+    await toggleSave(strategy.id);
+    if (!wasSaved) {
       addNotification({
-        type:     "system",
-        priority: "low",
-        title:    `💾 Strategy Saved: ${strategy.title}`,
-        message:  "Saved to My Strategies. Use as a reference for your paper trading.",
-        action:   { label: "View Saved", path: "/marketplace" },
+        type:        "system",
+        priority:    "low",
+        title:       `💾 Strategy Saved: ${strategy.title}`,
+        message:     "Saved to My Strategies. Use as a reference for your paper trading.",
+        actionLabel: "View Saved",
+        actionPath:  "/marketplace",
       });
     }
   };
 
-  const handlePlaybook = () => {
-    if (!saved) saveStrategy(strategy.id);
-    togglePlaybook(strategy.id);
+  const handlePlaybook = async () => {
+    if (!saved) await toggleSave(strategy.id);
+    await togglePlaybook(strategy.id);
     if (!inPlaybook) {
       addNotification({
-        type:     "system",
-        priority: "low",
-        title:    `📋 Added to Playbook: ${strategy.title}`,
-        message:  "Strategy framework added to your Playbook for reference during trades.",
-        action:   { label: "Open Playbook", path: "/playbook" },
+        type:        "system",
+        priority:    "low",
+        title:       `📋 Added to Playbook: ${strategy.title}`,
+        message:     "Strategy framework added to your Playbook for reference during trades.",
+        actionLabel: "Open Playbook",
+        actionPath:  "/playbook",
       });
     }
   };
 
-  const handleSubmitReview = () => {
+  const handleSubmitReview = async () => {
     if (!reviewComment.trim()) return;
-    // addReview expects { handle, rating, comment } — NOT { authorHandle, ... }
-    addReview(strategy.id, {
-      handle:  user?.handle ?? user?.email ?? "guest",
+    const review = await addReview(strategy.id, {
       rating:  reviewRating,
       comment: reviewComment.trim(),
     });
+    if (review) setReviews((prev) => [review, ...prev]);
     setShowReviewForm(false);
     setReviewRating(5);
     setReviewComment("");
@@ -189,7 +195,7 @@ function StrategyDetail({
           <h1 className="text-xl font-bold text-white mb-2">{strategy.title}</h1>
           <p className="text-white/50 text-sm leading-relaxed mb-4">{strategy.description}</p>
 
-          {/* Disclaimer — uses strategy.disclaimer (not performanceDisclaimer) */}
+          {/* Disclaimer */}
           <div className="bg-amber-500/5 border border-amber-500/15 rounded-xl p-3 mb-4">
             <p className="text-amber-400/80 text-xs leading-relaxed">
               ⚠ <strong>Disclaimer:</strong> {strategy.disclaimer}
@@ -228,7 +234,7 @@ function StrategyDetail({
               {inPlaybook ? "📋 In Playbook" : "📋 Add to Playbook"}
             </button>
 
-            {/* Linked Academy course — uses linkedCourseId */}
+            {/* Linked Academy course */}
             {linkedCourse && (
               <button
                 onClick={() => router.push("/academy")}
@@ -272,7 +278,6 @@ function StrategyDetail({
             ))}
           </div>
 
-          {/* riskManagement (not riskManagementRules) */}
           <div className="glass border border-white/5 rounded-xl p-4">
             <p className="text-white/40 text-xs uppercase tracking-wider mb-3">🛡 Risk Management</p>
             {strategy.riskManagement.map((rule, i) => (
@@ -304,7 +309,7 @@ function StrategyDetail({
                   <span className="text-xs text-white/30">·</span>
                   <span className="text-xs text-white/40">{linkedCourse.totalDuration}</span>
                   <span className="text-xs text-white/30">·</span>
-                  <span className="text-xs text-white/40 capitalize">{linkedCourse.level}</span>
+                  <span className="text-xs text-white/40 capitalize">{linkedCourse.level.toLowerCase()}</span>
                 </div>
               </div>
               <span className="text-white/40 text-sm">→</span>
@@ -312,11 +317,11 @@ function StrategyDetail({
           </div>
         )}
 
-        {/* Reviews — review.handle and review.timestamp (not authorHandle / createdAt) */}
+        {/* Reviews */}
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <p className="text-white/40 text-xs uppercase tracking-wider">
-              User Reviews ({strategy.reviews.length})
+              User Reviews ({strategy._count.reviews})
             </p>
             {saved && (
               <button
@@ -363,17 +368,16 @@ function StrategyDetail({
             </div>
           )}
 
-          {strategy.reviews.length === 0 ? (
+          {reviews.length === 0 ? (
             <p className="text-white/20 text-xs">
               No reviews yet. Save this strategy and share your paper trading experience.
             </p>
           ) : (
             <div className="flex flex-col gap-3">
-              {strategy.reviews.map((review) => (
+              {reviews.map((review) => (
                 <div key={review.id} className="glass border border-white/5 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
-                      {/* review.handle — not authorHandle */}
                       <span className="text-white/70 text-xs font-semibold">{review.handle}</span>
                       <div className="flex">
                         {Array.from({ length: 5 }).map((_, i) => (
@@ -386,7 +390,6 @@ function StrategyDetail({
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {/* review.timestamp — not createdAt */}
                       <span className="text-white/20 text-xs">
                         {new Date(review.timestamp).toLocaleDateString()}
                       </span>
@@ -419,9 +422,8 @@ function StrategyCard({
   strategy: Strategy;
   onClick:  () => void;
 }) {
-  const { isSaved, isInPlaybook } = useStrategyStore();
-  const saved      = isSaved(strategy.id);
-  const inPlaybook = isInPlaybook(strategy.id);
+  const saved      = strategy.isSaved;
+  const inPlaybook = strategy.isInPlaybook;
 
   return (
     <div
@@ -466,7 +468,7 @@ function StrategyCard({
         {PERF_LABEL[strategy.performanceStatus]}
       </div>
 
-      {/* Meta row — assetCategory (not assetClass) and pricingModel (not isPaid) */}
+      {/* Meta row */}
       <div className="flex items-center gap-3 text-xs text-white/30 mb-3">
         <span>{strategy.timeframe === "any" ? "Any TF" : strategy.timeframe}</span>
         <span>·</span>
@@ -497,14 +499,13 @@ function StrategyCard({
         </div>
 
         <div className="flex items-center gap-2">
-          {strategy.reviews.length > 0 && (
+          {strategy._count.reviews > 0 && (
             <span className="text-xs text-white/30">
-              {strategy.reviews.length} review{strategy.reviews.length > 1 ? "s" : ""}
+              {strategy._count.reviews} review{strategy._count.reviews > 1 ? "s" : ""}
             </span>
           )}
-          {/* pricingModel (not isPaid) */}
           <span className="text-xs text-white/40 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
-            {strategy.pricingModel === "free" ? "Free" : `$${strategy.price}`}
+            {strategy.pricingModel === "FREE" ? "Free" : `$${strategy.price}`}
           </span>
         </div>
       </div>
@@ -515,58 +516,56 @@ function StrategyCard({
 // ── Publish Form ──────────────────────────────────────────────────────────
 
 function PublishForm({ onClose }: { onClose: () => void }) {
-  const { publishStrategy } = useStrategyStore();
+  const { createStrategy } = useStrategyStore();
   const { addNotification } = useNotificationStore();
-  const { user }            = useAuthStore();
 
   const [form, setForm] = useState({
     title:            "",
     description:      "",
-    assetCategory:    "all",       // assetCategory (not assetClass)
+    assetCategory:    "all",
     timeframe:        "H1",
-    riskLevel:        "MEDIUM" as StrategyRisk,  // StrategyRisk "LOW"|"MEDIUM"|"HIGH"
+    riskLevel:        "MEDIUM" as StrategyRiskLevel,
     rules:            "",
     entryConditions:  "",
     exitConditions:   "",
-    riskManagement:   "",          // riskManagement (not riskManagementRules)
+    riskManagement:   "",
     tags:             "",
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (!form.title || !form.description) return;
+    setIsSubmitting(true);
 
-    // publishStrategy expects Omit<Strategy, "id" | "reviews" | "createdAt" | "updatedAt">
-    // All required fields must be present
-    publishStrategy({
-      title:             form.title,
-      description:       form.description,
-      type:              "creator_published",
-      authorHandle:      user?.handle ?? user?.email ?? "guest",
-      asset:             "All",
-      assetCategory:     form.assetCategory,   // assetCategory
-      timeframe:         form.timeframe,
-      riskLevel:         form.riskLevel,
-      pricingModel:      "free" as StrategyPricing,
-      price:             0,
-      isFeatured:        false,
-      performanceStatus: "unverified",
-      rules:             form.rules.split("\n").filter(Boolean),
-      entryConditions:   form.entryConditions.split("\n").filter(Boolean),
-      exitConditions:    form.exitConditions.split("\n").filter(Boolean),
-      riskManagement:    form.riskManagement.split("\n").filter(Boolean), // riskManagement
-      tags:              form.tags.split(",").map((t) => t.trim()).filter(Boolean),
-      verified:          false,
-      version:           "1.0",
-      disclaimer:        "Creator-published strategy. Not independently verified. For educational and paper trading use only.",
-      // No performanceDisclaimer — uses disclaimer
-      // No linkedAcademyCourseId — uses linkedCourseId (omitted here as no course yet)
+    // Normal users can only publish CREATOR_PUBLISHED strategies — author,
+    // verification, and featured status are all derived server-side.
+    const created = await createStrategy({
+      title:            form.title,
+      description:      form.description,
+      type:             "CREATOR_PUBLISHED",
+      asset:            "All",
+      assetCategory:    form.assetCategory,
+      timeframe:        form.timeframe,
+      riskLevel:        form.riskLevel,
+      pricingModel:     "FREE" as StrategyPricing,
+      price:            0,
+      rules:            form.rules.split("\n").filter(Boolean),
+      entryConditions:  form.entryConditions.split("\n").filter(Boolean),
+      exitConditions:   form.exitConditions.split("\n").filter(Boolean),
+      riskManagement:   form.riskManagement.split("\n").filter(Boolean),
+      tags:             form.tags.split(",").map((t) => t.trim()).filter(Boolean),
+      version:          "1.0",
+      disclaimer:       "Creator-published strategy. Not independently verified. For educational and paper trading use only.",
     });
+
+    setIsSubmitting(false);
+    if (!created) return;
 
     addNotification({
       type:     "system",
       priority: "low",
-      title:    "✅ Strategy Published Locally",
-      message:  `"${form.title}" is now visible in your Marketplace. Saved locally.`,
+      title:    "✅ Strategy Published",
+      message:  `"${form.title}" is now visible in the Marketplace.`,
     });
 
     onClose();
@@ -582,7 +581,7 @@ function PublishForm({ onClose }: { onClose: () => void }) {
           <div>
             <h2 className="text-white font-bold">Publish Strategy</h2>
             <p className="text-white/30 text-xs mt-0.5">
-              Creator-published · Saved locally · Not verified
+              Creator-published · Not verified
             </p>
           </div>
           <button
@@ -618,7 +617,6 @@ function PublishForm({ onClose }: { onClose: () => void }) {
           <div className="grid grid-cols-3 gap-2">
             <div>
               <p className="text-white/40 text-xs mb-1">Asset Category</p>
-              {/* assetCategory (not assetClass) */}
               <select
                 value={form.assetCategory}
                 onChange={(e) => setForm({ ...form, assetCategory: e.target.value })}
@@ -645,11 +643,10 @@ function PublishForm({ onClose }: { onClose: () => void }) {
 
             <div>
               <p className="text-white/40 text-xs mb-1">Risk Level</p>
-              {/* StrategyRisk — "LOW" | "MEDIUM" | "HIGH" (uppercase) */}
               <select
                 value={form.riskLevel}
                 onChange={(e) =>
-                  setForm({ ...form, riskLevel: e.target.value as StrategyRisk })
+                  setForm({ ...form, riskLevel: e.target.value as StrategyRiskLevel })
                 }
                 className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs">
                 <option value="LOW">Low</option>
@@ -689,7 +686,7 @@ function PublishForm({ onClose }: { onClose: () => void }) {
 
           <div className="bg-amber-500/5 border border-amber-500/15 rounded-xl p-3">
             <p className="text-amber-400/80 text-xs leading-relaxed">
-              Your strategy will be published locally and labeled "Creator Published — Educational
+              Your strategy will be published and labeled "Creator Published — Educational
               only, not verified." No performance claims will be added automatically.
             </p>
           </div>
@@ -702,9 +699,9 @@ function PublishForm({ onClose }: { onClose: () => void }) {
             </button>
             <button
               onClick={handlePublish}
-              disabled={!form.title || !form.description}
+              disabled={!form.title || !form.description || isSubmitting}
               className="flex-1 bg-green-500/20 text-green-400 border border-green-500/30 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-40 hover:bg-green-500/30 transition">
-              Publish Locally
+              {isSubmitting ? "Publishing..." : "Publish"}
             </button>
           </div>
         </div>
@@ -716,7 +713,7 @@ function PublishForm({ onClose }: { onClose: () => void }) {
 // ── Main Page ─────────────────────────────────────────────────────────────
 
 export default function MarketplacePage() {
-  const { strategies, userStrategies, isSaved } = useStrategyStore();
+  const { strategies, savedStrategies, getSavedStrategies, isLoading, isInitialized, error } = useStrategyStore();
 
   const [activeTab,   setActiveTab]   = useState<FilterTab>("all");
   const [filterRisk,  setFilterRisk]  = useState<string>("all");
@@ -726,15 +723,15 @@ export default function MarketplacePage() {
   const [selectedId,  setSelectedId]  = useState<string | null>(null);
   const [showPublish, setShowPublish] = useState(false);
 
+  useEffect(() => {
+    getSavedStrategies();
+  }, [getSavedStrategies]);
+
   // Filter strategies
   const filtered = useMemo<Strategy[]>(() => {
-    let list = [...strategies];
+    let list = activeTab === "saved" ? [...savedStrategies] : [...strategies];
 
-    if (activeTab === "saved") {
-      // userStrategies is UserStrategyRecord[] — derive saved Strategy[] from strategies
-      const savedIds = new Set(userStrategies.map((r) => r.strategyId));
-      list = list.filter((s) => savedIds.has(s.id));
-    } else if (activeTab !== "all") {
+    if (activeTab !== "all" && activeTab !== "saved") {
       list = list.filter((s) => s.type === activeTab);
     }
 
@@ -754,23 +751,59 @@ export default function MarketplacePage() {
 
     // Featured first
     return [...list].sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
-  }, [strategies, userStrategies, activeTab, filterRisk, filterAsset, filterTF, searchQuery]);
+  }, [strategies, savedStrategies, activeTab, filterRisk, filterAsset, filterTF, searchQuery]);
 
-  const selectedStrategy = strategies.find((s) => s.id === selectedId);
+  const selectedStrategy =
+    strategies.find((s) => s.id === selectedId) ?? savedStrategies.find((s) => s.id === selectedId);
 
   // Tab counts
-  const savedCount    = userStrategies.length;
-  const officialCount = strategies.filter((s) => s.type === "official").length;
-  const templateCount = strategies.filter((s) => s.type === "educational_template").length;
-  const creatorCount  = strategies.filter((s) => s.type === "creator_published").length;
+  const savedCount    = savedStrategies.length;
+  const officialCount = strategies.filter((s) => s.type === "OFFICIAL").length;
+  const templateCount = strategies.filter((s) => s.type === "EDUCATIONAL_TEMPLATE").length;
+  const creatorCount  = strategies.filter((s) => s.type === "CREATOR_PUBLISHED").length;
 
   const tabConfig: { key: FilterTab; label: string }[] = [
     { key: "all",                  label: `All (${strategies.length})`  },
-    { key: "official",             label: `Official (${officialCount})` },
-    { key: "educational_template", label: `Templates (${templateCount})` },
-    { key: "creator_published",    label: `Creator (${creatorCount})`   },
+    { key: "OFFICIAL",             label: `Official (${officialCount})` },
+    { key: "EDUCATIONAL_TEMPLATE", label: `Templates (${templateCount})` },
+    { key: "CREATOR_PUBLISHED",    label: `Creator (${creatorCount})`   },
     { key: "saved",                label: `Saved (${savedCount})`        },
   ];
+
+  if (!isInitialized || isLoading) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+        <Topbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-white/30 text-sm animate-pulse">Loading marketplace...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+        <Topbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex flex-col items-center justify-center gap-3">
+            <p className="text-red-400 text-sm">{error}</p>
+            <button
+              type="button"
+              onClick={() => useStrategyStore.getState().init()}
+              className="text-white/40 text-xs border border-white/10 px-3 py-1 rounded hover:text-white/70 hover:border-white/20 transition"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
@@ -862,7 +895,7 @@ export default function MarketplacePage() {
             <div className="flex-1 overflow-y-auto p-4">
 
               {/* Educational disclaimer banner */}
-              {(activeTab === "all" || activeTab === "educational_template") && (
+              {(activeTab === "all" || activeTab === "EDUCATIONAL_TEMPLATE") && (
                 <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-xl p-3 mb-4">
                   <p className="text-indigo-400/70 text-xs leading-relaxed">
                     <strong>📖 Educational Note:</strong> All educational templates are for learning only.
@@ -898,7 +931,7 @@ export default function MarketplacePage() {
               <div className="mt-6 p-4 bg-white/2 border border-white/5 rounded-xl">
                 <p className="text-white/20 text-xs leading-relaxed">
                   <strong className="text-white/30">TCC Strategy Marketplace —</strong>{" "}
-                  All strategies are saved locally per user. No payment processing connected.
+                  All strategies are saved to your account. No payment processing connected.
                   Strategy performance data is either educational (theoretical) or self-reported.
                   Real trading involves substantial risk of loss.
                 </p>
