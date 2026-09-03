@@ -1,6 +1,7 @@
 import { userRepository } from "../repositories/userRepository";
 import { auditRepository } from "../repositories/auditRepository";
 import { notificationRepository } from "../repositories/notificationRepository";
+import { invalidateAuthStatus } from "../../middleware/authStatusCache";
 import type { UserRole } from "@prisma/client";
 
 export interface ActorContext {
@@ -53,6 +54,7 @@ async function auditAndNotify(
 export async function suspendUser(actor: ActorContext, targetId: string, reason: string) {
   const target  = await getUser(targetId);
   const updated = await userRepository.updateStatus(targetId, "SUSPENDED", { isSuspended: true });
+  invalidateAuthStatus(targetId);
   await auditAndNotify(
     actor,
     "user_suspended",
@@ -67,6 +69,7 @@ export async function suspendUser(actor: ActorContext, targetId: string, reason:
 export async function banUser(actor: ActorContext, targetId: string, reason: string) {
   const target  = await getUser(targetId);
   const updated = await userRepository.updateStatus(targetId, "BANNED", { isActive: false, isSuspended: true });
+  invalidateAuthStatus(targetId);
   await auditAndNotify(
     actor,
     "user_banned",
@@ -81,6 +84,7 @@ export async function banUser(actor: ActorContext, targetId: string, reason: str
 export async function reinstateUser(actor: ActorContext, targetId: string) {
   const target  = await getUser(targetId);
   const updated = await userRepository.updateStatus(targetId, "ACTIVE", { isActive: true, isSuspended: false });
+  invalidateAuthStatus(targetId);
   await auditAndNotify(
     actor,
     "user_reinstated",

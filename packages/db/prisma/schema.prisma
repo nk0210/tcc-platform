@@ -260,6 +260,8 @@ model User {
   following           Follow[]             @relation("FollowSource")
   adminLogsAsActor    AdminActionLog[]     @relation("AuditLogActor")
   adminLogsAsTarget   AdminActionLog[]     @relation("AuditLogTarget")
+  copilotConversations CopilotConversation[]
+  copilotMemories      CopilotMemory[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -546,6 +548,11 @@ model PostLike {
   likedAt DateTime @default(now())
 
   @@id([userId, postId])
+  // The composite PK leads with userId, so it can't serve a postId-only
+  // lookup — and every feed page counts likes per post via `_count`, which
+  // is exactly that lookup. Without this, that count degrades to a full
+  // table scan as PostLike grows.
+  @@index([postId])
 }
 
 model CommentLike {
@@ -556,6 +563,7 @@ model CommentLike {
   likedAt   DateTime @default(now())
 
   @@id([userId, commentId])
+  @@index([commentId])
 }
 
 model SavedPost {
@@ -566,6 +574,7 @@ model SavedPost {
   savedAt DateTime @default(now())
 
   @@id([userId, postId])
+  @@index([postId])
 }
 
 // ── STRATEGY ──────────────────────────────────────────────────────────────
@@ -639,7 +648,11 @@ model SavedStrategy {
   savedAt         DateTime @default(now())
 
   @@id([userId, strategyId])
-  @@index([userId])
+  // userId alone is already covered by the composite PK above (it's the
+  // leading column) — a separate index on it would only add write cost.
+  // strategyId isn't covered, and every strategy card counts saves via
+  // `_count.savedBy`, so that's the lookup that needs its own index.
+  @@index([strategyId])
 }
 
 // ── ACADEMY ───────────────────────────────────────────────────────────────
@@ -959,4 +972,182 @@ model SystemSetting {
   updatedBy   String?
   updatedAt   DateTime @updatedAt
   createdAt   DateTime @default(now())
+}
+
+// ── COPILOT ───────────────────────────────────────────────────────────────
+
+enum CopilotMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+  TOOL
+}
+
+enum CopilotToolStatus {
+  PENDING_CONFIRMATION
+  CONFIRMED
+  EXECUTED
+  CANCELLED
+  EXPIRED
+  FAILED
+  REJECTED
+}
+
+enum CopilotRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model CopilotConversation {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String?
+  messages  CopilotMessage[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([userId, updatedAt])
+}
+
+model CopilotMessage {
+  id             String                 @id @default(cuid())
+  conversationId String
+  conversation   CopilotConversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           CopilotMessageRole
+  content        String                 @db.Text
+  toolCalls      CopilotToolExecution[]
+  createdAt      DateTime               @default(now())
+  // Phase 10: semantic index for cross-conversation historical retrieval
+  // ("what did we discuss about X last month") — see
+  // copilotSemanticRetrieval.ts. Populated best-effort, fire-and-forget,
+  // after the row is created (copilotRepository.createMessage) — never
+  // blocks persisting the message itself, and a row with no embedding
+  // ([]) is simply never a semantic-search candidate. No pgvector
+  // available in this environment (audited — see the Phase 10 report), so
+  // this is a plain Postgres array; similarity is computed in application
+  // code over an ownership- and recency-bounded candidate set, never a
+  // full-table scan. Short/low-signal messages are skipped at write time
+  // (see MIN_EMBEDDABLE_MESSAGE_LENGTH) — not every message is worth the
+  // embedding call.
+  embedding Float[] @default([])
+
+  @@index([conversationId, createdAt])
+}
+
+model CopilotToolExecution {
+  id           String            @id @default(cuid())
+  messageId    String
+  message      CopilotMessage    @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  toolName     String
+  input        Json
+  output       Json?
+  status       CopilotToolStatus
+  riskLevel    CopilotRiskLevel
+  // Only set for MEDIUM/HIGH-risk tools awaiting user confirmation — the
+  // pending action expires and can no longer be confirmed after this. LOW
+  // tools execute immediately and never populate this.
+  expiresAt    DateTime?
+  confirmedAt  DateTime?
+  executedAt   DateTime?
+  // Set only for MEDIUM/HIGH-risk proposals made mid-way through a
+  // multi-step request (e.g. "add XAUUSD and analyze it"). Small,
+  // app-authored JSON only — the original user message and how many agent
+  // steps this turn had already used, never raw model reasoning. Lets
+  // copilotActionService resume the interrupted turn after the user
+  // confirms/cancels, with the step budget carried over rather than reset.
+  // See copilotService.runAndPersistTurn() / copilotActionService.ts.
+  continuationState Json?
+  errorMessage String?
+  durationMs   Int?
+  createdAt    DateTime          @default(now())
+
+  @@index([messageId])
+  @@index([toolName])
+  @@index([status, expiresAt])
+}
+
+// ── COPILOT MEMORY (Phase 7) ────────────────────────────────────────────────
+// Long-term memory is deliberately separate from CopilotConversation/
+// CopilotMessage above: conversation history answers "what happened in this
+// conversation", memory answers "what should Copilot remember about this
+// user across every future conversation". One small model is enough for
+// Phase 7 — no MemoryEmbedding/MemoryVector/MemoryFact split.
+
+enum CopilotMemoryType {
+  PREFERENCE
+  GOAL
+  TRADING_PREFERENCE
+  COPILOT_PREFERENCE
+  EXPLICIT_FACT
+}
+
+enum CopilotMemorySource {
+  // Phase 7 supports only these two — both a human explicitly asked for or
+  // approved. Unrestricted automatic derivation (SYSTEM_DERIVED) is
+  // deliberately deferred to a future phase; the enum is kept extensible so
+  // adding it later needs no migration of existing rows.
+  EXPLICIT
+  USER_APPROVED
+}
+
+enum CopilotMemoryStatus {
+  ACTIVE
+  // Set when a newer explicit memory is recognized as contradicting this
+  // one (see copilotMemoryClassifier.ts's CONFLICT_AXES) — kept, not
+  // deleted, so the history stays auditable.
+  SUPERSEDED
+  // Soft-delete for an explicit "forget" — kept, not removed, for the same
+  // auditability reason; never returned by any read path.
+  DELETED
+}
+
+model CopilotMemory {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type   CopilotMemoryType
+
+  // The stored fact/preference itself, in the user's own words (sanitized:
+  // whitespace-normalized, length-bounded) — never raw model reasoning,
+  // never a full conversation excerpt. See copilotMemoryService.ts's
+  // persistMemory() for the single write path that enforces this.
+  content String
+  // Lowercased/whitespace-collapsed copy of `content`, used only for
+  // deterministic duplicate detection at write time — never displayed.
+  normalizedContent String
+
+  source CopilotMemorySource
+  status CopilotMemoryStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  // Set only when this memory is actually injected into a model prompt
+  // (copilotMemoryService.buildMemoryContext) — never on a plain list read.
+  lastUsedAt DateTime?
+
+  // ── Phase 10: semantic retrieval ────────────────────────────────────────
+  // Minimum viable addition for hybrid (deterministic + semantic) memory
+  // retrieval — see copilotSemanticRetrieval.ts. No pgvector extension is
+  // available in this environment (audited: PostgreSQL 18.3, `CREATE
+  // EXTENSION vector` fails — not installed on the host, not something
+  // this phase installs) and per-user active memory volume is small and
+  // governance-bounded (Phase 7's dedup/supersede logic already keeps it
+  // that way), so a plain Postgres array with in-application cosine
+  // similarity over an ownership-scoped, capped candidate set is the
+  // right-sized choice here — not an external vector database. `embedding`
+  // is empty ([]) until a best-effort background job populates it (never
+  // blocks memory creation); a memory with no embedding simply isn't a
+  // semantic-search candidate, deterministic (type/keyword) retrieval is
+  // unaffected. `embeddingModel` records what produced it, so a future
+  // model change can be detected and selectively re-embedded rather than
+  // silently mixing incomparable vectors.
+  embedding          Float[]   @default([])
+  embeddingModel     String?
+  embeddingUpdatedAt DateTime?
+
+  @@index([userId, status, type])
+  @@index([userId, status, updatedAt])
 }

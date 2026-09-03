@@ -96,11 +96,3 @@ export function stopPriceSimulator(): void {
   clearInterval(simulatorInterval);
   simulatorInterval = null;
 }
-
-export function getCurrentPrice(symbol: string): number | undefined {
-  return prices[symbol];
-}
-
-export function getAllPrices(): Record<string, number> {
-  return { ...prices };
-}

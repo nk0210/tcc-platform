@@ -11,11 +11,12 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "clean": "rimraf dist"
+    "test": "vitest run",
+    "clean": "rimraf dist",
+    "copilot:backfill-embeddings": "ts-node-dev --transpile-only --require tsconfig-paths/register src/scripts/backfillCopilotEmbeddings.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
-    "@tcc/db": "workspace:*",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
@@ -38,8 +39,11 @@
     "@types/ws": "^8.18.1",
     "prisma": "^5.22.0",
     "rimraf": "^6.0.1",
+    "supertest": "^7.0.0",
     "ts-node-dev": "^2.0.0",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^2.1.9",
+    "@types/supertest": "^6.0.2"
   }
 }

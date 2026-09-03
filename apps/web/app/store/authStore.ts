@@ -9,6 +9,7 @@ import {
   setTokens,
   clearTokens,
   getStoredRefreshToken,
+  refreshAccessToken,
 } from "@/lib/api/client";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -79,6 +80,19 @@ interface AuthResponse {
 
 // ── Store ─────────────────────────────────────────────────────────────────
 
+// Module-level, outside the store: every page mounts its own Topbar (no
+// shared layout persists across navigation yet), and each one calls
+// initialise() on mount. The store's own `isInitialised` guard is checked
+// synchronously but only *set* at the very end of the async function, so
+// two Topbars mounting within the same tick both pass the guard and both
+// fire /auth/refresh with the same (single-use, rotating) refresh token.
+// One rotation succeeds; the other's stale token is then rejected, and
+// that failing call's `clearTokens()` + `user: null` wipes out the session
+// the other call just established — forcing a login even though the
+// refresh itself worked. Tracking the in-flight promise here means every
+// concurrent caller awaits the *same* refresh instead of racing a second one.
+let initialisePromise: Promise<void> | null = null;
+
 export const useAuthStore = create<AuthStore>()(
   persist(
     (set, get) => ({
@@ -92,40 +106,40 @@ export const useAuthStore = create<AuthStore>()(
       // ── Restore session from stored refresh token on app mount ──────────
       initialise: async () => {
         if (get().isInitialised) return;
+        if (initialisePromise) { await initialisePromise; return; }
 
-        const rt = getStoredRefreshToken();
-        if (!rt) {
-          set({ isInitialised: true });
-          return;
-        }
-
-        set({ isLoading: true });
-        try {
-          const refreshRes = await api.post<{ tokens: TokenSet }>(
-            "/auth/refresh",
-            { refreshToken: rt },
-            { skipAuth: true, skipRefresh: true }
-          );
-
-          if (!refreshRes.success) {
-            clearTokens();
-            set({ user: null, isLoading: false, isInitialised: true });
+        initialisePromise = (async () => {
+          const rt = getStoredRefreshToken();
+          if (!rt) {
+            set({ isInitialised: true });
             return;
           }
 
-          setTokens(refreshRes.data.tokens);
+          set({ isLoading: true });
+          try {
+            // Shared with apiRequest's own auto-refresh-on-401 path — same
+            // de-duped in-flight promise either way, so this can never race
+            // a concurrent refresh triggered by some other API call.
+            const refreshed = await refreshAccessToken();
+            if (!refreshed) {
+              set({ user: null, isLoading: false, isInitialised: true });
+              return;
+            }
 
-          const meRes = await api.get<AuthUser>("/auth/me");
-          if (meRes.success) {
-            set({ user: meRes.data, isLoading: false, isInitialised: true });
-          } else {
+            const meRes = await api.get<AuthUser>("/auth/me");
+            if (meRes.success) {
+              set({ user: meRes.data, isLoading: false, isInitialised: true });
+            } else {
+              clearTokens();
+              set({ user: null, isLoading: false, isInitialised: true });
+            }
+          } catch {
             clearTokens();
             set({ user: null, isLoading: false, isInitialised: true });
           }
-        } catch {
-          clearTokens();
-          set({ user: null, isLoading: false, isInitialised: true });
-        }
+        })().finally(() => { initialisePromise = null; });
+
+        await initialisePromise;
       },
 
       // ── Register ─────────────────────────────────────────────────────────

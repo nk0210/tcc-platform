@@ -12,6 +12,7 @@ import { verifyAccessToken } from "../lib/jwt";
 import { unauthorized } from "../lib/response";
 import db from "../lib/prisma";
 import { getEffectivePermissions } from "../server/permissions/permissionService";
+import { getCachedAuthStatus, setCachedAuthStatus } from "./authStatusCache";
 
 // ── AuthRequest ───────────────────────────────────────────────────────────
 // Augments Express Request with auth fields attached by authenticate().
@@ -41,21 +42,27 @@ export async function authenticate(
   try {
     const payload = verifyAccessToken(token);
 
-    const user = await db.user.findUnique({
-      where:  { id: payload.sub },
-      select: { id: true, isActive: true, isSuspended: true, status: true },
-    });
+    let status = getCachedAuthStatus(payload.sub);
+    if (!status) {
+      const user = await db.user.findUnique({
+        where:  { id: payload.sub },
+        select: { isActive: true, isSuspended: true, status: true },
+      });
 
-    if (!user) {
-      unauthorized(res, "Account not found");
-      return;
+      if (!user) {
+        unauthorized(res, "Account not found");
+        return;
+      }
+
+      status = user;
+      setCachedAuthStatus(payload.sub, status);
     }
 
     if (
-      !user.isActive ||
-      user.isSuspended ||
-      user.status === "BANNED" ||
-      user.status === "DEACTIVATED"
+      !status.isActive ||
+      status.isSuspended ||
+      status.status === "BANNED" ||
+      status.status === "DEACTIVATED"
     ) {
       unauthorized(res, "Account is inactive, suspended, or banned");
       return;
@@ -72,19 +79,6 @@ export async function authenticate(
   } catch {
     unauthorized(res, "Invalid or expired token");
   }
-}
-
-// ── requireRole ───────────────────────────────────────────────────────────
-
-export function requireRole(...allowedRoles: string[]) {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    const authReq = req as AuthRequest;
-    if (!authReq.roles?.some((r) => allowedRoles.includes(r))) {
-      res.status(403).json({ success: false, error: "Insufficient permissions", code: "FORBIDDEN" });
-      return;
-    }
-    next();
-  };
 }
 
 // ── optionalAuthenticate ──────────────────────────────────────────────────

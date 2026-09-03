@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface TradingViewChartProps {
   symbol: string;
@@ -8,14 +8,36 @@ interface TradingViewChartProps {
   theme?: "dark" | "light";
 }
 
-// Module-level script loader — only loads once
+// Module-level script loader — only loads once.
+//
+// This loads TradingView's widget from their public CDN — a real external
+// dependency the browser has to reach. There was previously no
+// `onerror` handler and no timeout: if that request was blocked (firewall,
+// ad-blocker, DNS, offline), `scriptLoading` stayed true forever,
+// `pendingCallbacks` never ran, and the chart just showed TradingView's own
+// loading spinner indefinitely with no way to tell whether it was still
+// working or permanently stuck. Now failures are tracked and callers get a
+// definite yes/no instead of silence, and `resetTVScriptLoader()` lets a
+// user-triggered retry actually try again instead of being stuck on the
+// first failed attempt forever (module state otherwise never resets).
 let scriptLoaded = false;
 let scriptLoading = false;
-const pendingCallbacks: (() => void)[] = [];
+let scriptFailed = false;
+const pendingCallbacks: ((ok: boolean) => void)[] = [];
 
-function loadTVScript(cb: () => void) {
+function resetTVScriptLoader(): void {
+  scriptLoaded = false;
+  scriptLoading = false;
+  scriptFailed = false;
+}
+
+function loadTVScript(cb: (ok: boolean) => void) {
   if (scriptLoaded && typeof window !== "undefined" && window.TradingView) {
-    cb();
+    cb(true);
+    return;
+  }
+  if (scriptFailed) {
+    cb(false);
     return;
   }
   pendingCallbacks.push(cb);
@@ -27,7 +49,13 @@ function loadTVScript(cb: () => void) {
   s.onload = () => {
     scriptLoaded = true;
     scriptLoading = false;
-    pendingCallbacks.forEach(fn => fn());
+    pendingCallbacks.forEach(fn => fn(true));
+    pendingCallbacks.length = 0;
+  };
+  s.onerror = () => {
+    scriptLoading = false;
+    scriptFailed = true;
+    pendingCallbacks.forEach(fn => fn(false));
     pendingCallbacks.length = 0;
   };
   document.head.appendChild(s);
@@ -45,10 +73,14 @@ export default function TradingViewChart({
   // Stable container ID — created once per mount
   const containerId = useRef(`tv_${Math.random().toString(36).slice(2, 9)}`);
 
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
+
   useEffect(() => {
     // Only recreate widget when symbol actually changes
-    if (prevSymbol.current === symbol && widgetRef.current) return;
+    if (prevSymbol.current === symbol && widgetRef.current && !loadFailed) return;
     prevSymbol.current = symbol;
+    setLoadFailed(false);
 
     // Destroy old widget
     if (widgetRef.current) {
@@ -123,15 +155,53 @@ export default function TradingViewChart({
       });
     };
 
-    loadTVScript(createWidget);
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      if (!settled) { settled = true; setLoadFailed(true); }
+    }, 12_000);
+
+    loadTVScript((ok) => {
+      if (settled) return; // timeout already fired — don't also build on a late success
+      settled = true;
+      clearTimeout(timeoutId);
+      if (ok) createWidget();
+      else setLoadFailed(true);
+    });
 
     return () => {
+      settled = true;
+      clearTimeout(timeoutId);
       if (widgetRef.current) {
         try { widgetRef.current.remove(); } catch {}
         widgetRef.current = null;
       }
     };
-  }, [symbol]); // Only re-run when symbol changes — interval/theme changes don't reload
+  }, [symbol, retryToken]); // Only re-run when symbol changes — interval/theme changes don't reload
+
+  if (loadFailed) {
+    return (
+      <div
+        style={{
+          height: typeof height === "number" ? `${height}px` : height,
+          width: "100%",
+          minHeight: "500px",
+        }}
+        className="flex flex-col items-center justify-center gap-3 bg-[#0a0a0f]"
+      >
+        <p className="text-white/30 text-sm">Chart failed to load.</p>
+        <p className="text-white/15 text-xs max-w-xs text-center">
+          TradingView's chart widget couldn't load — check your connection, or an ad-blocker/firewall may be blocking s3.tradingview.com.
+        </p>
+        <button
+          type="button"
+          onClick={() => { resetTVScriptLoader(); setLoadFailed(false); setRetryToken((n) => n + 1); }}
+          className="text-white/40 text-xs border border-white/10 px-3 py-1 rounded hover:text-white/70 hover:border-white/20 transition"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div

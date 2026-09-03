@@ -20,18 +20,6 @@ export function removeConnection(userId: string): void {
   connections.delete(userId);
 }
 
-export function getConnection(userId: string): AuthenticatedClient | undefined {
-  return connections.get(userId);
-}
-
-export function isConnected(userId: string): boolean {
-  return connections.has(userId);
-}
-
-export function getConnectionCount(): number {
-  return connections.size;
-}
-
 // ── Sending ───────────────────────────────────────────────────────────────
 
 export function send(userId: string, message: ServerMessage): void {
@@ -47,35 +35,17 @@ export function send(userId: string, message: ServerMessage): void {
   }
 }
 
-export function broadcast(message: ServerMessage): void {
-  for (const client of connections.values()) {
-    if (client.ws.readyState !== WebSocket.OPEN) continue;
-    try {
-      client.ws.send(JSON.stringify(message));
-    } catch (err) {
-      console.error("[WebSocket] broadcast() failed for a client:", err);
-    }
-  }
-}
-
-export function broadcastToRoom(room: string, message: ServerMessage): void {
-  for (const client of connections.values()) {
-    if (!client.rooms.has(room)) continue;
-    if (client.ws.readyState !== WebSocket.OPEN) continue;
-    try {
-      client.ws.send(JSON.stringify(message));
-    } catch (err) {
-      console.error(`[WebSocket] broadcastToRoom("${room}") failed for a client:`, err);
-    }
-  }
-}
-
 export function broadcastToSubscribers(symbol: string, message: ServerMessage): void {
+  // Serialize once per broadcast, not once per matching client — with N
+  // symbols ticking every TICK_MS and M subscribed clients, re-stringifying
+  // per client turns an O(N) payload into O(N×M) JSON work for no reason.
+  let payload: string | null = null;
   for (const client of connections.values()) {
     if (!client.subscribedSymbols.has(symbol)) continue;
     if (client.ws.readyState !== WebSocket.OPEN) continue;
     try {
-      client.ws.send(JSON.stringify(message));
+      payload ??= JSON.stringify(message);
+      client.ws.send(payload);
     } catch (err) {
       console.error(`[WebSocket] broadcastToSubscribers("${symbol}") failed for a client:`, err);
     }

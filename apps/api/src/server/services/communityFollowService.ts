@@ -35,6 +35,14 @@ export const communityFollowService = {
 
     if (!target || !target.isActive || target.status === "BANNED") throw new UserNotFoundError();
     if (target.id === followerId) throw new CannotFollowSelfError();
+    // A PRIVATE profile (profileService.getPublicProfile's strictest tier —
+    // visible to no one but the owner, unlike FOLLOWERS_ONLY which is
+    // reachable by following first) was never actually enforced here even
+    // though this exact error class already existed and the REST route
+    // already handled it (routes/community/follow.ts) — dead code until
+    // now. This closes that gap rather than leaving it reachable through
+    // any caller, Copilot included.
+    if (target.profileVisibility === "PRIVATE") throw new PrivateProfileError();
 
     await communityFollowRepository.follow(followerId, target.id);
 

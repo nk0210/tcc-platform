@@ -505,6 +505,21 @@ export const copyTradingService = {
     return { items, ...paginate(total, params.page, params.pageSize) };
   },
 
+  /** Public wrapper around the same ownership check every mutation above
+   *  already uses — added for Phase 9's context orchestrator, which needs
+   *  a read-only "is this relationship really this user's own" lookup
+   *  (the same shape as tradeService.getTradeById / journalRepository.
+   *  findById) without duplicating the ownership logic. Returns null
+   *  instead of throwing so the orchestrator can treat "not found" and
+   *  "not owned" identically, same as every other verified entity type. */
+  async getOwnedRelationship(relationshipId: string, followerUserId: string) {
+    try {
+      return await getOwnedRelationshipOrThrow(relationshipId, followerUserId);
+    } catch {
+      return null;
+    }
+  },
+
   async getMasterFollowers(callerUserId: string, masterId: string, params: PageParams) {
     const master = await copyTradingRepository.findMasterById(masterId);
     if (!master) throw new MasterNotFoundError();

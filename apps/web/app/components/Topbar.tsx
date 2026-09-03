@@ -46,16 +46,20 @@ export default function Topbar() {
   }, [router]);
 
   // WebSocket connection follows auth state: connect once logged in,
-  // disconnect on logout. Single-argument subscribe (no subscribeWithSelector).
+  // disconnect on logout. `connect`/`disconnect` operate on a module-level
+  // singleton, not per-component state — every page mounts its own Topbar
+  // (there's no shared layout), so an unmount cleanup here would tear the
+  // one shared connection down on every single client-side navigation, race
+  // the next page's connect(), and spam "WebSocket is closed before the
+  // connection is established". Logout is already covered below: when
+  // `user` goes from a real id to null, this effect re-runs and takes the
+  // `else` branch — no separate cleanup-driven disconnect is needed.
   useEffect(() => {
     if (user) {
       connect();
     } else {
       disconnect();
     }
-    return () => {
-      disconnect();
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 

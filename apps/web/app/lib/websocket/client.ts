@@ -91,12 +91,26 @@ export function disconnect(): void {
   reconnectAttempts = 0;
 
   if (ws) {
-    ws.onopen = null;
-    ws.onmessage = null;
-    ws.onerror = null;
-    ws.onclose = null;
-    ws.close();
+    const socket = ws;
     ws = null;
+
+    if (socket.readyState === WebSocket.CONNECTING) {
+      // Closing a socket that hasn't finished its handshake yet is what
+      // throws the (harmless but alarming) "WebSocket is closed before the
+      // connection is established" browser warning. Let it finish opening,
+      // then close it immediately — same net effect, no console noise.
+      socket.onopen = () => socket.close();
+      socket.onmessage = null;
+      socket.onerror = null;
+      socket.onclose = null;
+      return;
+    }
+
+    socket.onopen = null;
+    socket.onmessage = null;
+    socket.onerror = null;
+    socket.onclose = null;
+    socket.close();
   }
 }
 

@@ -444,7 +444,14 @@ export const useTradeStore = create<TradeStore>()((set, get) => ({
 if (typeof window !== "undefined") {
   // Lazy import to avoid circular dependency on module load
   import("@/store/authStore").then(({ useAuthStore }) => {
-    let prevUserId: string | undefined;
+    // Topbar imports this store directly, so this block usually runs before
+    // login resolves and the subscribe callback catches the transition
+    // normally. But subscribe() alone only fires on *future* changes, so if
+    // the user was already logged in by the time this ran (e.g. HMR, or a
+    // fast reload) it would silently never call init(). Seed prevUserId
+    // from the current state and fire once up front to cover that case too.
+    let prevUserId: string | undefined = useAuthStore.getState().user?.id;
+    if (prevUserId) useTradeStore.getState().init();
 
     useAuthStore.subscribe((state) => {
       const userId = state.user?.id;

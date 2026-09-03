@@ -67,7 +67,22 @@ function isTokenExpired(): boolean {
 
 let _refreshPromise: Promise<boolean> | null = null;
 
-async function refreshAccessToken(): Promise<boolean> {
+/**
+ * Exported so authStore.initialise() can call this directly instead of
+ * running its own separate /auth/refresh POST. The refresh token is
+ * single-use (the backend rotates it on every refresh), so two independent,
+ * uncoordinated refresh flows hitting it around the same time is a real
+ * failure mode, not a theoretical one: whichever call loses the race gets
+ * "refresh token not found" and calls clearTokens(), silently wiping the
+ * valid session that the other call just established. That corruption is
+ * invisible until the *next* reload, when initialise() finds no refresh
+ * token left and sends you back to /login — which is exactly backwards from
+ * how it looks (it reads as "every reload logs me out" when the actual
+ * wipe happened earlier, during normal use). Routing every refresh through
+ * this one de-duped function closes that race for good, regardless of which
+ * code path triggered it.
+ */
+export async function refreshAccessToken(): Promise<boolean> {
   if (_refreshPromise) return _refreshPromise;
 
   const rt = getStoredRT();

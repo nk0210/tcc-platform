@@ -4,6 +4,21 @@ import { usePriceStore } from "@/store/priceStore";
 import { useTradeStore } from "@/store/tradeStore";
 import { TCCSymbol } from "@/lib/markets/symbols";
 
+// Closing a socket that's still mid-handshake (readyState CONNECTING) is
+// what throws "WebSocket is closed before the connection is established" —
+// harmless, but it fires on every rapid symbol switch since the effect
+// below tears down and reopens on every `symbol.id` change. Defer the close
+// until the handshake finishes instead of closing mid-flight.
+function safeClose(ws: WebSocket): void {
+  if (ws.readyState === WebSocket.CONNECTING) {
+    ws.onopen = () => ws.close();
+    ws.onmessage = null;
+    ws.onerror = null;
+  } else {
+    ws.close();
+  }
+}
+
 export function useLivePrice(symbol: TCCSymbol) {
   const { setPrice } = usePriceStore();
   const wsRef = useRef<WebSocket | null>(null);
@@ -13,14 +28,14 @@ export function useLivePrice(symbol: TCCSymbol) {
     if (!symbol.binanceSymbol || !symbol.livePriceSupported) {
       setPrice(0, 0, 0);
       if (wsRef.current) {
-        wsRef.current.close();
+        safeClose(wsRef.current);
         wsRef.current = null;
       }
       return;
     }
 
     if (wsRef.current) {
-      wsRef.current.close();
+      safeClose(wsRef.current);
       wsRef.current = null;
     }
 
@@ -56,7 +71,7 @@ export function useLivePrice(symbol: TCCSymbol) {
     ws.onerror = () => {};
 
     return () => {
-      ws.close();
+      safeClose(ws);
       wsRef.current = null;
     };
   }, [symbol.id]);

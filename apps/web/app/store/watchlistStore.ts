@@ -256,7 +256,14 @@ export const useWatchlistStore = create<WatchlistStore>()((set, get) => ({
 
 if (typeof window !== "undefined") {
   import("@/store/authStore").then(({ useAuthStore }) => {
-    let prevUserId: string | undefined;
+    // This store is only imported (and this block only runs) when its page
+    // is first visited — often well after login. subscribe() alone only
+    // fires on *future* changes, so if the user is already logged in by now
+    // it would silently never call init(), leaving isInitialized false
+    // forever. Seed prevUserId from the current state and fire once
+    // up front to cover that already-happened transition.
+    let prevUserId: string | undefined = useAuthStore.getState().user?.id;
+    if (prevUserId) useWatchlistStore.getState().init();
 
     useAuthStore.subscribe((state) => {
       const userId = state.user?.id;

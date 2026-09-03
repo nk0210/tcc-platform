@@ -6,7 +6,7 @@
  * Non-crypto: no price data here — use TradingView chart only.
  */
 import { useEffect, useState } from "react";
-import { useWatchlistStore } from "@/store/watchlistStore";
+import { useWatchlistStore, type LiveTickerUpdate } from "@/store/watchlistStore";
 import { BINANCE_STREAM_SYMBOLS } from "@/lib/markets/symbols";
 
 export interface MarketTicker {
@@ -34,8 +34,25 @@ let isInitialized = false;
 let isWsOpen = false;
 const subscribers = new Set<(t: Record<string, MarketTicker>) => void>();
 
+// Binance's combined @ticker stream can push updates for every subscribed
+// symbol roughly once a second each — with ~12 symbols that's up to ~12
+// messages/sec, and calling notify() on every single one re-renders every
+// consumer (watchlist, markets) that many times a second for no visible
+// benefit at that refresh rate. Coalesce bursts into one flush per window
+// instead — ticker math above (globalTickers, updateWatchlistPrices) still
+// runs immediately per message, only the React-facing notify is throttled.
+const NOTIFY_INTERVAL_MS = 500;
+let notifyTimer: ReturnType<typeof setTimeout> | null = null;
+let notifyPending = false;
+
 function notify() {
+  if (notifyTimer) { notifyPending = true; return; }
+  flushWatchlistPrices();
   subscribers.forEach(fn => fn({ ...globalTickers }));
+  notifyTimer = setTimeout(() => {
+    notifyTimer = null;
+    if (notifyPending) { notifyPending = false; notify(); }
+  }, NOTIFY_INTERVAL_MS);
 }
 
 function parseTicker(d: any): MarketTicker {
@@ -51,19 +68,35 @@ function parseTicker(d: any): MarketTicker {
   };
 }
 
+// Queue the raw ticker per symbol instead of writing straight to the store —
+// a WS message can arrive for every symbol roughly once a second, and each
+// updatePrice() call replaces the whole `items` array, re-rendering every
+// watchlist consumer on every single message. flushWatchlistPrices() below
+// applies the whole queue in one store write, on the same throttle cadence
+// as notify().
+const pendingWatchlistUpdates = new Map<string, LiveTickerUpdate>();
+
 function updateWatchlistPrices(ticker: MarketTicker) {
-  const { items, updatePrice } = useWatchlistStore.getState();
-  const watched = items.find(i => i.symbolId === ticker.symbol);
-  if (watched) {
-    updatePrice(ticker.symbol, {
-      currentPrice: ticker.price,
-      change24h: ticker.change,
-      changePct24h: ticker.changePct,
-      high24h: ticker.high,
-      low24h: ticker.low,
-      volume24h: ticker.volume,
-    });
-  }
+  pendingWatchlistUpdates.set(ticker.symbol, {
+    currentPrice: ticker.price,
+    change24h: ticker.change,
+    changePct24h: ticker.changePct,
+    high24h: ticker.high,
+    low24h: ticker.low,
+    volume24h: ticker.volume,
+  });
+}
+
+function flushWatchlistPrices() {
+  if (pendingWatchlistUpdates.size === 0) return;
+  const updates = pendingWatchlistUpdates;
+  pendingWatchlistUpdates.clear();
+  useWatchlistStore.setState((s) => ({
+    items: s.items.map((i) => {
+      const u = updates.get(i.symbolId);
+      return u ? { ...i, ...u } : i;
+    }),
+  }));
 }
 
 function fetchRest() {

@@ -35,6 +35,10 @@ export interface ListTradesParams {
   pageSize: number;
   symbol?:  string;
   side?:    TradeSide;
+  /** Win/loss/breakeven outcome. Populated on every closed trade — safe to
+   *  filter on directly (unlike `strategy`, which is never set on Trade
+   *  itself; see copilotTools/tradeTools.ts for why). */
+  result?:  TradeResult;
   from?:    Date;
   to?:      Date;
 }
@@ -48,12 +52,13 @@ export const tradeRepository = {
   },
 
   async findClosedByUserId(userId: string, params: ListTradesParams) {
-    const { page, pageSize, symbol, side, from, to } = params;
+    const { page, pageSize, symbol, side, result, from, to } = params;
     const where: Prisma.TradeWhereInput = {
       userId,
       isOpen: false,
       ...(symbol ? { symbol } : {}),
       ...(side   ? { side }   : {}),
+      ...(result ? { result } : {}),
       ...((from || to) ? {
         closedAt: {
           ...(from ? { gte: from } : {}),

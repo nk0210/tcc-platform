@@ -21,8 +21,9 @@ import {
   type RiskScore,
 } from "@/store/riskStore";
 import { useNewsStore } from "@/store/newsStore";
+import CopilotPanel from "@/components/copilot/CopilotPanel";
 
-type RightTab = "risk" | "journal" | "news";
+type RightTab = "risk" | "journal" | "news" | "copilot";
 
 // ── Risk Score Display ────────────────────────────────────────────────
 
@@ -586,6 +587,11 @@ function RightPanel() {
       label: "News",
       badge: mounted && news.length > 0 ? news.length : null,
     },
+    {
+      key: "copilot" as RightTab,
+      label: "Copilot",
+      badge: null,
+    },
   ];
 
   return (
@@ -630,6 +636,7 @@ function RightPanel() {
         {activeTab === "risk" && <RiskPanel score={riskScore} />}
         {activeTab === "journal" && <JournalPanel />}
         {activeTab === "news" && <NewsPanel />}
+        {activeTab === "copilot" && <CopilotPanel />}
       </div>
     </div>
   );

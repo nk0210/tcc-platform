@@ -99,6 +99,35 @@ function bySymbol(ts: T[]) {
   return Object.values(m).map((x) => ({ ...x, netPnl: r2(x.netPnl), bestTrade: r2(x.bestTrade), worstTrade: r2(x.worstTrade), winRate: r2(sd(x.wins, x.trades) * 100) })).sort((a, b) => b.netPnl - a.netPnl);
 }
 
+// Strategy is a free-text tag the trader sets on the JOURNAL entry (via
+// update_journal_entry or the journal UI) — Trade.strategy exists in the
+// schema but nothing in the app ever writes to it, so grouping by strategy
+// has to read from journal entries (analyticsRepository.getJournalEntries),
+// not closed trades like bySymbol/bySession do. Confirmed by inspecting
+// every Trade write path (tradeRepository.create/close) during the Phase 4
+// audit — see COPILOT_ASSESSMENT.md-style note in copilotTools/tradeTools.ts.
+interface J {
+  strategy: string | null;
+  result:   string | null;
+  netPnl:   number | null;
+}
+
+function byStrategy(js: J[]) {
+  const m: Record<string, { strategy: string; trades: number; wins: number; losses: number; netPnl: number }> = {};
+  for (const j of js) {
+    const strategy = j.strategy || "unspecified";
+    if (!m[strategy]) m[strategy] = { strategy, trades: 0, wins: 0, losses: 0, netPnl: 0 };
+    const g = m[strategy];
+    g.trades += 1;
+    if (j.result === "WIN")  g.wins += 1;
+    if (j.result === "LOSS") g.losses += 1;
+    g.netPnl += j.netPnl ?? 0;
+  }
+  return Object.values(m)
+    .map((x) => ({ ...x, netPnl: r2(x.netPnl), winRate: r2(sd(x.wins, x.trades) * 100) }))
+    .sort((a, b) => b.netPnl - a.netPnl);
+}
+
 function bySession(ts: T[]) {
   const m: Record<string, { session: string; trades: number; wins: number; netPnl: number }> = {};
   for (const t of ts) {
@@ -129,6 +158,9 @@ export const analyticsService = {
   },
   async getSessionStats(userId: string, filters: AnalyticsFilters = {}) {
     return bySession(await analyticsRepository.getClosedTrades(userId, filters) as T[]);
+  },
+  async getStrategyStats(userId: string, filters: AnalyticsFilters = {}) {
+    return byStrategy(await analyticsRepository.getJournalEntries(userId, filters) as J[]);
   },
   async getFullAnalytics(userId: string, filters: AnalyticsFilters = {}) {
     const ts = await analyticsRepository.getClosedTrades(userId, filters) as T[];
