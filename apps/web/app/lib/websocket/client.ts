@@ -7,6 +7,7 @@
 import { getAccessToken }  from "@/lib/api/client";
 import { useTradeStore }   from "@/store/tradeStore";
 import { useNotificationStore, type NotificationType, type NotificationPriority } from "@/store/notificationStore";
+import { useMessageStore, type DirectMessage } from "@/store/messageStore";
 import { recalcAccount }   from "@/lib/trading/calculations";
 
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -186,6 +187,14 @@ function handleMessage(raw: any): void {
         actionPath:  payload.actionPath  ?? null,
         createdAt:   payload.createdAt,
       });
+      break;
+    }
+
+    case "DM_MESSAGE": {
+      const { conversationId, message } = raw.payload ?? {};
+      if (typeof conversationId === "string" && message) {
+        useMessageStore.getState().receiveMessage(conversationId, message as DirectMessage);
+      }
       break;
     }
 

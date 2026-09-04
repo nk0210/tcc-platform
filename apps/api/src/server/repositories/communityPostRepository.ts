@@ -76,6 +76,7 @@ export interface CreatePostInput {
   symbol?:             string | null;
   tags?:               string[];
   repostOfId?:         string | null;
+  groupId?:            string | null;
 }
 
 export interface UpdatePostInput {
@@ -96,6 +97,11 @@ export interface FeedParams {
    *  recency) — not a scoring column or a background job, just an
    *  alternate ORDER BY, per the "keep the feed algorithm simple" brief. */
   sort?:    "latest" | "trending";
+  /** Authors to hide from this feed — everyone the viewer has blocked or
+   *  muted, plus everyone who has blocked the viewer. Computed by
+   *  userRelationService and passed down rather than queried here, so this
+   *  repository stays a plain Prisma layer with no cross-domain lookups. */
+  excludeAuthorIds?: string[];
 }
 
 function feedOrderBy(sort: FeedParams["sort"]): Prisma.CommunityPostOrderByWithRelationInput[] {
@@ -140,6 +146,10 @@ export const communityPostRepository = {
 
   if (input.repostOfId) {
     data.repostOf = { connect: { id: input.repostOfId } };
+  }
+
+  if (input.groupId) {
+    data.group = { connect: { id: input.groupId } };
   }
 
   return db.communityPost.create({
@@ -189,14 +199,16 @@ export const communityPostRepository = {
   // ── Global feed (public posts only) ──────────────────────────────────────
 
   async findGlobalFeed(params: FeedParams, viewerId?: string) {
-    const { page, pageSize, type, symbol, tag, sort } = params;
+    const { page, pageSize, type, symbol, tag, sort, excludeAuthorIds } = params;
 
     const where: Prisma.CommunityPostWhereInput = {
       visibility:     "PUBLIC",
       isHiddenByAdmin: false,
+      groupId:        null,
       ...(type   ? { type }   : {}),
       ...(symbol ? { symbol } : {}),
       ...(tag    ? { tags: { has: tag } } : {}),
+      ...(excludeAuthorIds?.length ? { authorId: { notIn: excludeAuthorIds } } : {}),
     };
 
     const [items, total] = await Promise.all([
@@ -216,7 +228,7 @@ export const communityPostRepository = {
   // ── Following feed ────────────────────────────────────────────────────────
 
   async findFollowingFeed(userId: string, params: FeedParams) {
-    const { page, pageSize, type, symbol, tag, sort } = params;
+    const { page, pageSize, type, symbol, tag, sort, excludeAuthorIds } = params;
 
     const follows = await db.follow.findMany({
       where:  { sourceId: userId, status: "ACTIVE" },
@@ -226,9 +238,11 @@ export const communityPostRepository = {
 
     const where: Prisma.CommunityPostWhereInput = {
       isHiddenByAdmin: false,
+      groupId:        null,
       ...(type   ? { type }   : {}),
       ...(symbol ? { symbol } : {}),
       ...(tag    ? { tags: { has: tag } } : {}),
+      ...(excludeAuthorIds?.length ? { authorId: { notIn: excludeAuthorIds } } : {}),
       OR: [
         // Own posts: all visibilities
         { authorId: userId },
@@ -247,6 +261,31 @@ export const communityPostRepository = {
         skip:    (page - 1) * pageSize,
         take:    pageSize,
         include: buildInclude(userId),
+      }),
+      db.communityPost.count({ where }),
+    ]);
+
+    return { items, total };
+  },
+
+  // ── Group feed ─────────────────────────────────────────────────────────
+  // No blocked/muted filtering here — group membership already gates who
+  // can post/see the group at the service layer, and mixing that with the
+  // main feed's block/mute logic would let a mute silently hide someone's
+  // posts inside a group they both explicitly joined, which isn't what
+  // muting is for.
+
+  async findGroupFeed(groupId: string, params: FeedParams, viewerId?: string) {
+    const { page, pageSize, sort } = params;
+    const where: Prisma.CommunityPostWhereInput = { groupId, isHiddenByAdmin: false };
+
+    const [items, total] = await Promise.all([
+      db.communityPost.findMany({
+        where,
+        orderBy: feedOrderBy(sort),
+        skip:    (page - 1) * pageSize,
+        take:    pageSize,
+        include: buildInclude(viewerId),
       }),
       db.communityPost.count({ where }),
     ]);

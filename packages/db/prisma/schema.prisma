@@ -86,6 +86,17 @@ enum ReactionType {
   INTERESTING
 }
 
+enum GroupVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum GroupRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
 enum StrategyType {
   OFFICIAL
   EDUCATIONAL_TEMPLATE
@@ -278,6 +289,21 @@ model User {
   copilotConversations CopilotConversation[]
   copilotMemories      CopilotMemory[]
 
+  blocksMade     UserBlock[] @relation("Blocker")
+  blocksReceived UserBlock[] @relation("Blocked")
+  mutesMade      UserMute[]  @relation("Muter")
+  mutesReceived  UserMute[]  @relation("Muted")
+
+  groupsOwned       CommunityGroup[] @relation("GroupOwner")
+  groupMemberships  GroupMember[]    @relation("GroupMemberships")
+
+  stories     Story[]
+  storyViews  StoryView[]
+
+  conversationsAsA Conversation[] @relation("ConversationsAsA")
+  conversationsAsB Conversation[] @relation("ConversationsAsB")
+  messagesSent     Message[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -336,6 +362,137 @@ model Follow {
   @@unique([sourceId, targetId])
   @@index([sourceId])
   @@index([targetId])
+}
+
+// ── BLOCK / MUTE ──────────────────────────────────────────────────────────
+// Two distinct, deliberately separate relations: a block is mutual and
+// consequential (hides posts both ways, blocks following and DMs); a mute
+// is one-directional and silent (only hides the muted user's posts from
+// the muter's own feed — the muted user is never told and keeps following/
+// DMing normally). Modeled as their own tables, not a status enum on Follow,
+// since block/mute apply independently of any follow relationship.
+
+model UserBlock {
+  blockerId String
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+model UserMute {
+  muterId   String
+  muter     User     @relation("Muter", fields: [muterId], references: [id], onDelete: Cascade)
+  mutedId   String
+  muted     User     @relation("Muted", fields: [mutedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([muterId, mutedId])
+  @@index([mutedId])
+}
+
+// ── GROUPS ────────────────────────────────────────────────────────────────
+
+model CommunityGroup {
+  id            String          @id @default(cuid())
+  name          String
+  slug          String          @unique
+  description   String          @default("")
+  coverImageUrl String?
+  visibility    GroupVisibility @default(PUBLIC)
+
+  ownerId String
+  owner   User   @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  members GroupMember[]
+  posts   CommunityPost[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([visibility])
+}
+
+model GroupMember {
+  groupId  String
+  group    CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User           @relation("GroupMemberships", fields: [userId], references: [id], onDelete: Cascade)
+  role     GroupRole      @default(MEMBER)
+  joinedAt DateTime       @default(now())
+
+  @@id([groupId, userId])
+  @@index([userId])
+}
+
+// ── STORIES ───────────────────────────────────────────────────────────────
+// Ephemeral 24h updates. `expiresAt` is set at creation time (createdAt + 24h)
+// so "active stories" is a plain `expiresAt > now()` filter, no background
+// expiry job needed.
+
+model Story {
+  id        String   @id @default(cuid())
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content   String   @default("")
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  views StoryView[]
+
+  @@index([authorId])
+  @@index([expiresAt])
+}
+
+model StoryView {
+  storyId  String
+  story    Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  viewerId String
+  viewer   User     @relation(fields: [viewerId], references: [id], onDelete: Cascade)
+  viewedAt DateTime @default(now())
+
+  @@id([storyId, viewerId])
+  @@index([viewerId])
+}
+
+// ── DIRECT MESSAGES ───────────────────────────────────────────────────────
+// One conversation per unordered pair of users. Rows always store the pair
+// with the lexicographically smaller id first (enforced in
+// directMessageService.ts, not the DB) so "find or create the conversation
+// between A and B" is a single unique lookup regardless of call order.
+
+model Conversation {
+  id                String   @id @default(cuid())
+  participantAId    String
+  participantA      User     @relation("ConversationsAsA", fields: [participantAId], references: [id], onDelete: Cascade)
+  participantBId    String
+  participantB      User     @relation("ConversationsAsB", fields: [participantBId], references: [id], onDelete: Cascade)
+  lastMessageAt     DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  messages Message[]
+
+  @@unique([participantAId, participantBId])
+  @@index([participantAId])
+  @@index([participantBId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content        String
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
 }
 
 // ── TRADES ────────────────────────────────────────────────────────────────
@@ -505,6 +662,12 @@ model CommunityPost {
   repostOf   CommunityPost?  @relation("PostReposts", fields: [repostOfId], references: [id], onDelete: SetNull)
   reposts    CommunityPost[] @relation("PostReposts")
 
+  // A group post is still a normal feed post — same reactions, comments,
+  // reposts, moderation — just additionally scoped to one group. Cascades
+  // with the group so a deleted group takes its posts with it.
+  groupId String?
+  group   CommunityGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
   likes    PostLike[]
   savedBy  SavedPost[]
   shares   PostShare[]           // ← NEW Day 3
@@ -518,6 +681,7 @@ model CommunityPost {
   @@index([visibility, isHiddenByAdmin, createdAt])
   @@index([symbol])
   @@index([repostOfId])
+  @@index([groupId])
 }
 
 // ─── NEW Day 3: Post Share tracking ───────────────────────────────────────

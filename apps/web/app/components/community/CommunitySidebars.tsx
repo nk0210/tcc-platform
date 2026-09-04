@@ -9,9 +9,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCommunityStore, type CommunityUserSummary, type TrendingHashtag } from "@/store/communityStore";
+import { useGroupStore, type CommunityGroup } from "@/store/groupStore";
+import { useMessageStore } from "@/store/messageStore";
 import { useMarketPrices } from "@/hooks/useMarketPrices";
 
-type CommunityTab = "feed" | "following" | "saved" | "groups" | "stories" | "messages";
+type CommunityTab = "feed" | "following" | "saved" | "groups" | "stories" | "messages" | "privacy";
 
 // ── Left sidebar ────────────────────────────────────────────────────────
 
@@ -22,9 +24,20 @@ const NAV_ITEMS: { key: CommunityTab; label: string; icon: string }[] = [
   { key: "groups",     label: "Groups",     icon: "👨‍👩‍👧" },
   { key: "stories",    label: "Stories",    icon: "✨" },
   { key: "messages",   label: "Messages",   icon: "✉️" },
+  { key: "privacy",    label: "Blocked & Muted", icon: "🔒" },
 ];
 
 export function CommunityLeftSidebar({ activeTab, onTabChange }: { activeTab: CommunityTab; onTabChange: (tab: CommunityTab) => void }) {
+  const { getMyGroups } = useGroupStore();
+  const { totalUnread, refreshUnreadCount } = useMessageStore();
+  const router = useRouter();
+  const [myGroups, setMyGroups] = useState<CommunityGroup[]>([]);
+
+  useEffect(() => {
+    getMyGroups(1).then((r) => setMyGroups(r?.items.slice(0, 5) ?? []));
+    refreshUnreadCount();
+  }, [getMyGroups, refreshUnreadCount]);
+
   return (
     <aside className="hidden lg:flex flex-col w-60 shrink-0 gap-4 py-4 pr-2 overflow-y-auto">
       <nav className="flex flex-col gap-0.5">
@@ -39,6 +52,9 @@ export function CommunityLeftSidebar({ activeTab, onTabChange }: { activeTab: Co
             {activeTab === item.key && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent" />}
             <span className="text-base leading-none">{item.icon}</span>
             {item.label}
+            {item.key === "messages" && totalUnread > 0 && (
+              <span className="ml-auto bg-accent text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{totalUnread}</span>
+            )}
           </button>
         ))}
       </nav>
@@ -60,9 +76,21 @@ export function CommunityLeftSidebar({ activeTab, onTabChange }: { activeTab: Co
 
       <div className="border-t border-border pt-4">
         <p className="text-fg-dim text-xs uppercase tracking-wide px-3 mb-2">Your Groups</p>
-        <p className="text-fg-dim text-xs px-3 leading-relaxed">
-          Trading groups aren't built yet — this is honestly empty, not faked.
-        </p>
+        {myGroups.length === 0 ? (
+          <p className="text-fg-dim text-xs px-3 leading-relaxed">You haven't joined any groups yet.</p>
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            {myGroups.map((g) => (
+              <button
+                key={g.id}
+                onClick={() => router.push(`/community/groups/${g.slug}`)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-fg-muted hover:bg-elevated hover:text-fg transition text-left truncate"
+              >
+                👨‍👩‍👧 {g.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </aside>
   );

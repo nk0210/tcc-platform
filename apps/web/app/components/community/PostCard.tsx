@@ -90,7 +90,7 @@ function ContentWithHashtags({ content, onHashtagClick }: { content: string; onH
 
 export default function PostCard({ post, onHashtagClick }: { post: CommunityPost; onHashtagClick?: (tag: string) => void }) {
   const { user } = useAuthStore();
-  const { toggleLike, toggleBookmark, trackShare, repost, deletePost } = useCommunityStore();
+  const { toggleLike, toggleBookmark, trackShare, repost, deletePost, updatePost, blockUser, muteUser } = useCommunityStore();
   const router = useRouter();
   const [showComments, setShowComments] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -98,6 +98,9 @@ export default function PostCard({ post, onHashtagClick }: { post: CommunityPost
   const [repostBoxOpen, setRepostBoxOpen] = useState(false);
   const [repostCaption, setRepostCaption] = useState("");
   const [isReposting, setIsReposting] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(post.content);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const isOwn = post.authorId === user?.id;
 
@@ -114,6 +117,26 @@ export default function PostCard({ post, onHashtagClick }: { post: CommunityPost
     const result = await repost(post.id, repostCaption.trim() || undefined);
     setIsReposting(false);
     if (result) { setRepostBoxOpen(false); setRepostCaption(""); }
+  };
+
+  const handleSaveEdit = async () => {
+    const trimmed = editContent.trim();
+    if (!trimmed || trimmed === post.content) { setIsEditing(false); setEditContent(post.content); return; }
+    setIsSavingEdit(true);
+    await updatePost(post.id, { content: trimmed });
+    setIsSavingEdit(false);
+    setIsEditing(false);
+  };
+
+  const handleBlock = async () => {
+    setMenuOpen(false);
+    if (!confirm(`Block @${post.author.handle}? You won't see each other's posts, and you'll stop following each other.`)) return;
+    await blockUser(post.author.handle);
+  };
+
+  const handleMute = async () => {
+    setMenuOpen(false);
+    await muteUser(post.author.handle);
   };
 
   return (
@@ -148,24 +171,40 @@ export default function PostCard({ post, onHashtagClick }: { post: CommunityPost
         <div className="relative shrink-0">
           <button onClick={() => setMenuOpen((m) => !m)} className="btn btn-ghost w-7 h-7 !p-0 rounded-full text-fg-dim">⋯</button>
           {menuOpen && (
-            <div className="glass absolute right-0 top-8 z-20 rounded-lg py-1 min-w-[140px]" style={{ boxShadow: "var(--shadow-elevated)" }}>
+            <div className="glass absolute right-0 top-8 z-20 rounded-lg py-1 min-w-[160px]" style={{ boxShadow: "var(--shadow-elevated)" }}>
               {isOwn ? (
-                <button
-                  onClick={() => { setMenuOpen(false); deletePost(post.id); }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-elevated transition"
-                >
-                  🗑 Delete post
-                </button>
+                <>
+                  <button
+                    onClick={() => { setMenuOpen(false); setEditContent(post.content); setIsEditing(true); }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-fg-muted hover:bg-elevated transition"
+                  >
+                    ✏️ Edit {post.repostOf ? "caption" : "post"}
+                  </button>
+                  <button
+                    onClick={() => { setMenuOpen(false); deletePost(post.id); }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-elevated transition"
+                  >
+                    🗑 Delete post
+                  </button>
+                </>
               ) : (
-                <div className="px-1">
-                  <ReportButton
-                    reportedItemType="post"
-                    reportedItemId={post.id}
-                    reportedItemTitle={`${post.author.handle}: ${post.content.slice(0, 60)}`}
-                    reportedUserId={post.authorId}
-                    sourceFeature="Community Feed"
-                  />
-                </div>
+                <>
+                  <button onClick={handleMute} className="w-full text-left px-3 py-1.5 text-xs text-fg-muted hover:bg-elevated transition">
+                    🔕 Mute @{post.author.handle}
+                  </button>
+                  <button onClick={handleBlock} className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-elevated transition">
+                    🚫 Block @{post.author.handle}
+                  </button>
+                  <div className="px-1 border-t border-border mt-1 pt-1">
+                    <ReportButton
+                      reportedItemType="post"
+                      reportedItemId={post.id}
+                      reportedItemTitle={`${post.author.handle}: ${post.content.slice(0, 60)}`}
+                      reportedUserId={post.authorId}
+                      sourceFeature="Community Feed"
+                    />
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -173,7 +212,26 @@ export default function PostCard({ post, onHashtagClick }: { post: CommunityPost
       </div>
 
       {/* Content + hashtags — a repost's own content is just the optional caption */}
-      {post.content && <ContentWithHashtags content={post.content} onHashtagClick={(tag) => onHashtagClick?.(tag)} />}
+      {isEditing ? (
+        <div className="mb-3">
+          <textarea
+            value={editContent}
+            onChange={(e) => setEditContent(e.target.value)}
+            maxLength={5000}
+            rows={3}
+            autoFocus
+            className="w-full bg-elevated border border-border rounded-lg p-2.5 text-fg text-sm resize-none focus:outline-none focus:border-accent"
+          />
+          <div className="flex items-center justify-end gap-2 mt-1.5">
+            <button onClick={() => { setIsEditing(false); setEditContent(post.content); }} className="btn btn-ghost text-xs !px-3 !py-1.5">Cancel</button>
+            <button onClick={handleSaveEdit} disabled={isSavingEdit} className="btn btn-primary text-xs !px-3 !py-1.5 disabled:opacity-50">
+              {isSavingEdit ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        post.content && <ContentWithHashtags content={post.content} onHashtagClick={(tag) => onHashtagClick?.(tag)} />
+      )}
 
       {/* Reposted original, embedded */}
       {post.repostOf && <RepostedEmbed repostOf={post.repostOf} router={router} />}

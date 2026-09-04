@@ -4,6 +4,7 @@
  */
 import { communityPostRepository, type FeedParams } from "../repositories/communityPostRepository";
 import { communityFollowRepository }                from "../repositories/communityFollowRepository";
+import { userRelationService }                      from "./userRelationService";
 import db from "../../lib/prisma";
 import type { ReactionType } from "@prisma/client";
 
@@ -35,14 +36,23 @@ export const communityFeedService = {
   // ── Global public feed ────────────────────────────────────────────────────
 
   async getGlobalFeed(params: FeedParams, viewerId?: string) {
-    const { items, total } = await communityPostRepository.findGlobalFeed(params, viewerId);
+    const excludeAuthorIds = viewerId ? await userRelationService.getFeedExclusionIds(viewerId) : undefined;
+    const { items, total } = await communityPostRepository.findGlobalFeed({ ...params, excludeAuthorIds }, viewerId);
     return { items: items.map((p) => fmt(p as RawPost)), ...paginate(total, params.page, params.pageSize) };
   },
 
   // ── Following feed ────────────────────────────────────────────────────────
 
   async getFollowingFeed(userId: string, params: FeedParams) {
-    const { items, total } = await communityPostRepository.findFollowingFeed(userId, params);
+    const excludeAuthorIds = await userRelationService.getFeedExclusionIds(userId);
+    const { items, total } = await communityPostRepository.findFollowingFeed(userId, { ...params, excludeAuthorIds });
+    return { items: items.map((p) => fmt(p as RawPost)), ...paginate(total, params.page, params.pageSize) };
+  },
+
+  // ── Group feed ─────────────────────────────────────────────────────────
+
+  async getGroupFeed(groupId: string, params: FeedParams, viewerId?: string) {
+    const { items, total } = await communityPostRepository.findGroupFeed(groupId, params, viewerId);
     return { items: items.map((p) => fmt(p as RawPost)), ...paginate(total, params.page, params.pageSize) };
   },
 

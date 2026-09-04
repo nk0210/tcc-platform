@@ -225,6 +225,7 @@ interface CommunityStore {
   setFilters: (filters: { tag?: string | null; sort?: FeedSort }) => Promise<void>;
 
   createPost:     (input: CreatePostInput) => Promise<CommunityPost | null>;
+  getPost:        (postId: string) => Promise<CommunityPost | null>;
   updatePost:     (postId: string, input: UpdatePostInput) => Promise<void>;
   deletePost:     (postId: string) => Promise<void>;
   /** Sets/switches the viewer's reaction on a post; defaults to LIKE for
@@ -256,6 +257,13 @@ interface CommunityStore {
   getUserFeed:          (handle: string, page?: number, type?: CommunityPostType) => Promise<PaginatedResult<CommunityPost> | null>;
   getTrendingHashtags:  (limit?: number) => Promise<TrendingHashtag[]>;
   search:               (q: string, limit?: number) => Promise<SearchResults>;
+
+  blockUser:       (handle: string) => Promise<boolean>;
+  unblockUser:     (handle: string) => Promise<boolean>;
+  getBlockedUsers: (page?: number) => Promise<PaginatedResult<CommunityUserSummary> | null>;
+  muteUser:        (handle: string) => Promise<boolean>;
+  unmuteUser:      (handle: string) => Promise<boolean>;
+  getMutedUsers:   (page?: number) => Promise<PaginatedResult<CommunityUserSummary> | null>;
 }
 
 export const useCommunityStore = create<CommunityStore>()((set, get) => ({
@@ -370,6 +378,16 @@ export const useCommunityStore = create<CommunityStore>()((set, get) => ({
     } catch (err) {
       console.error("[communityStore.createPost]", err);
       set({ isSyncing: false, error: "Failed to create post" });
+      return null;
+    }
+  },
+
+  getPost: async (postId) => {
+    try {
+      const res = await api.get<CommunityPost>(`/community/posts/${postId}`);
+      return res.success ? res.data : null;
+    } catch (err) {
+      console.error("[communityStore.getPost]", err);
       return null;
     }
   },
@@ -669,6 +687,70 @@ export const useCommunityStore = create<CommunityStore>()((set, get) => ({
     } catch (err) {
       console.error("[communityStore.search]", err);
       return empty;
+    }
+  },
+
+  // ── Block / mute ─────────────────────────────────────────────────────────
+
+  blockUser: async (handle) => {
+    try {
+      const res = await api.post<{ blocked: boolean }>(`/community/block/${handle}`);
+      if (res.success) set((s) => ({ posts: s.posts.filter((p) => p.author.handle !== handle) }));
+      return res.success;
+    } catch (err) {
+      console.error("[communityStore.blockUser]", err);
+      return false;
+    }
+  },
+
+  unblockUser: async (handle) => {
+    try {
+      const res = await api.delete<{ blocked: boolean }>(`/community/block/${handle}`);
+      return res.success;
+    } catch (err) {
+      console.error("[communityStore.unblockUser]", err);
+      return false;
+    }
+  },
+
+  getBlockedUsers: async (page = 1) => {
+    try {
+      const res = await api.get<PaginatedResult<CommunityUserSummary>>(`/community/blocked?page=${page}`);
+      return res.success ? res.data : null;
+    } catch (err) {
+      console.error("[communityStore.getBlockedUsers]", err);
+      return null;
+    }
+  },
+
+  muteUser: async (handle) => {
+    try {
+      const res = await api.post<{ muted: boolean }>(`/community/mute/${handle}`);
+      if (res.success) set((s) => ({ posts: s.posts.filter((p) => p.author.handle !== handle) }));
+      return res.success;
+    } catch (err) {
+      console.error("[communityStore.muteUser]", err);
+      return false;
+    }
+  },
+
+  unmuteUser: async (handle) => {
+    try {
+      const res = await api.delete<{ muted: boolean }>(`/community/mute/${handle}`);
+      return res.success;
+    } catch (err) {
+      console.error("[communityStore.unmuteUser]", err);
+      return false;
+    }
+  },
+
+  getMutedUsers: async (page = 1) => {
+    try {
+      const res = await api.get<PaginatedResult<CommunityUserSummary>>(`/community/muted?page=${page}`);
+      return res.success ? res.data : null;
+    } catch (err) {
+      console.error("[communityStore.getMutedUsers]", err);
+      return null;
     }
   },
 }));

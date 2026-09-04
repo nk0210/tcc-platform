@@ -26,6 +26,7 @@ export type ServerMessage =
   | { type: "COMMUNITY_NEW_POST";    payload: { post: Record<string, unknown> } }
   | { type: "COMMUNITY_NEW_COMMENT"; payload: { comment: Record<string, unknown>; postId: string } }
   | { type: "COMMUNITY_LIKE";        payload: { postId: string; likeCount: number } }
+  | { type: "DM_MESSAGE";            payload: { conversationId: string; message: Record<string, unknown> } }
   | { type: "PONG" }
   | { type: "ERROR";                 payload: { message: string; code: string } };
 

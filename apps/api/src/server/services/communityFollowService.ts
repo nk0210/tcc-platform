@@ -3,6 +3,7 @@
  * Business logic for the social graph.
  */
 import { communityFollowRepository } from "../repositories/communityFollowRepository";
+import { userRelationRepository }    from "../repositories/userRelationRepository";
 import { createNotification }        from "../notifications/notificationService";
 
 // ── Errors ────────────────────────────────────────────────────────────────
@@ -18,6 +19,10 @@ export class CannotFollowSelfError extends Error {
 export class PrivateProfileError extends Error {
   statusCode = 403;
   constructor() { super("PROFILE_IS_PRIVATE"); }
+}
+export class BlockedError extends Error {
+  statusCode = 403;
+  constructor() { super("USER_BLOCKED"); }
 }
 
 function paginate(total: number, page: number, pageSize: number) {
@@ -43,6 +48,7 @@ export const communityFollowService = {
     // now. This closes that gap rather than leaving it reachable through
     // any caller, Copilot included.
     if (target.profileVisibility === "PRIVATE") throw new PrivateProfileError();
+    if (await userRelationRepository.isBlockedEitherWay(followerId, target.id)) throw new BlockedError();
 
     await communityFollowRepository.follow(followerId, target.id);
 

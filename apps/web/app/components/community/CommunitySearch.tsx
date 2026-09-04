@@ -119,6 +119,15 @@ export default function CommunitySearch({ onHashtagSelect }: { onHashtagSelect: 
               ))}
             </div>
           )}
+
+          {!loading && hasQuery && (
+            <button
+              onClick={() => { setOpen(false); router.push(`/community/search?q=${encodeURIComponent(query.trim())}`); }}
+              className="w-full text-center px-3 py-2.5 text-xs text-accent-hover hover:bg-elevated transition border-t border-border font-medium"
+            >
+              See all results for "{query.trim()}"
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -9,9 +9,9 @@ import { Router } from "express";
 import { z }      from "zod";
 import { authenticate, optionalAuthenticate, type AuthRequest } from "../../middleware/authenticate";
 import { validate }                from "../../middleware/validate";
-import { communityFollowService }  from "../../server/services/communityFollowService";
+import { communityFollowService, BlockedError }  from "../../server/services/communityFollowService";
 import { communityFeedService }    from "../../server/services/communityFeedService";
-import { ok, notFound, badRequest, internalError } from "../../lib/response";
+import { ok, notFound, badRequest, forbidden, internalError } from "../../lib/response";
 import type { PostType } from "@prisma/client";
 
 const router: ReturnType<typeof Router> = Router();
@@ -44,6 +44,7 @@ router.post(
       );
       ok(res, result, `Now following @${req.params.handle}`);
     } catch (err: unknown) {
+      if (err instanceof BlockedError) { forbidden(res, "You can't follow this user"); return; }
       if (err instanceof Error) {
         if (err.message === "USER_NOT_FOUND")       { notFound(res,   "User not found");           return; }
         if (err.message === "CANNOT_FOLLOW_SELF")   { badRequest(res, "You cannot follow yourself"); return; }
