@@ -58,16 +58,16 @@ function Sidebar() {
     path === "/" ? pathname === "/" : pathname.startsWith(path);
 
   return (
-    <aside className="w-52 shrink-0 glass border-r border-white/5 flex flex-col overflow-hidden">
+    <aside className="w-52 shrink-0 glass !border-y-0 !border-l-0 rounded-none flex flex-col overflow-hidden">
 
       {/* Logo */}
-      <div className="px-4 py-4 border-b border-white/5 shrink-0">
+      <div className="px-4 py-4 border-b border-border shrink-0">
         <div
-          className="flex items-center gap-2 cursor-pointer"
+          className="flex items-center gap-2 cursor-pointer group"
           onClick={() => router.push("/")}>
-          <span className="text-lg font-black neon-green tracking-widest">TCC</span>
+          <span className="text-lg font-black text-fg tracking-widest group-hover:text-accent-hover transition">TCC</span>
         </div>
-        <p className="text-white/20 text-xs mt-0.5">The Cane & Co.</p>
+        <p className="text-fg-dim text-xs mt-0.5">The Cane & Co.</p>
       </div>
 
       {/* Nav */}
@@ -75,7 +75,7 @@ function Sidebar() {
         {NAV_GROUPS.map((group, gi) => (
           <div key={gi} className={gi > 0 ? "mt-2" : ""}>
             {group.title && (
-              <p className="text-white/20 text-xs uppercase tracking-widest px-2 py-1.5 font-semibold">
+              <p className="text-fg-dim text-xs uppercase tracking-widest px-2 py-1.5 font-semibold">
                 {group.title}
               </p>
             )}
@@ -85,11 +85,12 @@ function Sidebar() {
                 <button
                   key={item.path}
                   onClick={() => router.push(item.path)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium mb-0.5 transition text-left ${
+                  className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium mb-0.5 transition text-left ${
                     active
-                      ? "bg-green-500/15 text-green-400 border border-green-500/20"
-                      : "text-white/50 hover:text-white/80 hover:bg-white/5 border border-transparent"
+                      ? "bg-accent-soft text-accent-hover"
+                      : "text-fg-muted hover:text-fg hover:bg-elevated"
                   }`}>
+                  {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent" />}
                   <span className="text-base leading-none shrink-0">{item.icon}</span>
                   <span className="truncate">{item.label}</span>
                 </button>
@@ -100,12 +101,12 @@ function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-white/5 shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-          <span className="text-green-400/60 text-xs">Paper Mode</span>
-        </div>
-        <p className="text-white/15 text-xs mt-0.5">Beta v0.7 · Local only</p>
+      <div className="px-4 py-3 border-t border-border shrink-0">
+        <span className="badge badge-success">
+          <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+          Paper Mode
+        </span>
+        <p className="text-fg-dim text-xs mt-1.5 opacity-60">Beta v0.7 · Local only</p>
       </div>
     </aside>
   );

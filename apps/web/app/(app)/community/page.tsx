@@ -147,8 +147,8 @@ function PostComposer({ onPost }: { onPost: () => void }) {
   };
 
   return (
-    <div className="glass border border-white/10 rounded-xl p-5 mb-5">
-      <p className="text-white/50 text-xs uppercase tracking-wider mb-3">Create Post</p>
+    <div className="glass border border-border rounded-xl p-5 mb-5">
+      <p className="text-fg-muted text-xs uppercase tracking-wider mb-3">Create Post</p>
 
       {/* Post type selector */}
       <div className="flex flex-wrap gap-1.5 mb-3">
@@ -165,10 +165,10 @@ function PostComposer({ onPost }: { onPost: () => void }) {
               title={disabledReason || undefined}
               className={`text-xs px-2.5 py-1.5 rounded-lg border transition ${
                 disabled
-                  ? "text-white/15 bg-white/2 border-white/5 cursor-not-allowed"
+                  ? "text-fg-dim bg-elevated border-border cursor-not-allowed"
                   : type === pt
-                    ? "bg-green-500/20 text-green-400 border-green-500/30"
-                    : "text-white/40 bg-white/5 border-white/10 hover:border-white/20 hover:text-white/60"
+                    ? "bg-success-soft text-success border-success/30"
+                    : "text-fg-dim bg-elevated border-border hover:border-border-strong hover:text-fg-muted"
               }`}>
               {POST_TYPE_LABELS[pt]}
               {disabled && " 🔒"}
@@ -179,17 +179,17 @@ function PostComposer({ onPost }: { onPost: () => void }) {
 
       {/* Disabled explanations */}
       {!canShareTrade && (
-        <p className="text-white/20 text-xs mb-2 italic">
+        <p className="text-fg-dim text-xs mb-2 italic">
           💡 You need a closed journal trade before sharing verified trade results.
         </p>
       )}
       {!canShareStrategy && (
-        <p className="text-white/20 text-xs mb-2 italic">
+        <p className="text-fg-dim text-xs mb-2 italic">
           💡 You need to publish a strategy in the Marketplace before sharing it.
         </p>
       )}
       {!canShareAcademy && (
-        <p className="text-white/20 text-xs mb-2 italic">
+        <p className="text-fg-dim text-xs mb-2 italic">
           💡 Complete an Academy course to share your achievement.
         </p>
       )}
@@ -197,9 +197,9 @@ function PostComposer({ onPost }: { onPost: () => void }) {
       {/* Linked data selectors */}
       {type === "SHARED_TRADE" && canShareTrade && (
         <div className="mb-3">
-          <p className="text-white/40 text-xs mb-1">Select trade to share</p>
+          <p className="text-fg-dim text-xs mb-1">Select trade to share</p>
           <select value={linkedTrade} onChange={e => setLinkedTrade(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs">
+            className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-fg text-xs">
             <option value="">Choose a closed trade...</option>
             {closedTrades.slice(0, 20).map(t => (
               <option key={t.id} value={t.id} className="bg-[#0a0a0f]">
@@ -210,10 +210,10 @@ function PostComposer({ onPost }: { onPost: () => void }) {
           {linkedTrade && (() => {
             const t = closedTrades.find(x => x.id === linkedTrade);
             return t ? (
-              <div className="mt-2 p-2 bg-white/3 border border-white/5 rounded-lg flex items-center gap-3 text-xs">
-                <span className={t.side === "BUY" ? "text-green-400" : "text-red-400"}>{t.side}</span>
-                <span className="text-white/60">{t.displayName}</span>
-                <span className={`font-bold ml-auto ${t.netPnl >= 0 ? "text-green-400" : "text-red-400"}`}>{formatPnl(t.netPnl)}</span>
+              <div className="mt-2 p-2 bg-elevated border border-border rounded-lg flex items-center gap-3 text-xs">
+                <span className={t.side === "BUY" ? "text-success" : "text-danger"}>{t.side}</span>
+                <span className="text-fg-muted">{t.displayName}</span>
+                <span className={`font-bold ml-auto ${t.netPnl >= 0 ? "text-success" : "text-danger"}`}>{formatPnl(t.netPnl)}</span>
               </div>
             ) : null;
           })()}
@@ -222,9 +222,9 @@ function PostComposer({ onPost }: { onPost: () => void }) {
 
       {type === "STRATEGY_SHARE" && canShareStrategy && (
         <div className="mb-3">
-          <p className="text-white/40 text-xs mb-1">Select strategy to share</p>
+          <p className="text-fg-dim text-xs mb-1">Select strategy to share</p>
           <select value={linkedStrategy} onChange={e => setLinkedStrategy(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs">
+            className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-fg text-xs">
             <option value="">Choose a strategy...</option>
             {publishedStrategies.map(s => (
               <option key={s.id} value={s.id} className="bg-[#0a0a0f]">{s.title}</option>
@@ -235,9 +235,9 @@ function PostComposer({ onPost }: { onPost: () => void }) {
 
       {type === "ACADEMY_COMPLETION" && canShareAcademy && (
         <div className="mb-3">
-          <p className="text-white/40 text-xs mb-1">Select completed course</p>
+          <p className="text-fg-dim text-xs mb-1">Select completed course</p>
           <select value={linkedCourse} onChange={e => setLinkedCourse(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs">
+            className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-fg text-xs">
             <option value="">Choose a course...</option>
             {completedCourses.map(c => (
               <option key={c.id} value={c.id} className="bg-[#0a0a0f]">{c.title}</option>
@@ -258,29 +258,29 @@ function PostComposer({ onPost }: { onPost: () => void }) {
           : "Share your academy milestone..."
         }
         rows={4}
-        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm resize-none focus:outline-none focus:border-white/25 placeholder-white/20 mb-3"
+        className="w-full bg-elevated border border-border rounded-xl px-4 py-3 text-fg text-sm resize-none focus:outline-none focus:border-border placeholder-white/20 mb-3"
       />
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <select value={visibility} onChange={e => setVisibility(e.target.value as PostVisibility)}
-            className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs">
+            className="bg-elevated border border-border rounded-lg px-2 py-1.5 text-fg text-xs">
             <option value="PUBLIC" className="bg-[#0a0a0f]">🌐 Public</option>
             <option value="FOLLOWERS_ONLY" className="bg-[#0a0a0f]">👥 Followers only</option>
             <option value="PRIVATE" className="bg-[#0a0a0f]">🔒 Private</option>
           </select>
-          <span className="text-white/20 text-xs">·</span>
-          <span className="text-white/30 text-xs">{content.length} chars</span>
+          <span className="text-fg-dim text-xs">·</span>
+          <span className="text-fg-dim text-xs">{content.length} chars</span>
         </div>
         <button
           onClick={handleSubmit}
           disabled={!content.trim() || submitting}
-          className="bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 px-5 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-40">
+          className="bg-success-soft hover:bg-success/22 text-success border border-success/30 px-5 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-40">
           {submitting ? "Posting..." : "Post"}
         </button>
       </div>
 
-      <p className="text-white/15 text-xs mt-3">
+      <p className="text-fg-dim text-xs mt-3">
         All content is your own and not financial advice.
       </p>
     </div>
@@ -327,29 +327,29 @@ function CommentSection({ post }: { post: CommunityPost }) {
   const visibleComments = comments.filter(c => !c.isHiddenByAdmin);
 
   return (
-    <div className="mt-4 border-t border-white/5 pt-4">
-      {isLoading && <p className="text-white/20 text-xs mb-2">Loading comments...</p>}
+    <div className="mt-4 border-t border-border pt-4">
+      {isLoading && <p className="text-fg-dim text-xs mb-2">Loading comments...</p>}
       {visibleComments.map(comment => (
         <div key={comment.id} className="flex gap-2 mb-3">
-          <div className="w-7 h-7 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-white/50 text-xs font-bold shrink-0">
+          <div className="w-7 h-7 rounded-full bg-elevated border border-border flex items-center justify-center text-fg-muted text-xs font-bold shrink-0">
             {comment.author.handle[0]?.toUpperCase() ?? "?"}
           </div>
-          <div className="glass border border-white/5 rounded-xl px-3 py-2 flex-1">
+          <div className="glass border border-border rounded-xl px-3 py-2 flex-1">
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-2">
-                <span className="text-white/70 text-xs font-semibold">{comment.author.handle}</span>
-                <span className="text-white/20 text-xs">{timeAgo(comment.createdAt)}</span>
+                <span className="text-fg-muted text-xs font-semibold">{comment.author.handle}</span>
+                <span className="text-fg-dim text-xs">{timeAgo(comment.createdAt)}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => handleToggleLike(comment.id)}
-                  className={`text-xs transition ${comment.isLiked ? "text-red-400" : "text-white/20 hover:text-red-400"}`}>
+                  className={`text-xs transition ${comment.isLiked ? "text-danger" : "text-fg-dim hover:text-danger"}`}>
                   ♥ {comment._count.likes > 0 ? comment._count.likes : ""}
                 </button>
                 {user && comment.authorId === user.id && (
                   <button
                     onClick={() => handleDelete(comment.id)}
-                    className="text-white/20 hover:text-red-400 text-xs transition">🗑</button>
+                    className="text-fg-dim hover:text-danger text-xs transition">🗑</button>
                 )}
                 <ReportButton
                   reportedItemType="comment"
@@ -361,7 +361,7 @@ function CommentSection({ post }: { post: CommunityPost }) {
                 />
               </div>
             </div>
-            <p className="text-white/70 text-xs leading-relaxed">{comment.content}</p>
+            <p className="text-fg-muted text-xs leading-relaxed">{comment.content}</p>
           </div>
         </div>
       ))}
@@ -373,12 +373,12 @@ function CommentSection({ post }: { post: CommunityPost }) {
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleAddComment()}
             placeholder="Write a comment..."
-            className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-white/25 placeholder-white/20"
+            className="flex-1 bg-elevated border border-border rounded-lg px-3 py-1.5 text-fg text-xs focus:outline-none focus:border-border placeholder-white/20"
           />
           <button
             onClick={handleAddComment}
             disabled={!input.trim()}
-            className="bg-green-500/20 text-green-400 border border-green-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 hover:bg-green-500/30 transition">
+            className="bg-success-soft text-success border border-success/30 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 hover:bg-success/22 transition">
             Post
           </button>
         </div>
@@ -400,28 +400,28 @@ function PostCard({ post }: { post: CommunityPost }) {
   const isOwn   = post.authorId === userId;
 
   return (
-    <div className="glass border border-white/5 rounded-xl p-5 hover:border-white/10 transition">
+    <div className="glass border border-border rounded-xl p-5 hover:border-border transition">
       {/* Post header */}
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center text-green-400 text-sm font-bold shrink-0">
+          <div className="w-9 h-9 rounded-full bg-success-soft border border-success/30 flex items-center justify-center text-success text-sm font-bold shrink-0">
             {post.author.handle[0]?.toUpperCase() ?? "?"}
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-white font-semibold text-sm">{post.author.handle}</span>
-              <span className="text-xs text-white/30 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+              <span className="text-fg font-semibold text-sm">{post.author.handle}</span>
+              <span className="text-xs text-fg-dim bg-elevated border border-border px-2 py-0.5 rounded-full">
                 {POST_TYPE_LABELS[post.type]}
               </span>
               <span className={`text-xs ${
-                post.visibility === "PUBLIC" ? "text-white/20"
-                : post.visibility === "FOLLOWERS_ONLY" ? "text-amber-400/40"
-                : "text-red-400/40"
+                post.visibility === "PUBLIC" ? "text-fg-dim"
+                : post.visibility === "FOLLOWERS_ONLY" ? "text-warning/40"
+                : "text-danger/40"
               }`}>
                 {post.visibility === "PUBLIC" ? "🌐" : post.visibility === "FOLLOWERS_ONLY" ? "👥" : "🔒"}
               </span>
             </div>
-            <p className="text-white/30 text-xs mt-0.5">{timeAgo(post.createdAt)}</p>
+            <p className="text-fg-dim text-xs mt-0.5">{timeAgo(post.createdAt)}</p>
           </div>
         </div>
 
@@ -429,7 +429,7 @@ function PostCard({ post }: { post: CommunityPost }) {
           {isOwn && (
             <button
               onClick={() => deletePost(post.id)}
-              className="text-white/20 hover:text-red-400 text-xs transition px-2 py-1 rounded-lg">
+              className="text-fg-dim hover:text-danger text-xs transition px-2 py-1 rounded-lg">
               🗑
             </button>
           )}
@@ -448,25 +448,25 @@ function PostCard({ post }: { post: CommunityPost }) {
 
       {/* Trade snapshot */}
       {post.tradeSnapshot && (
-        <div className="glass border border-white/5 rounded-xl p-3 mb-3 flex items-center gap-4 flex-wrap">
-          <span className={`font-bold text-sm ${post.tradeSnapshot.side === "BUY" ? "text-green-400" : "text-red-400"}`}>
+        <div className="glass border border-border rounded-xl p-3 mb-3 flex items-center gap-4 flex-wrap">
+          <span className={`font-bold text-sm ${post.tradeSnapshot.side === "BUY" ? "text-success" : "text-danger"}`}>
             {post.tradeSnapshot.side}
           </span>
-          <span className="text-white font-semibold">{post.tradeSnapshot.displayName}</span>
-          <span className="text-white/40 text-xs">@ ${post.tradeSnapshot.entryPrice.toFixed(4)}</span>
-          <span className={`font-bold ml-auto ${post.tradeSnapshot.netPnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+          <span className="text-fg font-semibold">{post.tradeSnapshot.displayName}</span>
+          <span className="text-fg-dim text-xs">@ ${post.tradeSnapshot.entryPrice.toFixed(4)}</span>
+          <span className={`font-bold ml-auto ${post.tradeSnapshot.netPnl >= 0 ? "text-success" : "text-danger"}`}>
             {formatPnl(post.tradeSnapshot.netPnl)}
           </span>
           <span className={`text-xs px-2 py-0.5 rounded-full ${
-            post.tradeSnapshot.closeReason === "STOP_LOSS"   ? "text-red-400    bg-red-500/10"
-            : post.tradeSnapshot.closeReason === "TAKE_PROFIT" ? "text-green-400  bg-green-500/10"
-            : "text-white/30 bg-white/5"
+            post.tradeSnapshot.closeReason === "STOP_LOSS"   ? "text-danger    bg-danger-soft"
+            : post.tradeSnapshot.closeReason === "TAKE_PROFIT" ? "text-success  bg-success-soft"
+            : "text-fg-dim bg-elevated"
           }`}>
             {post.tradeSnapshot.closeReason === "STOP_LOSS"  ? "⛔ SL"
              : post.tradeSnapshot.closeReason === "TAKE_PROFIT" ? "✅ TP"
              : "Manual"}
           </span>
-          <span className="text-white/20 text-xs">
+          <span className="text-fg-dim text-xs">
             ⚠ Paper trade · Not verified · Not financial advice
           </span>
         </div>
@@ -474,35 +474,35 @@ function PostCard({ post }: { post: CommunityPost }) {
 
       {/* Strategy share */}
       {post.type === "STRATEGY_SHARE" && post.linkedStrategyTitle && (
-        <div className="glass border border-indigo-500/20 bg-indigo-500/3 rounded-xl p-3 mb-3">
-          <p className="text-indigo-400/70 text-xs font-semibold">📋 Strategy: {post.linkedStrategyTitle}</p>
-          <p className="text-white/20 text-xs mt-0.5">Educational content · Not verified performance</p>
+        <div className="glass border border-accent/30 bg-accent/3 rounded-xl p-3 mb-3">
+          <p className="text-accent-hover/70 text-xs font-semibold">📋 Strategy: {post.linkedStrategyTitle}</p>
+          <p className="text-fg-dim text-xs mt-0.5">Educational content · Not verified performance</p>
         </div>
       )}
 
       {/* Academy share */}
       {post.type === "ACADEMY_COMPLETION" && post.linkedCourseTitle && (
-        <div className="glass border border-amber-500/20 bg-amber-500/3 rounded-xl p-3 mb-3">
-          <p className="text-amber-400/70 text-xs font-semibold">🎓 Completed: {post.linkedCourseTitle}</p>
-          <p className="text-white/20 text-xs mt-0.5">Course completed · Certificates coming soon</p>
+        <div className="glass border border-warning/30 bg-warning-soft rounded-xl p-3 mb-3">
+          <p className="text-warning/70 text-xs font-semibold">🎓 Completed: {post.linkedCourseTitle}</p>
+          <p className="text-fg-dim text-xs mt-0.5">Course completed · Certificates coming soon</p>
         </div>
       )}
 
       {/* Post content */}
-      <p className="text-white/80 text-sm leading-relaxed mb-4">{post.content}</p>
+      <p className="text-fg-muted text-sm leading-relaxed mb-4">{post.content}</p>
 
       {/* Actions */}
-      <div className="flex items-center gap-3 border-t border-white/5 pt-3 flex-wrap">
+      <div className="flex items-center gap-3 border-t border-border pt-3 flex-wrap">
         <button onClick={() => toggleLike(post.id)}
-          className={`flex items-center gap-1.5 text-xs transition ${isLiked ? "text-red-400" : "text-white/40 hover:text-red-400"}`}>
+          className={`flex items-center gap-1.5 text-xs transition ${isLiked ? "text-danger" : "text-fg-dim hover:text-danger"}`}>
           {isLiked ? "❤️" : "🤍"} {post._count.likes > 0 ? post._count.likes : "Like"}
         </button>
         <button onClick={() => setShowComments(!showComments)}
-          className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/60 transition">
+          className="flex items-center gap-1.5 text-xs text-fg-dim hover:text-fg-muted transition">
           💬 {post._count.comments > 0 ? post._count.comments : "Comment"}
         </button>
         <button onClick={() => toggleBookmark(post.id)}
-          className={`flex items-center gap-1.5 text-xs transition ${isSaved ? "text-amber-400" : "text-white/40 hover:text-amber-400"}`}>
+          className={`flex items-center gap-1.5 text-xs transition ${isSaved ? "text-warning" : "text-fg-dim hover:text-warning"}`}>
           {isSaved ? "🔖 Saved" : "📌 Save"}
         </button>
       </div>
@@ -546,7 +546,7 @@ export default function CommunityPage() {
   if (!isInitialized || isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <p className="text-white/30 text-sm animate-pulse">Loading community...</p>
+        <p className="text-fg-dim text-sm animate-pulse">Loading community...</p>
       </div>
     );
   }
@@ -554,11 +554,11 @@ export default function CommunityPage() {
   if (error) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3">
-        <p className="text-red-400 text-sm">{error}</p>
+        <p className="text-danger text-sm">{error}</p>
         <button
           type="button"
           onClick={() => useCommunityStore.getState().init()}
-          className="text-white/40 text-xs border border-white/10 px-3 py-1 rounded hover:text-white/70 hover:border-white/20 transition"
+          className="text-fg-dim text-xs border border-border px-3 py-1 rounded hover:text-fg-muted hover:border-border-strong transition"
         >
           Retry
         </button>
@@ -581,28 +581,28 @@ export default function CommunityPage() {
             {/* Header */}
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h1 className="text-2xl font-bold text-white">Community</h1>
-                <p className="text-white/30 text-xs mt-0.5">
+                <h1 className="text-2xl font-bold text-fg">Community</h1>
+                <p className="text-fg-dim text-xs mt-0.5">
                   Global feed · Live via TCC API
                 </p>
               </div>
               <button
                 onClick={() => setShowComposer(!showComposer)}
-                className="bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 px-4 py-2 rounded-lg text-sm font-semibold transition">
+                className="bg-success-soft hover:bg-success/22 text-success border border-success/30 px-4 py-2 rounded-lg text-sm font-semibold transition">
                 {showComposer ? "Cancel" : "+ Post"}
               </button>
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-0.5 bg-white/5 rounded-lg p-1 mb-5 overflow-x-auto">
+            <div className="flex gap-0.5 bg-elevated rounded-lg p-1 mb-5 overflow-x-auto">
               {TABS.map(tab => (
                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                   className={`flex-1 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition ${
-                    activeTab === tab.key ? "bg-green-500/20 text-green-400" : "text-white/40 hover:text-white/60"
+                    activeTab === tab.key ? "bg-success-soft text-success" : "text-fg-dim hover:text-fg-muted"
                   }`}>
                   {tab.label}
                   {tab.count !== undefined && tab.count > 0 && (
-                    <span className="ml-1 text-white/30">({tab.count})</span>
+                    <span className="ml-1 text-fg-dim">({tab.count})</span>
                   )}
                 </button>
               ))}
@@ -623,8 +623,8 @@ export default function CommunityPage() {
                       onClick={() => setFilterType(ft)}
                       className={`text-xs px-2.5 py-1 rounded-full border transition ${
                         filterType === ft
-                          ? "bg-green-500/20 text-green-400 border-green-500/30"
-                          : "text-white/30 border-white/10 hover:border-white/20 bg-white/3"
+                          ? "bg-success-soft text-success border-success/30"
+                          : "text-fg-dim border-border hover:border-border-strong bg-elevated"
                       }`}>
                       {ft === "all" ? "All" : POST_TYPE_LABELS[ft]}
                     </button>
@@ -634,13 +634,13 @@ export default function CommunityPage() {
                 {feedPosts.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 gap-4">
                     <p className="text-4xl">🌐</p>
-                    <p className="text-white/30 text-sm">No community posts yet.</p>
-                    <p className="text-white/15 text-xs text-center max-w-xs leading-relaxed">
+                    <p className="text-fg-dim text-sm">No community posts yet.</p>
+                    <p className="text-fg-dim text-xs text-center max-w-xs leading-relaxed">
                       Share your first trading thought, strategy idea, or journal lesson.
                       {!showComposer && (
                         <>
                           {" "}
-                          <button onClick={() => setShowComposer(true)} className="text-green-400/60 hover:text-green-400 underline transition">
+                          <button onClick={() => setShowComposer(true)} className="text-success/60 hover:text-success underline transition">
                             Create a post →
                           </button>
                         </>
@@ -663,8 +663,8 @@ export default function CommunityPage() {
                 {savedPosts.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 gap-4">
                     <p className="text-4xl">🔖</p>
-                    <p className="text-white/30 text-sm">No saved posts yet.</p>
-                    <p className="text-white/15 text-xs">Click 📌 on any post to save it here.</p>
+                    <p className="text-fg-dim text-sm">No saved posts yet.</p>
+                    <p className="text-fg-dim text-xs">Click 📌 on any post to save it here.</p>
                   </div>
                 ) : (
                   <div className="flex flex-col gap-4">
@@ -680,8 +680,8 @@ export default function CommunityPage() {
             {activeTab === "groups" && (
               <div className="flex flex-col items-center justify-center py-16 gap-4">
                 <p className="text-4xl">👥</p>
-                <p className="text-white/40 text-sm font-semibold">Groups</p>
-                <p className="text-white/20 text-xs text-center max-w-xs leading-relaxed">
+                <p className="text-fg-dim text-sm font-semibold">Groups</p>
+                <p className="text-fg-dim text-xs text-center max-w-xs leading-relaxed">
                   Trading groups and communities foundation coming soon.
                   Phase Alpha will include public and private groups, group feeds, and group challenges.
                 </p>
@@ -692,8 +692,8 @@ export default function CommunityPage() {
             {activeTab === "stories" && (
               <div className="flex flex-col items-center justify-center py-16 gap-4">
                 <p className="text-4xl">✨</p>
-                <p className="text-white/40 text-sm font-semibold">Stories & Reels</p>
-                <p className="text-white/20 text-xs text-center max-w-xs leading-relaxed">
+                <p className="text-fg-dim text-sm font-semibold">Stories & Reels</p>
+                <p className="text-fg-dim text-xs text-center max-w-xs leading-relaxed">
                   Stories and short-form trading content coming soon.
                   No fake stories or fake reels will be shown here.
                 </p>
@@ -704,8 +704,8 @@ export default function CommunityPage() {
             {activeTab === "messages" && (
               <div className="flex flex-col items-center justify-center py-16 gap-4">
                 <p className="text-4xl">✉️</p>
-                <p className="text-white/40 text-sm font-semibold">Direct Messages</p>
-                <p className="text-white/20 text-xs text-center max-w-xs leading-relaxed">
+                <p className="text-fg-dim text-sm font-semibold">Direct Messages</p>
+                <p className="text-fg-dim text-xs text-center max-w-xs leading-relaxed">
                   Direct messaging coming soon. Requires backend + user accounts.
                   Phase Alpha will enable real-time messaging between traders.
                 </p>

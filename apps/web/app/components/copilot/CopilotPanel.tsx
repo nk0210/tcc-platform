@@ -30,7 +30,7 @@ function toolStatusIcon(status: string): string {
 function ToolStatusLine({ toolCalls }: { toolCalls: NonNullable<CopilotChatMessage["toolCalls"]> }) {
   if (toolCalls.length === 0) return null;
   return (
-    <div className="text-white/30 text-xs mt-2 pt-2 border-t border-white/5 flex flex-col gap-0.5">
+    <div className="text-fg-dim text-xs mt-2 pt-2 border-t border-border flex flex-col gap-0.5">
       {toolCalls.map((t, i) => (
         <span key={i}>
           {toolStatusIcon(t.status)} {toolLabel(t.name)}
@@ -47,18 +47,18 @@ function PendingActionCard({ messageId, action }: { messageId: string; action: P
 
   if (action.status === "pending" && !isExpiredLocally) {
     return (
-      <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-2">
+      <div className="mt-3 pt-3 border-t border-border flex items-center gap-2">
         <button
           onClick={() => void confirmAction(messageId)}
           disabled={busy}
-          className="bg-green-500/20 text-green-400 border border-green-500/30 px-3 py-1 rounded-lg text-xs font-semibold hover:bg-green-500/30 transition disabled:opacity-40"
+          className="bg-success-soft text-success border border-success/30 px-3 py-1 rounded-lg text-xs font-semibold hover:bg-success/22 transition disabled:opacity-40"
         >
           Confirm
         </button>
         <button
           onClick={() => void cancelAction(messageId)}
           disabled={busy}
-          className="bg-white/5 text-white/50 border border-white/10 px-3 py-1 rounded-lg text-xs font-semibold hover:bg-white/10 transition disabled:opacity-40"
+          className="bg-elevated text-fg-muted border border-border px-3 py-1 rounded-lg text-xs font-semibold hover:bg-elevated transition disabled:opacity-40"
         >
           Cancel
         </button>
@@ -68,26 +68,26 @@ function PendingActionCard({ messageId, action }: { messageId: string; action: P
 
   if (action.status === "confirming" || action.status === "cancelling") {
     return (
-      <p className="mt-3 pt-3 border-t border-white/10 text-white/30 text-xs animate-pulse">
+      <p className="mt-3 pt-3 border-t border-border text-fg-dim text-xs animate-pulse">
         {action.status === "confirming" ? "Confirming…" : "Cancelling…"}
       </p>
     );
   }
 
   if (action.status === "executed") {
-    return <p className="mt-3 pt-3 border-t border-white/10 text-green-400 text-xs">✓ {action.resultMessage ?? "Done."}</p>;
+    return <p className="mt-3 pt-3 border-t border-border text-success text-xs">✓ {action.resultMessage ?? "Done."}</p>;
   }
   if (action.status === "cancelled") {
-    return <p className="mt-3 pt-3 border-t border-white/10 text-white/30 text-xs">Cancelled — nothing was done.</p>;
+    return <p className="mt-3 pt-3 border-t border-border text-fg-dim text-xs">Cancelled — nothing was done.</p>;
   }
   if (action.status === "expired" || isExpiredLocally) {
-    return <p className="mt-3 pt-3 border-t border-white/10 text-yellow-400/80 text-xs">This action has expired. Ask again if you still want it done.</p>;
+    return <p className="mt-3 pt-3 border-t border-border text-yellow-400/80 text-xs">This action has expired. Ask again if you still want it done.</p>;
   }
   if (action.status === "unavailable") {
-    return <p className="mt-3 pt-3 border-t border-white/10 text-white/30 text-xs">This action is no longer available.</p>;
+    return <p className="mt-3 pt-3 border-t border-border text-fg-dim text-xs">This action is no longer available.</p>;
   }
   // "failed"
-  return <p className="mt-3 pt-3 border-t border-white/10 text-red-400 text-xs">✗ {action.resultMessage ?? "That didn't work."}</p>;
+  return <p className="mt-3 pt-3 border-t border-border text-danger text-xs">✗ {action.resultMessage ?? "That didn't work."}</p>;
 }
 
 // ── Conversation history overlay ────────────────────────────────────────
@@ -145,36 +145,36 @@ function HistoryOverlay({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col bg-black/95 backdrop-blur-sm">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 shrink-0">
-        <p className="text-white/70 text-xs font-semibold">History</p>
-        <button onClick={onClose} className="text-white/40 hover:text-white/70 text-xs px-2 py-1" aria-label="Close history">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+        <p className="text-fg-muted text-xs font-semibold">History</p>
+        <button onClick={onClose} className="text-fg-dim hover:text-fg-muted text-xs px-2 py-1" aria-label="Close history">
           ✕
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
-        {conversationsLoading && <p className="text-white/30 text-xs px-1 py-2 animate-pulse">Loading…</p>}
-        {conversationsError && <p className="text-red-400 text-xs px-1 py-2">{conversationsError}</p>}
-        {deleteError && <p className="text-red-400 text-xs px-1 py-2">{deleteError}</p>}
+        {conversationsLoading && <p className="text-fg-dim text-xs px-1 py-2 animate-pulse">Loading…</p>}
+        {conversationsError && <p className="text-danger text-xs px-1 py-2">{conversationsError}</p>}
+        {deleteError && <p className="text-danger text-xs px-1 py-2">{deleteError}</p>}
         {!conversationsLoading && !conversationsError && conversations.length === 0 && (
-          <p className="text-white/30 text-xs px-1 py-2">No conversations yet.</p>
+          <p className="text-fg-dim text-xs px-1 py-2">No conversations yet.</p>
         )}
 
         {groupByDate(conversations).map(([label, items]) => (
           <div key={label} className="mb-3">
-            <p className="text-white/25 text-[10px] uppercase tracking-wide px-1 mb-1">{label}</p>
+            <p className="text-fg-dim text-[10px] uppercase tracking-wide px-1 mb-1">{label}</p>
             <div className="flex flex-col gap-0.5">
               {items.map((c) => (
                 <div
                   key={c.id}
                   className={`group flex items-center gap-1 rounded-lg transition ${
-                    c.id === conversationId ? "bg-indigo-500/15" : "hover:bg-white/5"
+                    c.id === conversationId ? "bg-accent-soft" : "hover:bg-elevated"
                   }`}
                 >
                   <button
                     onClick={() => handleOpen(c.id)}
                     className={`flex-1 text-left px-2 py-1.5 text-xs truncate ${
-                      c.id === conversationId ? "text-indigo-300" : "text-white/60"
+                      c.id === conversationId ? "text-accent-hover" : "text-fg-muted"
                     }`}
                     title={c.title}
                   >
@@ -184,8 +184,8 @@ function HistoryOverlay({ onClose }: { onClose: () => void }) {
                     onClick={() => void handleDelete(c.id)}
                     className={`shrink-0 px-2 py-1.5 text-xs transition ${
                       confirmingId === c.id
-                        ? "text-red-400 opacity-100"
-                        : "text-white/20 opacity-0 group-hover:opacity-100 hover:text-red-400"
+                        ? "text-danger opacity-100"
+                        : "text-fg-dim opacity-0 group-hover:opacity-100 hover:text-danger"
                     }`}
                     title={confirmingId === c.id ? "Click again to confirm delete" : "Delete conversation"}
                     aria-label={confirmingId === c.id ? "Confirm delete conversation" : "Delete conversation"}
@@ -262,58 +262,58 @@ function MemoryOverlay({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col bg-black/95 backdrop-blur-sm">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 shrink-0">
-        <p className="text-white/70 text-xs font-semibold">What Copilot remembers</p>
-        <button onClick={onClose} className="text-white/40 hover:text-white/70 text-xs px-2 py-1" aria-label="Close memory">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+        <p className="text-fg-muted text-xs font-semibold">What Copilot remembers</p>
+        <button onClick={onClose} className="text-fg-dim hover:text-fg-muted text-xs px-2 py-1" aria-label="Close memory">
           ✕
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
-        {memoriesLoading && <p className="text-white/30 text-xs px-1 py-2 animate-pulse">Loading…</p>}
-        {memoriesError && <p className="text-red-400 text-xs px-1 py-2">{memoriesError}</p>}
+        {memoriesLoading && <p className="text-fg-dim text-xs px-1 py-2 animate-pulse">Loading…</p>}
+        {memoriesError && <p className="text-danger text-xs px-1 py-2">{memoriesError}</p>}
         {!memoriesLoading && !memoriesError && memories.length === 0 && (
-          <p className="text-white/30 text-xs px-1 py-2">
+          <p className="text-fg-dim text-xs px-1 py-2">
             Nothing saved yet — try saying "remember that I prefer XAUUSD".
           </p>
         )}
 
         {groupByType(memories).map(([type, items]) => (
           <div key={type} className="mb-3">
-            <p className="text-white/25 text-[10px] uppercase tracking-wide px-1 mb-1">{MEMORY_TYPE_LABEL[type]}</p>
+            <p className="text-fg-dim text-[10px] uppercase tracking-wide px-1 mb-1">{MEMORY_TYPE_LABEL[type]}</p>
             <div className="flex flex-col gap-1">
               {items.map((m) =>
                 editingId === m.id ? (
-                  <div key={m.id} className="flex flex-col gap-1.5 px-2 py-1.5 rounded-lg bg-white/5 text-xs">
+                  <div key={m.id} className="flex flex-col gap-1.5 px-2 py-1.5 rounded-lg bg-elevated text-xs">
                     <textarea
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
                       autoFocus
                       rows={2}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white/80 text-xs leading-relaxed placeholder-white/20 focus:outline-none focus:border-white/20 resize-none"
+                      className="w-full bg-elevated border border-border rounded-lg px-2 py-1 text-fg-muted text-xs leading-relaxed placeholder-white/20 focus:outline-none focus:border-border-strong resize-none"
                     />
-                    {editError && <p className="text-red-400 text-xs">{editError}</p>}
+                    {editError && <p className="text-danger text-xs">{editError}</p>}
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => void saveEdit(m.id)}
                         disabled={saving || !editValue.trim()}
-                        className="text-green-400 hover:text-green-300 transition disabled:opacity-40"
+                        className="text-success hover:text-success transition disabled:opacity-40"
                       >
                         {saving ? "Saving…" : "Save"}
                       </button>
-                      <button onClick={cancelEdit} disabled={saving} className="text-white/40 hover:text-white/60 transition disabled:opacity-40">
+                      <button onClick={cancelEdit} disabled={saving} className="text-fg-dim hover:text-fg-muted transition disabled:opacity-40">
                         Cancel
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <div key={m.id} className="group flex items-start justify-between gap-2 px-2 py-1.5 rounded-lg bg-white/5 text-xs text-white/70">
+                  <div key={m.id} className="group flex items-start justify-between gap-2 px-2 py-1.5 rounded-lg bg-elevated text-xs text-fg-muted">
                     <span className="leading-relaxed">{m.content}</span>
                     <div className="shrink-0 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition">
-                      <button onClick={() => startEdit(m.id, m.content)} className="text-white/30 hover:text-indigo-400 transition" title="Edit this">
+                      <button onClick={() => startEdit(m.id, m.content)} className="text-fg-dim hover:text-accent-hover transition" title="Edit this">
                         Edit
                       </button>
-                      <button onClick={() => void forgetMemory(m.id)} className="text-white/30 hover:text-red-400 transition" title="Forget this">
+                      <button onClick={() => void forgetMemory(m.id)} className="text-fg-dim hover:text-danger transition" title="Forget this">
                         Forget
                       </button>
                     </div>
@@ -352,12 +352,12 @@ export default function CopilotPanel() {
 
   return (
     <div className="relative flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 shrink-0">
-        <p className="text-white/70 text-xs font-semibold">Copilot</p>
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+        <p className="text-fg-muted text-xs font-semibold">Copilot</p>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setHistoryOpen(true)}
-            className="text-white/40 hover:text-white/70 text-xs w-6 h-6 flex items-center justify-center rounded-lg hover:bg-white/5 transition"
+            className="text-fg-dim hover:text-fg-muted text-xs w-6 h-6 flex items-center justify-center rounded-lg hover:bg-elevated transition"
             title="Conversation history"
             aria-label="Conversation history"
           >
@@ -365,7 +365,7 @@ export default function CopilotPanel() {
           </button>
           <button
             onClick={() => setMemoryOpen(true)}
-            className="text-white/40 hover:text-white/70 text-xs w-6 h-6 flex items-center justify-center rounded-lg hover:bg-white/5 transition"
+            className="text-fg-dim hover:text-fg-muted text-xs w-6 h-6 flex items-center justify-center rounded-lg hover:bg-elevated transition"
             title="What Copilot remembers"
             aria-label="What Copilot remembers"
           >
@@ -373,7 +373,7 @@ export default function CopilotPanel() {
           </button>
           <button
             onClick={startNewConversation}
-            className="text-white/40 hover:text-white/70 text-xs w-6 h-6 flex items-center justify-center rounded-lg hover:bg-white/5 transition"
+            className="text-fg-dim hover:text-fg-muted text-xs w-6 h-6 flex items-center justify-center rounded-lg hover:bg-elevated transition"
             title="New conversation"
             aria-label="New conversation"
           >
@@ -386,10 +386,10 @@ export default function CopilotPanel() {
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-center px-4">
             <p className="text-2xl">🤖</p>
-            <p className="text-white/30 text-xs">
+            <p className="text-fg-dim text-xs">
               Ask TCC Copilot about your trades, analytics, journal, watchlist, or risk score.
             </p>
-            <p className="text-white/15 text-xs">e.g. "Analyze my trading performance this month" or "Add XAUUSD to my watchlist"</p>
+            <p className="text-fg-dim text-xs">e.g. "Analyze my trading performance this month" or "Add XAUUSD to my watchlist"</p>
           </div>
         ) : (
           messages.map((m) => (
@@ -397,8 +397,8 @@ export default function CopilotPanel() {
               key={m.id}
               className={`glass border rounded-xl p-3 text-xs leading-relaxed whitespace-pre-wrap ${
                 m.role === "user"
-                  ? "border-green-500/15 bg-green-500/5 text-white/80 ml-6"
-                  : "border-white/5 text-white/70 mr-6"
+                  ? "border-success/30 bg-success-soft text-fg-muted ml-6"
+                  : "border-border text-fg-muted mr-6"
               }`}
             >
               {m.content}
@@ -413,31 +413,31 @@ export default function CopilotPanel() {
         )}
 
         {isLoading && (
-          <div className="glass border border-white/5 rounded-xl p-3 mr-6">
-            <p className="text-white/30 text-xs animate-pulse">Thinking…</p>
+          <div className="glass border border-border rounded-xl p-3 mr-6">
+            <p className="text-fg-dim text-xs animate-pulse">Thinking…</p>
           </div>
         )}
       </div>
 
       {error && (
         <div className="px-4 pb-2">
-          <p className="text-red-400 text-xs">{error}</p>
+          <p className="text-danger text-xs">{error}</p>
         </div>
       )}
 
-      <div className="p-3 border-t border-white/5 flex gap-2 shrink-0">
+      <div className="p-3 border-t border-border flex gap-2 shrink-0">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") handleSend(); }}
           disabled={isLoading}
           placeholder="Ask Copilot…"
-          className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs placeholder-white/20 focus:outline-none focus:border-white/20 disabled:opacity-50"
+          className="flex-1 bg-elevated border border-border rounded-lg px-3 py-1.5 text-fg text-xs placeholder-white/20 focus:outline-none focus:border-border-strong disabled:opacity-50"
         />
         <button
           onClick={handleSend}
           disabled={isLoading || !input.trim()}
-          className="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 hover:bg-indigo-500/30 transition"
+          className="bg-accent-soft text-accent-hover border border-accent/30 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 hover:bg-accent/22 transition"
         >
           Send
         </button>

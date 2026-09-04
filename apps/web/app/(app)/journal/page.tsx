@@ -31,18 +31,18 @@ function safePnlStr(val: number | undefined | null): string {
 // ── Badge Styles ──────────────────────────────────────────────────────────
 
 const resultBadge = (result?: string | null) => {
-  if (result === "WIN") return "text-green-400 bg-green-500/10 border-green-500/20";
-  if (result === "LOSS") return "text-red-400 bg-red-500/10 border-red-500/20";
-  return "text-white/40 bg-white/5 border-white/10";
+  if (result === "WIN") return "text-success bg-success-soft border-success/30";
+  if (result === "LOSS") return "text-danger bg-danger-soft border-danger/30";
+  return "text-fg-dim bg-elevated border-border";
 };
 
 const sideBadge = (side: string) =>
-  side === "BUY" ? "text-green-400" : "text-red-400";
+  side === "BUY" ? "text-success" : "text-danger";
 
 const reasonBadge = (reason?: string | null) => {
-  if (reason === "STOP_LOSS") return "text-red-400 bg-red-500/10";
-  if (reason === "TAKE_PROFIT") return "text-green-400 bg-green-500/10";
-  return "text-white/30 bg-white/5";
+  if (reason === "STOP_LOSS") return "text-danger bg-danger-soft";
+  if (reason === "TAKE_PROFIT") return "text-success bg-success-soft";
+  return "text-fg-dim bg-elevated";
 };
 
 const reasonLabel = (reason?: string | null) => {
@@ -57,7 +57,7 @@ const reasonLabel = (reason?: string | null) => {
 function EntryDetail({ entry, onClose }: { entry: JournalEntry; onClose: () => void }) {
   const { updateEntry, updateAiAnalysis, setAiLoading } = useJournalStore();
 
-  const pnlColor = (entry.netPnl ?? 0) >= 0 ? "text-green-400" : "text-red-400";
+  const pnlColor = (entry.netPnl ?? 0) >= 0 ? "text-success" : "text-danger";
 
   // Calls the backend's /copilot/analyze-journal (server-side GROQ_API_KEY,
   // via apps/api's copilotService) instead of hitting Groq directly from the
@@ -86,25 +86,25 @@ function EntryDetail({ entry, onClose }: { entry: JournalEntry; onClose: () => v
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-start justify-between p-4 border-b border-white/5 shrink-0">
+      <div className="flex items-start justify-between p-4 border-b border-border shrink-0">
         <div>
           <div className="flex items-center gap-2 mb-0.5">
             <span className={`font-bold text-sm ${sideBadge(entry.side)}`}>{entry.side}</span>
-            <span className="text-white font-semibold">{entry.displayName}</span>
+            <span className="text-fg font-semibold">{entry.displayName}</span>
             <span className={`text-xs px-2 py-0.5 rounded-full border capitalize ${resultBadge(entry.result)}`}>
               {entry.result ?? "—"}
             </span>
           </div>
-          <p className="text-white/30 text-xs">{formatDate(entry.closedAt || entry.openedAt || entry.createdAt)}</p>
+          <p className="text-fg-dim text-xs">{formatDate(entry.closedAt || entry.openedAt || entry.createdAt)}</p>
         </div>
-        <button onClick={onClose} className="text-white/30 hover:text-white transition text-xl w-7 h-7 flex items-center justify-center">✕</button>
+        <button onClick={onClose} className="text-fg-dim hover:text-fg transition text-xl w-7 h-7 flex items-center justify-center">✕</button>
       </div>
 
       <div className="flex-1 overflow-y-auto">
 
         {/* Trade Data */}
-        <div className="p-4 border-b border-white/5">
-          <p className="text-white/40 text-xs uppercase tracking-wider mb-3">Trade Data (Paper)</p>
+        <div className="p-4 border-b border-border">
+          <p className="text-fg-dim text-xs uppercase tracking-wider mb-3">Trade Data (Paper)</p>
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
             {[
               { label: "Lots", value: safeFmt(entry.lotSize) },
@@ -122,25 +122,25 @@ function EntryDetail({ entry, onClose }: { entry: JournalEntry; onClose: () => v
               { label: "Closed", value: entry.closedAt ? formatDate(entry.closedAt) : "—" },
             ].map(item => (
               <div key={item.label} className="flex justify-between gap-2">
-                <span className="text-white/30 shrink-0">{item.label}</span>
-                <span className={`${item.highlight ?? "text-white/70"} text-right`}>{item.value}</span>
+                <span className="text-fg-dim shrink-0">{item.label}</span>
+                <span className={`${item.highlight ?? "text-fg-muted"} text-right`}>{item.value}</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* User-fill fields */}
-        <div className="p-4 border-b border-white/5">
-          <p className="text-white/40 text-xs uppercase tracking-wider mb-3">Your Journal</p>
+        <div className="p-4 border-b border-border">
+          <p className="text-fg-dim text-xs uppercase tracking-wider mb-3">Your Journal</p>
           <div className="flex flex-col gap-3">
 
             {/* Emotion */}
             <div>
-              <p className="text-white/30 text-xs mb-1.5">Emotion during trade</p>
+              <p className="text-fg-dim text-xs mb-1.5">Emotion during trade</p>
               <div className="flex gap-1 flex-wrap">
                 {(["confident", "fearful", "greedy", "hesitant", "neutral", "frustrated"] as Emotion[]).map(em => (
                   <button key={em} onClick={() => updateEntry(entry.id, { emotion: em })}
-                    className={`text-xs px-2.5 py-1 rounded-lg border capitalize transition ${entry.emotion === em ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"}`}>
+                    className={`text-xs px-2.5 py-1 rounded-lg border capitalize transition ${entry.emotion === em ? "bg-success-soft text-success border-success/30" : "bg-elevated text-fg-dim border-border hover:border-border-strong"}`}>
                     {em}
                   </button>
                 ))}
@@ -149,11 +149,11 @@ function EntryDetail({ entry, onClose }: { entry: JournalEntry; onClose: () => v
 
             {/* Followed plan */}
             <div>
-              <p className="text-white/30 text-xs mb-1.5">Followed your plan?</p>
+              <p className="text-fg-dim text-xs mb-1.5">Followed your plan?</p>
               <div className="flex gap-2">
                 {[{ label: "✅ Yes", val: true }, { label: "❌ No", val: false }, { label: "— Not set", val: null }].map(opt => (
                   <button key={String(opt.val)} onClick={() => updateEntry(entry.id, { followedPlan: opt.val })}
-                    className={`flex-1 py-1.5 rounded-lg text-xs border transition ${entry.followedPlan === opt.val ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"}`}>
+                    className={`flex-1 py-1.5 rounded-lg text-xs border transition ${entry.followedPlan === opt.val ? "bg-success-soft text-success border-success/30" : "bg-elevated text-fg-dim border-border hover:border-border-strong"}`}>
                     {opt.label}
                   </button>
                 ))}
@@ -162,10 +162,10 @@ function EntryDetail({ entry, onClose }: { entry: JournalEntry; onClose: () => v
 
             {/* Strategy */}
             <div>
-              <p className="text-white/30 text-xs mb-1.5">Strategy used</p>
+              <p className="text-fg-dim text-xs mb-1.5">Strategy used</p>
               <select value={entry.strategy}
                 onChange={e => updateEntry(entry.id, { strategy: e.target.value as Strategy })}
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-white/25">
+                className="w-full bg-elevated border border-border rounded-lg px-3 py-1.5 text-fg text-xs focus:outline-none focus:border-border">
                 {["other", "smc", "ema_pullback", "breakout", "reversal", "scalp", "news", "fibonacci", "support_resistance"].map(s => (
                   <option key={s} value={s} className="bg-[#0a0a0f] capitalize">{s.replace(/_/g, " ").toUpperCase()}</option>
                 ))}
@@ -174,11 +174,11 @@ function EntryDetail({ entry, onClose }: { entry: JournalEntry; onClose: () => v
 
             {/* Entry quality */}
             <div>
-              <p className="text-white/30 text-xs mb-1.5">Entry quality</p>
+              <p className="text-fg-dim text-xs mb-1.5">Entry quality</p>
               <div className="flex gap-1 flex-wrap">
                 {(["good", "early", "late", "impulsive", "missed", "unknown"] as EntryQuality[]).map(q => (
                   <button key={q} onClick={() => updateEntry(entry.id, { entryQuality: q })}
-                    className={`text-xs px-2.5 py-1 rounded-lg border capitalize transition ${entry.entryQuality === q ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"}`}>
+                    className={`text-xs px-2.5 py-1 rounded-lg border capitalize transition ${entry.entryQuality === q ? "bg-success-soft text-success border-success/30" : "bg-elevated text-fg-dim border-border hover:border-border-strong"}`}>
                     {q}
                   </button>
                 ))}
@@ -193,8 +193,8 @@ function EntryDetail({ entry, onClose }: { entry: JournalEntry; onClose: () => v
               ].map(item => (
                 <div key={item.key}>
                   <div className="flex justify-between mb-1">
-                    <span className="text-white/30 text-xs">{item.label}</span>
-                    <span className="text-white/60 text-xs">{item.val}/10</span>
+                    <span className="text-fg-dim text-xs">{item.label}</span>
+                    <span className="text-fg-muted text-xs">{item.val}/10</span>
                   </div>
                   <input type="range" min={1} max={10} step={1} value={item.val}
                     onChange={e => updateEntry(entry.id, { [item.key]: parseInt(e.target.value) })}
@@ -205,38 +205,38 @@ function EntryDetail({ entry, onClose }: { entry: JournalEntry; onClose: () => v
 
             {/* Notes */}
             <div>
-              <p className="text-white/30 text-xs mb-1.5">Notes</p>
+              <p className="text-fg-dim text-xs mb-1.5">Notes</p>
               <textarea value={entry.notes} rows={3}
                 onChange={e => updateEntry(entry.id, { notes: e.target.value })}
                 placeholder="What was your thesis? What happened during the trade?"
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs resize-none focus:outline-none focus:border-white/25 placeholder-white/20" />
+                className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-fg text-xs resize-none focus:outline-none focus:border-border placeholder-white/20" />
             </div>
 
             {/* What went right/wrong */}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <p className="text-green-400/60 text-xs mb-1.5">What went right</p>
+                <p className="text-success/60 text-xs mb-1.5">What went right</p>
                 <textarea value={entry.whatWentRight} rows={2}
                   onChange={e => updateEntry(entry.id, { whatWentRight: e.target.value })}
                   placeholder="What worked?"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs resize-none focus:outline-none focus:border-green-500/20 placeholder-white/20" />
+                  className="w-full bg-elevated border border-border rounded-lg px-2 py-1.5 text-fg text-xs resize-none focus:outline-none focus:border-success/30 placeholder-white/20" />
               </div>
               <div>
-                <p className="text-red-400/60 text-xs mb-1.5">What went wrong</p>
+                <p className="text-danger/60 text-xs mb-1.5">What went wrong</p>
                 <textarea value={entry.whatWentWrong} rows={2}
                   onChange={e => updateEntry(entry.id, { whatWentWrong: e.target.value })}
                   placeholder="What failed?"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs resize-none focus:outline-none focus:border-red-500/20 placeholder-white/20" />
+                  className="w-full bg-elevated border border-border rounded-lg px-2 py-1.5 text-fg text-xs resize-none focus:outline-none focus:border-danger/30 placeholder-white/20" />
               </div>
             </div>
 
             {/* Lesson learned */}
             <div>
-              <p className="text-white/30 text-xs mb-1.5">Lesson learned</p>
+              <p className="text-fg-dim text-xs mb-1.5">Lesson learned</p>
               <textarea value={entry.lessonLearned} rows={2}
                 onChange={e => updateEntry(entry.id, { lessonLearned: e.target.value })}
                 placeholder="What would you do differently?"
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs resize-none focus:outline-none focus:border-white/25 placeholder-white/20" />
+                className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-fg text-xs resize-none focus:outline-none focus:border-border placeholder-white/20" />
             </div>
 
           </div>
@@ -245,20 +245,20 @@ function EntryDetail({ entry, onClose }: { entry: JournalEntry; onClose: () => v
         {/* AI Analysis */}
         <div className="p-4">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-white/40 text-xs uppercase tracking-wider">AI Coaching (Groq)</p>
+            <p className="text-fg-dim text-xs uppercase tracking-wider">AI Coaching (Groq)</p>
             <button
               onClick={handleGroqAnalysis}
               disabled={entry.aiLoading}
-              className="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-3 py-1 rounded-lg text-xs font-semibold disabled:opacity-50 hover:bg-indigo-500/30 transition">
+              className="bg-accent-soft text-accent-hover border border-accent/30 px-3 py-1 rounded-lg text-xs font-semibold disabled:opacity-50 hover:bg-accent/22 transition">
               {entry.aiLoading ? "Analyzing..." : "🤖 Get Feedback"}
             </button>
           </div>
           {entry.aiAnalysis ? (
-            <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-xl p-3">
-              <p className="text-white/70 text-xs leading-relaxed">{entry.aiAnalysis}</p>
+            <div className="bg-accent/5 border border-accent/30 rounded-xl p-3">
+              <p className="text-fg-muted text-xs leading-relaxed">{entry.aiAnalysis}</p>
             </div>
           ) : (
-            <p className="text-white/20 text-xs italic">
+            <p className="text-fg-dim text-xs italic">
               Click "Get Feedback" for AI coaching on your recent trading pattern.
             </p>
           )}
@@ -285,16 +285,16 @@ function EntryCard({
     ? displayDate.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
     : "—";
 
-  const pnlColor = (entry.netPnl ?? 0) >= 0 ? "text-green-400" : "text-red-400";
+  const pnlColor = (entry.netPnl ?? 0) >= 0 ? "text-success" : "text-danger";
 
   return (
     <div
       onClick={onClick}
-      className={`p-4 border-b border-white/5 cursor-pointer transition ${isSelected ? "bg-green-500/5 border-l-2 border-l-green-400" : "hover:bg-white/2 border-l-2 border-l-transparent"}`}>
+      className={`p-4 border-b border-border cursor-pointer transition ${isSelected ? "bg-success-soft border-l-2 border-l-green-400" : "hover:bg-elevated border-l-2 border-l-transparent"}`}>
       <div className="flex items-start justify-between mb-1.5">
         <div className="flex items-center gap-2">
           <span className={`text-xs font-bold ${sideBadge(entry.side)}`}>{entry.side}</span>
-          <span className="text-white text-sm font-semibold">{entry.displayName}</span>
+          <span className="text-fg text-sm font-semibold">{entry.displayName}</span>
           <span className={`text-xs px-1.5 py-0.5 rounded-full border capitalize ${resultBadge(entry.result)}`}>
             {entry.result ?? "—"}
           </span>
@@ -303,7 +303,7 @@ function EntryCard({
           <span className={`text-sm font-bold ${pnlColor}`}>{safePnlStr(entry.netPnl)}</span>
         )}
       </div>
-      <div className="flex items-center gap-3 text-xs text-white/30">
+      <div className="flex items-center gap-3 text-xs text-fg-dim">
         <span>{dateStr}</span>
         {entry.durationMs && <span>{formatDuration(entry.durationMs)}</span>}
         {entry.closeReason && (
@@ -312,11 +312,11 @@ function EntryCard({
           </span>
         )}
         {entry.emotion && entry.emotion !== "neutral" && (
-          <span className="text-white/20 capitalize">{entry.emotion}</span>
+          <span className="text-fg-dim capitalize">{entry.emotion}</span>
         )}
       </div>
       {entry.notes && entry.notes.trim().length > 0 && (
-        <p className="text-white/20 text-xs mt-1.5 line-clamp-1 italic">"{entry.notes.trim()}"</p>
+        <p className="text-fg-dim text-xs mt-1.5 line-clamp-1 italic">"{entry.notes.trim()}"</p>
       )}
     </div>
   );
@@ -377,7 +377,7 @@ export default function JournalPage() {
   if (!isInitialized || isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <p className="text-white/30 text-sm animate-pulse">Loading journal...</p>
+        <p className="text-fg-dim text-sm animate-pulse">Loading journal...</p>
       </div>
     );
   }
@@ -385,11 +385,11 @@ export default function JournalPage() {
   if (error) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3">
-        <p className="text-red-400 text-sm">{error}</p>
+        <p className="text-danger text-sm">{error}</p>
         <button
           type="button"
           onClick={() => useJournalStore.getState().init()}
-          className="text-white/40 text-xs border border-white/10 px-3 py-1 rounded hover:text-white/70 hover:border-white/20 transition"
+          className="text-fg-dim text-xs border border-border px-3 py-1 rounded hover:text-fg-muted hover:border-border-strong transition"
         >
           Retry
         </button>
@@ -401,25 +401,25 @@ export default function JournalPage() {
         <div className="flex flex-1 overflow-hidden">
 
           {/* Left — Entry list */}
-          <div className={`flex flex-col border-r border-white/5 ${selectedEntry ? "w-96 shrink-0" : "flex-1"}`}>
+          <div className={`flex flex-col border-r border-border ${selectedEntry ? "w-96 shrink-0" : "flex-1"}`}>
 
             {/* Header */}
-            <div className="p-4 border-b border-white/5 shrink-0">
+            <div className="p-4 border-b border-border shrink-0">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <h1 className="text-lg font-bold text-white">Trade Journal</h1>
-                  <p className="text-white/30 text-xs mt-0.5">
+                  <h1 className="text-lg font-bold text-fg">Trade Journal</h1>
+                  <p className="text-fg-dim text-xs mt-0.5">
                     {entries.length} entries from paper trades — auto-logged on close
                   </p>
                 </div>
                 {/* Summary badges */}
                 {closedCount > 0 && (
                   <div className="flex gap-2 text-xs">
-                    <span className={`px-2 py-1 rounded-lg font-semibold ${totalPnl >= 0 ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`}>
+                    <span className={`px-2 py-1 rounded-lg font-semibold ${totalPnl >= 0 ? "bg-success-soft text-success" : "bg-danger-soft text-danger"}`}>
                       {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
                     </span>
                     {winRate !== null && (
-                      <span className="bg-white/5 text-white/50 px-2 py-1 rounded-lg">{winRate}% WR</span>
+                      <span className="bg-elevated text-fg-muted px-2 py-1 rounded-lg">{winRate}% WR</span>
                     )}
                   </div>
                 )}
@@ -430,26 +430,26 @@ export default function JournalPage() {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search symbol, notes, strategy..."
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-white/25 placeholder-white/20 mb-2"
+                className="w-full bg-elevated border border-border rounded-lg px-3 py-1.5 text-fg text-xs focus:outline-none focus:border-border placeholder-white/20 mb-2"
               />
 
               {/* Filters row */}
               <div className="flex gap-2 flex-wrap items-center">
                 <select value={filterResult} onChange={e => setFilterResult(e.target.value as FilterResult)}
-                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs">
+                  className="bg-elevated border border-border rounded-lg px-2 py-1 text-fg text-xs">
                   <option value="all">All results</option>
                   <option value="WIN">Wins</option>
                   <option value="LOSS">Losses</option>
                   <option value="BREAKEVEN">Breakeven</option>
                 </select>
                 <select value={filterSide} onChange={e => setFilterSide(e.target.value as FilterSide)}
-                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs">
+                  className="bg-elevated border border-border rounded-lg px-2 py-1 text-fg text-xs">
                   <option value="all">All sides</option>
                   <option value="BUY">BUY</option>
                   <option value="SELL">SELL</option>
                 </select>
                 <select value={filterSession} onChange={e => setFilterSession(e.target.value as FilterSession)}
-                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs">
+                  className="bg-elevated border border-border rounded-lg px-2 py-1 text-fg text-xs">
                   <option value="all">All sessions</option>
                   <option value="london">London</option>
                   <option value="newyork">New York</option>
@@ -458,7 +458,7 @@ export default function JournalPage() {
                   <option value="unknown">Unknown</option>
                 </select>
                 <select value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}
-                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs">
+                  className="bg-elevated border border-border rounded-lg px-2 py-1 text-fg text-xs">
                   <option value="date_desc">Newest first</option>
                   <option value="date_asc">Oldest first</option>
                   <option value="pnl_desc">Best P&L first</option>
@@ -473,15 +473,15 @@ export default function JournalPage() {
                 <div className="flex items-center justify-center h-48">
                   <div className="text-center px-6">
                     <p className="text-3xl mb-3">📓</p>
-                    <p className="text-white/30 text-sm">No journal entries yet</p>
-                    <p className="text-white/15 text-xs mt-2 leading-relaxed">
+                    <p className="text-fg-dim text-sm">No journal entries yet</p>
+                    <p className="text-fg-dim text-xs mt-2 leading-relaxed">
                       Entries are automatically created when you close a paper trade from the Dashboard.
                     </p>
                   </div>
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="flex items-center justify-center h-32">
-                  <p className="text-white/20 text-sm">No entries match your filters</p>
+                  <p className="text-fg-dim text-sm">No entries match your filters</p>
                 </div>
               ) : (
                 filtered.map(entry => (

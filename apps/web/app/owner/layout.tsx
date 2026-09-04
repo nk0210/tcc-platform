@@ -45,7 +45,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
   if (!accessChecked) {
     return (
       <div className="min-h-screen bg-[#070710] flex items-center justify-center">
-        <p className="text-white/30 text-sm">Checking access...</p>
+        <p className="text-fg-dim text-sm">Checking access...</p>
       </div>
     );
   }
@@ -54,15 +54,15 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     return (
       <div className="min-h-screen bg-[#070710] flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-400 text-2xl font-bold mb-2">🔒 Access Denied</p>
-          <p className="text-white/40 text-sm mb-4">Owner/Admin access required</p>
-          <p className="text-white/20 text-xs mb-4">
+          <p className="text-danger text-2xl font-bold mb-2">🔒 Access Denied</p>
+          <p className="text-fg-dim text-sm mb-4">Owner/Admin access required</p>
+          <p className="text-fg-dim text-xs mb-4">
             To test locally (dev only):{" "}
-            <code className="bg-white/5 px-2 py-0.5 rounded">
+            <code className="bg-elevated px-2 py-0.5 rounded">
               localStorage.setItem('tcc:dev:role', 'OWNER')
             </code>
           </p>
-          <button onClick={() => router.push("/")} className="bg-white/5 text-white/40 px-4 py-2 rounded-lg text-sm border border-white/10">
+          <button onClick={() => router.push("/")} className="bg-elevated text-fg-dim px-4 py-2 rounded-lg text-sm border border-border">
             Return to Dashboard
           </button>
         </div>
@@ -72,16 +72,16 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#070710]">
-      <div className="w-56 shrink-0 bg-black/60 border-r border-red-500/10 flex flex-col">
-        <div className="p-4 border-b border-red-500/10">
+      <div className="w-56 shrink-0 bg-black/60 border-r border-danger/30 flex flex-col">
+        <div className="p-4 border-b border-danger/30">
           <div className="flex items-center gap-2 mb-1">
-            <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse" />
-            <p className="text-red-400 font-bold text-xs tracking-widest uppercase">TCC Owner</p>
+            <div className="w-2 h-2 bg-danger rounded-full animate-pulse" />
+            <p className="text-danger font-bold text-xs tracking-widest uppercase">TCC Owner</p>
           </div>
-          <p className="text-white/20 text-xs">Internal Control Center</p>
-          <div className="mt-2 text-xs text-white/30">
+          <p className="text-fg-dim text-xs">Internal Control Center</p>
+          <div className="mt-2 text-xs text-fg-dim">
             {user?.handle || "Admin"} ·{" "}
-            <span className="text-red-400/70 capitalize">{effectiveRole.replace(/_/g, " ")}</span>
+            <span className="text-danger/70 capitalize">{effectiveRole.replace(/_/g, " ")}</span>
           </div>
         </div>
 
@@ -98,13 +98,13 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
               <button key={item.path} onClick={() => router.push(item.path)}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-left transition relative ${
                   isActive
-                    ? "bg-red-500/10 text-red-400 border border-red-500/20"
-                    : "text-white/40 hover:text-white/70 hover:bg-white/5"
+                    ? "bg-danger-soft text-danger border border-danger/30"
+                    : "text-fg-dim hover:text-fg-muted hover:bg-elevated"
                 }`}>
                 <span className="text-base">{item.icon}</span>
                 <span className="flex-1">{item.label}</span>
                 {badge > 0 && (
-                  <span className={`text-xs font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1 ${isCritical ? "bg-red-500 text-white" : "bg-amber-500 text-black"}`}>
+                  <span className={`text-xs font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1 ${isCritical ? "bg-danger text-fg" : "bg-warning text-black"}`}>
                     {badge}
                   </span>
                 )}
@@ -113,8 +113,8 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           })}
         </div>
 
-        <div className="p-4 border-t border-white/5">
-          <button onClick={() => router.push("/")} className="w-full text-white/20 text-xs hover:text-white/50 transition text-left">
+        <div className="p-4 border-t border-border">
+          <button onClick={() => router.push("/")} className="w-full text-fg-dim text-xs hover:text-fg-muted transition text-left">
             ← Back to TCC App
           </button>
         </div>

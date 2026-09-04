@@ -92,13 +92,13 @@ const TABS: { key: ProfileTab; label: string }[] = [
 // ─────────────────────────────────────────────────────────────────────────
 
 const ROLE_CLASS: Record<UserRole, string> = {
-  NORMAL_USER: "text-white/50 bg-white/5 border-white/10",
+  NORMAL_USER: "text-fg-muted bg-elevated border-border",
   FOLLOWER_TRADER: "text-blue-400 bg-blue-500/10 border-blue-500/20",
-  VERIFIED_TRADER: "text-green-400 bg-green-500/10 border-green-500/20",
-  MASTER_TRADER: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+  VERIFIED_TRADER: "text-success bg-success-soft border-success/30",
+  MASTER_TRADER: "text-warning bg-warning-soft border-warning/30",
   MENTOR: "text-purple-400 bg-purple-500/10 border-purple-500/20",
-  ADMIN: "text-red-400 bg-red-500/10 border-red-500/20",
-  OWNER: "text-red-400 bg-red-500/15 border-red-500/30",
+  ADMIN: "text-danger bg-danger-soft border-danger/30",
+  OWNER: "text-danger bg-danger-soft border-danger/30",
 };
 
 const VIS_ICON: Record<string, string> = {
@@ -128,10 +128,10 @@ const POST_TYPE_LABEL: Record<CommunityPostType, string> = {
 
 function pnlClass(v: number): string {
   return v > 0.01
-    ? "text-green-400"
+    ? "text-success"
     : v < -0.01
-      ? "text-red-400"
-      : "text-white/40";
+      ? "text-danger"
+      : "text-fg-dim";
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -154,7 +154,7 @@ function Avatar({
 
   return (
     <div
-      className={`${sz[size]} rounded-2xl bg-gradient-to-br from-green-500/25 to-green-700/15 border-2 border-green-500/30 flex items-center justify-center text-green-300 font-bold shrink-0 select-none`}
+      className={`${sz[size]} rounded-2xl bg-gradient-to-br from-green-500/25 to-green-700/15 border-2 border-success/30 flex items-center justify-center text-success font-bold shrink-0 select-none`}
     >
       {name?.[0]?.toUpperCase() ?? "?"}
     </div>
@@ -180,7 +180,7 @@ function Chip({
 function StatCard({
   label,
   value,
-  color = "text-white",
+  color = "text-fg",
   sub,
 }: {
   label: string;
@@ -189,11 +189,11 @@ function StatCard({
   sub?: string;
 }) {
   return (
-    <div className="glass border border-white/5 rounded-xl p-4">
-      <p className="text-white/40 text-xs truncate mb-1">{label}</p>
+    <div className="glass border border-border rounded-xl p-4">
+      <p className="text-fg-dim text-xs truncate mb-1">{label}</p>
       <p className={`text-xl font-bold truncate ${color}`}>{value}</p>
       {sub && (
-        <p className="text-white/25 text-xs mt-0.5 leading-tight">{sub}</p>
+        <p className="text-fg-dim text-xs mt-0.5 leading-tight">{sub}</p>
       )}
     </div>
   );
@@ -211,9 +211,9 @@ function EmptyState({
   return (
     <div className="flex flex-col items-center justify-center py-14 gap-3 text-center">
       <span className="text-4xl">{icon}</span>
-      <p className="text-white/30 text-sm font-medium">{title}</p>
+      <p className="text-fg-dim text-sm font-medium">{title}</p>
       {sub && (
-        <p className="text-white/15 text-xs max-w-xs leading-relaxed">{sub}</p>
+        <p className="text-fg-dim text-xs max-w-xs leading-relaxed">{sub}</p>
       )}
     </div>
   );
@@ -225,12 +225,12 @@ function EmptyState({
 
 function PostCard({ post }: { post: CommunityPost }) {
   return (
-    <div className="glass border border-white/5 rounded-xl p-4 hover:border-white/10 transition">
+    <div className="glass border border-border rounded-xl p-4 hover:border-border transition">
       <div className="flex items-start justify-between gap-2 mb-2">
-        <Chip className="text-white/40 bg-white/5 border-white/10">
+        <Chip className="text-fg-dim bg-elevated border-border">
           {POST_TYPE_LABEL[post.type]}
         </Chip>
-        <span className="text-white/20 text-xs shrink-0">
+        <span className="text-fg-dim text-xs shrink-0">
           {new Date(post.createdAt).toLocaleDateString(undefined, {
             month: "short",
             day: "numeric",
@@ -238,22 +238,22 @@ function PostCard({ post }: { post: CommunityPost }) {
         </span>
       </div>
 
-      <p className="text-white/70 text-sm leading-relaxed line-clamp-3 mb-3">
+      <p className="text-fg-muted text-sm leading-relaxed line-clamp-3 mb-3">
         {post.content}
       </p>
 
       {post.tradeSnapshot && (
-        <div className="flex items-center gap-3 bg-white/3 border border-white/5 rounded-lg px-3 py-2 mb-3 text-xs">
+        <div className="flex items-center gap-3 bg-elevated border border-border rounded-lg px-3 py-2 mb-3 text-xs">
           <span
             className={`font-semibold ${
               post.tradeSnapshot.side === "BUY"
-                ? "text-green-400"
-                : "text-red-400"
+                ? "text-success"
+                : "text-danger"
             }`}
           >
             {post.tradeSnapshot.side}
           </span>
-          <span className="text-white/60">
+          <span className="text-fg-muted">
             {post.tradeSnapshot.displayName}
           </span>
           <span
@@ -267,17 +267,17 @@ function PostCard({ post }: { post: CommunityPost }) {
         </div>
       )}
 
-      <div className="flex items-center gap-4 text-xs text-white/25">
+      <div className="flex items-center gap-4 text-xs text-fg-dim">
         <span>❤ {post._count.likes}</span>
         <span>💬 {post._count.comments}</span>
         <span>🔁 {post._count.shares}</span>
         <span
           className={`ml-auto ${
             post.visibility === "PUBLIC"
-              ? "text-green-400/40"
+              ? "text-success/40"
               : post.visibility === "FOLLOWERS_ONLY"
-                ? "text-amber-400/40"
-                : "text-red-400/40"
+                ? "text-warning/40"
+                : "text-danger/40"
           }`}
         >
           {VIS_ICON[post.visibility]}
@@ -305,20 +305,20 @@ function CopyTradingTab({
 
   let bannerTitle = "👤 Not Participating";
   let bannerDesc = "You are not currently participating in copy trading.";
-  let bannerCls = "border-white/5";
+  let bannerCls = "border-border";
 
   if (isMaster) {
     bannerTitle = "🏆 Master Trader";
     bannerDesc =
       "You are an approved master trader. Paper-copy only — no live broker execution. Manage your master profile from Copy Trading.";
-    bannerCls = "border-amber-500/20 bg-amber-500/3";
+    bannerCls = "border-warning/30 bg-warning-soft";
   } else if (isFollower) {
     bannerTitle = `📡 Active Follower — ${myRelationships.length} copy relationship${
       myRelationships.length > 1 ? "s" : ""
     }`;
     bannerDesc =
       "Copying master traders in paper-copy mode. No real broker execution.";
-    bannerCls = "border-green-500/15 bg-green-500/3";
+    bannerCls = "border-success/30 bg-success-soft";
   } else if (myApplication) {
     const statusLabel: Record<string, string> = {
       DRAFT: "📝 Draft Application",
@@ -337,7 +337,7 @@ function CopyTradingTab({
       myApplication.status === "SUBMITTED" ||
       myApplication.status === "UNDER_REVIEW"
         ? "border-blue-500/15 bg-blue-500/3"
-        : "border-white/5";
+        : "border-border";
   }
 
   return (
@@ -346,17 +346,17 @@ function CopyTradingTab({
       <div className={`glass border rounded-xl p-5 ${bannerCls}`}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-white font-semibold text-sm mb-1">
+            <p className="text-fg font-semibold text-sm mb-1">
               {bannerTitle}
             </p>
-            <p className="text-white/40 text-xs leading-relaxed">
+            <p className="text-fg-dim text-xs leading-relaxed">
               {bannerDesc}
             </p>
           </div>
           <button
             type="button"
             onClick={() => onNavigate("/copy-trading")}
-            className="bg-white/5 hover:bg-white/10 text-white/50 border border-white/10 px-4 py-1.5 rounded-lg text-xs font-semibold transition shrink-0"
+            className="bg-elevated hover:bg-elevated text-fg-muted border border-border px-4 py-1.5 rounded-lg text-xs font-semibold transition shrink-0"
           >
             Open →
           </button>
@@ -365,8 +365,8 @@ function CopyTradingTab({
 
       {/* Application status detail */}
       {myApplication && !isMaster && (
-        <div className="glass border border-white/5 rounded-xl p-5">
-          <p className="text-white/40 text-xs uppercase tracking-wider mb-3">
+        <div className="glass border border-border rounded-xl p-5">
+          <p className="text-fg-dim text-xs uppercase tracking-wider mb-3">
             Application Details
           </p>
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs mb-3">
@@ -388,18 +388,18 @@ function CopyTradingTab({
               },
             ].map((item) => (
               <div key={item.l} className="flex gap-2">
-                <span className="text-white/30 w-24 shrink-0">{item.l}</span>
-                <span className="text-white/60 capitalize">{item.v}</span>
+                <span className="text-fg-dim w-24 shrink-0">{item.l}</span>
+                <span className="text-fg-muted capitalize">{item.v}</span>
               </div>
             ))}
           </div>
 
           {myApplication.rejectionReason && (
-            <div className="bg-red-500/5 border border-red-500/10 rounded-lg p-3 mt-2">
-              <p className="text-red-400 text-xs font-semibold mb-1">
+            <div className="bg-danger-soft border border-danger/30 rounded-lg p-3 mt-2">
+              <p className="text-danger text-xs font-semibold mb-1">
                 Rejection Reason
               </p>
-              <p className="text-white/50 text-xs">
+              <p className="text-fg-muted text-xs">
                 {myApplication.rejectionReason}
               </p>
             </div>
@@ -410,7 +410,7 @@ function CopyTradingTab({
               <p className="text-orange-400 text-xs font-semibold mb-1">
                 Info Requested
               </p>
-              <p className="text-white/50 text-xs">
+              <p className="text-fg-muted text-xs">
                 {myApplication.moreInfoRequest}
               </p>
             </div>
@@ -420,31 +420,31 @@ function CopyTradingTab({
 
       {/* Active copy relationships */}
       {myRelationships.length > 0 && (
-        <div className="glass border border-white/5 rounded-xl p-5">
-          <p className="text-white/40 text-xs uppercase tracking-wider mb-3">
+        <div className="glass border border-border rounded-xl p-5">
+          <p className="text-fg-dim text-xs uppercase tracking-wider mb-3">
             Active Copy Relationships ({myRelationships.length})
           </p>
 
           {myRelationships.map((rel) => (
             <div
               key={rel.id}
-              className="flex items-center justify-between py-2.5 border-b border-white/5 last:border-0"
+              className="flex items-center justify-between py-2.5 border-b border-border last:border-0"
             >
               <div>
-                <p className="text-white/70 text-sm font-medium">
+                <p className="text-fg-muted text-sm font-medium">
                   {rel.masterDisplayName}
                 </p>
-                <p className="text-white/30 text-xs">
+                <p className="text-fg-dim text-xs">
                   {rel.mode.toLowerCase().replace(/_/g, " ")} · {rel.status.toLowerCase()}
                 </p>
               </div>
               <Chip
                 className={
                   rel.status === "ACTIVE"
-                    ? "text-green-400 bg-green-500/10 border-green-500/20"
+                    ? "text-success bg-success-soft border-success/30"
                     : rel.status === "PAUSED"
-                      ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
-                      : "text-white/30 bg-white/5 border-white/10"
+                      ? "text-warning bg-warning-soft border-warning/30"
+                      : "text-fg-dim bg-elevated border-border"
                 }
               >
                 {rel.status.toLowerCase()}
@@ -452,7 +452,7 @@ function CopyTradingTab({
             </div>
           ))}
 
-          <p className="text-white/15 text-xs mt-3">
+          <p className="text-fg-dim text-xs mt-3">
             All copy relationships are paper-copy only. No real broker orders
             placed.
           </p>
@@ -468,8 +468,8 @@ function CopyTradingTab({
         />
       )}
 
-      <div className="p-3 bg-white/2 border border-white/5 rounded-xl">
-        <p className="text-white/15 text-xs leading-relaxed">
+      <div className="p-3 bg-elevated border border-border rounded-xl">
+        <p className="text-fg-dim text-xs leading-relaxed">
           Copy trading is paper-copy mode only. No real money involved.
           Phase Alpha will require verified broker connections and
           real-time execution.
@@ -556,9 +556,9 @@ function SettingsTab({ profile }: { profile: UserProfile }) {
   };
 
   const inputCls =
-    "w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-white/30 placeholder-white/20 transition";
+    "w-full bg-elevated border border-border rounded-lg px-3 py-2 text-fg text-sm focus:outline-none focus:border-border-strong placeholder-white/20 transition";
 
-  const sectionCls = "glass border border-white/5 rounded-xl p-5";
+  const sectionCls = "glass border border-border rounded-xl p-5";
 
   const VisOption = ({
     value,
@@ -574,8 +574,8 @@ function SettingsTab({ profile }: { profile: UserProfile }) {
       onClick={() => onChange(value)}
       className={`w-full text-left px-3 py-2 rounded-lg text-xs border mb-1 transition ${
         current === value
-          ? "bg-green-500/20 text-green-400 border-green-500/30"
-          : "bg-white/5 text-white/50 border-white/10 hover:border-white/20"
+          ? "bg-success-soft text-success border-success/30"
+          : "bg-elevated text-fg-muted border-border hover:border-border-strong"
       }`}
     >
       {VIS_ICON[value]} {VIS_LABEL[value]}
@@ -586,12 +586,12 @@ function SettingsTab({ profile }: { profile: UserProfile }) {
     <div className="flex flex-col gap-5 max-w-2xl">
       {/* ── Basic info ── */}
       <div className={sectionCls}>
-        <p className="text-white/50 text-xs uppercase tracking-wider mb-4">
+        <p className="text-fg-muted text-xs uppercase tracking-wider mb-4">
           Basic Information
         </p>
         <div className="flex flex-col gap-3">
           <div>
-            <p className="text-white/40 text-xs mb-1">Display Name</p>
+            <p className="text-fg-dim text-xs mb-1">Display Name</p>
             <input
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
@@ -600,7 +600,7 @@ function SettingsTab({ profile }: { profile: UserProfile }) {
           </div>
 
           <div>
-            <p className="text-white/40 text-xs mb-1">Bio</p>
+            <p className="text-fg-dim text-xs mb-1">Bio</p>
             <textarea
               value={bio}
               rows={3}
@@ -611,7 +611,7 @@ function SettingsTab({ profile }: { profile: UserProfile }) {
           </div>
 
           <div>
-            <p className="text-white/40 text-xs mb-1">Location</p>
+            <p className="text-fg-dim text-xs mb-1">Location</p>
             <input
               value={location}
               onChange={(e) => setLocation(e.target.value)}
@@ -624,12 +624,12 @@ function SettingsTab({ profile }: { profile: UserProfile }) {
 
       {/* ── Visibility ── */}
       <div className={sectionCls}>
-        <p className="text-white/50 text-xs uppercase tracking-wider mb-4">
+        <p className="text-fg-muted text-xs uppercase tracking-wider mb-4">
           Privacy & Visibility
         </p>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <p className="text-white/40 text-xs mb-1.5">Profile</p>
+            <p className="text-fg-dim text-xs mb-1.5">Profile</p>
             {(["PUBLIC", "FOLLOWERS_ONLY", "PRIVATE"] as Visibility[]).map(
               (v) => (
                 <VisOption
@@ -643,7 +643,7 @@ function SettingsTab({ profile }: { profile: UserProfile }) {
           </div>
 
           <div>
-            <p className="text-white/40 text-xs mb-1.5">Portfolio</p>
+            <p className="text-fg-dim text-xs mb-1.5">Portfolio</p>
             {(["PUBLIC", "FOLLOWERS_ONLY", "PRIVATE"] as Visibility[]).map(
               (v) => (
                 <VisOption
@@ -660,17 +660,17 @@ function SettingsTab({ profile }: { profile: UserProfile }) {
 
       {/* ── Trading identity ── */}
       <div className={sectionCls}>
-        <p className="text-white/50 text-xs uppercase tracking-wider mb-1">
+        <p className="text-fg-muted text-xs uppercase tracking-wider mb-1">
           Trading Identity
         </p>
-        <p className="text-white/20 text-xs mb-4 leading-relaxed">
+        <p className="text-fg-dim text-xs mb-4 leading-relaxed">
           Flexible — list as many markets, symbols, strategies, or sessions as
           you trade. Use comma-separated values.
         </p>
 
         <div className="flex flex-col gap-3">
           <div>
-            <p className="text-white/40 text-xs mb-1.5">Experience Level</p>
+            <p className="text-fg-dim text-xs mb-1.5">Experience Level</p>
             <div className="flex flex-wrap gap-1.5">
               {(
                 [null, "BEGINNER", "INTERMEDIATE", "ADVANCED", "PROFESSIONAL"] as const
@@ -681,8 +681,8 @@ function SettingsTab({ profile }: { profile: UserProfile }) {
                   onClick={() => setExperienceLevel(lvl)}
                   className={`px-3 py-1.5 rounded-lg text-xs border capitalize transition ${
                     experienceLevel === lvl
-                      ? "bg-green-500/20 text-green-400 border-green-500/30"
-                      : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"
+                      ? "bg-success-soft text-success border-success/30"
+                      : "bg-elevated text-fg-dim border-border hover:border-border-strong"
                   }`}
                 >
                   {lvl === null ? "Not set" : lvl.toLowerCase()}
@@ -718,9 +718,9 @@ function SettingsTab({ profile }: { profile: UserProfile }) {
             },
           ].map(({ label, value, set, ph }) => (
             <div key={label}>
-              <p className="text-white/40 text-xs mb-1">
+              <p className="text-fg-dim text-xs mb-1">
                 {label}
-                <span className="text-white/20 ml-1">(comma separated)</span>
+                <span className="text-fg-dim ml-1">(comma separated)</span>
               </p>
               <input
                 value={value}
@@ -735,9 +735,9 @@ function SettingsTab({ profile }: { profile: UserProfile }) {
 
       {/* ── Social links ── */}
       <div className={sectionCls}>
-        <p className="text-white/50 text-xs uppercase tracking-wider mb-4">
+        <p className="text-fg-muted text-xs uppercase tracking-wider mb-4">
           Social Links{" "}
-          <span className="text-white/20 normal-case">(optional)</span>
+          <span className="text-fg-dim normal-case">(optional)</span>
         </p>
 
         <div className="flex flex-col gap-3">
@@ -768,7 +768,7 @@ function SettingsTab({ profile }: { profile: UserProfile }) {
             },
           ].map(({ label, value, set, ph }) => (
             <div key={label}>
-              <p className="text-white/40 text-xs mb-1">{label}</p>
+              <p className="text-fg-dim text-xs mb-1">{label}</p>
               <input
                 value={value}
                 onChange={(e) => set(e.target.value)}
@@ -784,7 +784,7 @@ function SettingsTab({ profile }: { profile: UserProfile }) {
         type="button"
         onClick={handleSave}
         disabled={saving}
-        className="bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 py-3 rounded-xl text-sm font-semibold transition disabled:opacity-40"
+        className="bg-success-soft hover:bg-success/22 text-success border border-success/30 py-3 rounded-xl text-sm font-semibold transition disabled:opacity-40"
       >
         {saved ? "✓ Saved!" : saving ? "Saving..." : "Save Changes"}
       </button>
@@ -940,7 +940,7 @@ export default function ProfilePage() {
   if (!mounted || !user || !profileInitialized || profileLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <p className="text-white/30 text-sm animate-pulse">
+        <p className="text-fg-dim text-sm animate-pulse">
           {!user ? "Redirecting to login..." : "Loading profile..."}
         </p>
       </div>
@@ -954,13 +954,13 @@ export default function ProfilePage() {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-400 text-sm mb-3">
+          <p className="text-danger text-sm mb-3">
             {profileError ?? "Failed to load profile."}
           </p>
           <button
             type="button"
             onClick={() => useProfileStore.setState({ isInitialized: false })}
-            className="bg-white/5 hover:bg-white/10 text-white/60 border border-white/10 px-4 py-2 rounded-lg text-xs font-semibold transition"
+            className="bg-elevated hover:bg-elevated text-fg-muted border border-border px-4 py-2 rounded-lg text-xs font-semibold transition"
           >
             Retry
           </button>
@@ -989,7 +989,7 @@ export default function ProfilePage() {
           {/* ════════════════════════════════════════════════
               PROFILE HEADER
           ════════════════════════════════════════════════ */}
-          <div className="glass border-b border-white/5 px-6 py-5">
+          <div className="glass border-b border-border px-6 py-5">
             <div className="flex items-start gap-6 flex-wrap">
               <Avatar
                 name={myProfile.displayName || myProfile.handle}
@@ -1000,14 +1000,14 @@ export default function ProfilePage() {
                 {/* Name row */}
                 <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
                   <div>
-                    <h1 className="text-2xl font-bold text-white leading-tight">
+                    <h1 className="text-2xl font-bold text-fg leading-tight">
                       {myProfile.displayName || myProfile.handle}
                     </h1>
-                    <p className="text-white/40 text-sm">
+                    <p className="text-fg-dim text-sm">
                       @{myProfile.handle}
                     </p>
                     {myProfile.tccId && (
-                      <p className="text-green-400/60 font-mono text-xs mt-0.5">
+                      <p className="text-success/60 font-mono text-xs mt-0.5">
                         {myProfile.tccId}
                       </p>
                     )}
@@ -1017,10 +1017,10 @@ export default function ProfilePage() {
                     <Chip
                       className={`${
                         myProfile.profileVisibility === "PUBLIC"
-                          ? "text-green-400/70 border-green-500/20"
+                          ? "text-success/70 border-success/30"
                           : myProfile.profileVisibility === "PRIVATE"
-                            ? "text-red-400/60 border-red-500/20"
-                            : "text-amber-400/60 border-amber-500/20"
+                            ? "text-danger/60 border-danger/30"
+                            : "text-warning/60 border-warning/30"
                       } bg-transparent`}
                     >
                       {VIS_ICON[myProfile.profileVisibility]} Profile{" "}
@@ -1030,7 +1030,7 @@ export default function ProfilePage() {
                     <button
                       type="button"
                       onClick={() => setActiveTab("settings")}
-                      className="bg-white/5 hover:bg-white/10 text-white/60 border border-white/10 px-4 py-1.5 rounded-lg text-xs font-semibold transition"
+                      className="bg-elevated hover:bg-elevated text-fg-muted border border-border px-4 py-1.5 rounded-lg text-xs font-semibold transition"
                     >
                       ✏ Edit Profile
                     </button>
@@ -1039,17 +1039,17 @@ export default function ProfilePage() {
 
                 {/* Bio */}
                 {myProfile.bio ? (
-                  <p className="text-white/55 text-sm mt-2 leading-relaxed max-w-2xl">
+                  <p className="text-fg-dim5 text-sm mt-2 leading-relaxed max-w-2xl">
                     {myProfile.bio}
                   </p>
                 ) : (
-                  <p className="text-white/20 text-sm mt-2 italic">
+                  <p className="text-fg-dim text-sm mt-2 italic">
                     No bio yet — add one in Settings
                   </p>
                 )}
 
                 {/* Meta row */}
-                <div className="flex flex-wrap gap-4 mt-2 text-xs text-white/40">
+                <div className="flex flex-wrap gap-4 mt-2 text-xs text-fg-dim">
                   {myProfile.location && <span>📍 {myProfile.location}</span>}
 
                   <span>
@@ -1082,7 +1082,7 @@ export default function ProfilePage() {
                       href={myProfile.socialLinks.website}
                       target="_blank"
                       rel="noreferrer"
-                      className="hover:text-white transition"
+                      className="hover:text-fg transition"
                     >
                       🌐 Website
                     </a>
@@ -1115,7 +1115,7 @@ export default function ProfilePage() {
                       }
                       target="_blank"
                       rel="noreferrer"
-                      className="hover:text-red-400 transition"
+                      className="hover:text-danger transition"
                     >
                       YouTube
                     </a>
@@ -1130,25 +1130,25 @@ export default function ProfilePage() {
                     </Chip>
                   ))}
 
-                  <div className="h-4 w-px bg-white/10 mx-1" />
+                  <div className="h-4 w-px bg-elevated mx-1" />
 
-                  <div className="flex gap-4 text-xs text-white/50">
+                  <div className="flex gap-4 text-xs text-fg-muted">
                     <span>
-                      <span className="text-white font-bold">
+                      <span className="text-fg font-bold">
                         {myProfile._count?.followedBy ?? 0}
                       </span>{" "}
                       followers
                     </span>
 
                     <span>
-                      <span className="text-white font-bold">
+                      <span className="text-fg font-bold">
                         {myProfile._count?.following ?? 0}
                       </span>{" "}
                       following
                     </span>
 
                     <span>
-                      <span className="text-white font-bold">
+                      <span className="text-fg font-bold">
                         {myPosts.length}
                       </span>{" "}
                       posts
@@ -1167,8 +1167,8 @@ export default function ProfilePage() {
                   onClick={() => setActiveTab(tab.key)}
                   className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                     activeTab === tab.key
-                      ? "bg-green-500/20 text-green-400"
-                      : "text-white/40 hover:text-white/60 hover:bg-white/5"
+                      ? "bg-success-soft text-success"
+                      : "text-fg-dim hover:text-fg-muted hover:bg-elevated"
                   }`}
                 >
                   {tab.label}
@@ -1185,18 +1185,18 @@ export default function ProfilePage() {
             {activeTab === "overview" && (
               <div className="flex flex-col gap-6">
                 {/* Trading identity */}
-                <div className="glass border border-white/5 rounded-xl p-5">
-                  <p className="text-white/40 text-xs uppercase tracking-wider mb-4">
+                <div className="glass border border-border rounded-xl p-5">
+                  <p className="text-fg-dim text-xs uppercase tracking-wider mb-4">
                     Trading Identity
                   </p>
 
                   {!hasIdentity ? (
-                    <p className="text-white/20 text-sm">
+                    <p className="text-fg-dim text-sm">
                       No trading identity set yet.{" "}
                       <button
                         type="button"
                         onClick={() => setActiveTab("settings")}
-                        className="text-green-400/60 hover:text-green-400 underline transition"
+                        className="text-success/60 hover:text-success underline transition"
                       >
                         Add in Settings →
                       </button>
@@ -1205,10 +1205,10 @@ export default function ProfilePage() {
                     <div className="flex flex-col gap-3">
                       {myProfile.experienceLevel && (
                         <div className="flex items-start gap-3">
-                          <span className="text-white/30 text-xs w-28 shrink-0 pt-0.5">
+                          <span className="text-fg-dim text-xs w-28 shrink-0 pt-0.5">
                             Experience
                           </span>
-                          <Chip className="text-white/70 bg-white/5 border-white/10 capitalize">
+                          <Chip className="text-fg-muted bg-elevated border-border capitalize">
                             {myProfile.experienceLevel.toLowerCase()}
                           </Chip>
                         </div>
@@ -1223,14 +1223,14 @@ export default function ProfilePage() {
                         .filter(({ items }) => items.length > 0)
                         .map(({ label, items }) => (
                           <div key={label} className="flex items-start gap-3">
-                            <span className="text-white/30 text-xs w-28 shrink-0 pt-0.5">
+                            <span className="text-fg-dim text-xs w-28 shrink-0 pt-0.5">
                               {label}
                             </span>
                             <div className="flex flex-wrap gap-1.5">
                               {items.map((item) => (
                                 <Chip
                                   key={item}
-                                  className="text-white/60 bg-white/5 border-white/10 capitalize"
+                                  className="text-fg-muted bg-elevated border-border capitalize"
                                 >
                                   {item}
                                 </Chip>
@@ -1263,8 +1263,8 @@ export default function ProfilePage() {
                           value={`${perf.winRate}%`}
                           color={
                             perf.winRate >= 50
-                              ? "text-green-400"
-                              : "text-red-400"
+                              ? "text-success"
+                              : "text-danger"
                           }
                           sub={`${perf.wins}W · ${perf.losses}L`}
                         />
@@ -1276,8 +1276,8 @@ export default function ProfilePage() {
                           }`}
                           color={
                             perf.netPnl >= 0
-                              ? "text-green-400"
-                              : "text-red-400"
+                              ? "text-success"
+                              : "text-danger"
                           }
                           sub="paper only"
                         />
@@ -1291,10 +1291,10 @@ export default function ProfilePage() {
                           }
                           color={
                             perf.profitFactor >= 1.5
-                              ? "text-green-400"
+                              ? "text-success"
                               : perf.profitFactor >= 1
-                                ? "text-amber-400"
-                                : "text-red-400"
+                                ? "text-warning"
+                                : "text-danger"
                           }
                         />
 
@@ -1311,10 +1311,10 @@ export default function ProfilePage() {
                         value={`${disciplineScore.total}/100`}
                         color={
                           disciplineScore.total >= 70
-                            ? "text-green-400"
+                            ? "text-success"
                             : disciplineScore.total >= 50
-                              ? "text-amber-400"
-                              : "text-red-400"
+                              ? "text-warning"
+                              : "text-danger"
                         }
                         sub={`Grade ${disciplineScore.grade}`}
                       />
@@ -1326,18 +1326,18 @@ export default function ProfilePage() {
                 {closedTrades.length > 0 && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {bestSymbol && (
-                      <div className="glass border border-green-500/10 bg-green-500/3 rounded-xl p-4">
-                        <p className="text-white/40 text-xs mb-2">
+                      <div className="glass border border-success/30 bg-success-soft rounded-xl p-4">
+                        <p className="text-fg-dim text-xs mb-2">
                           Best Symbol (Paper)
                         </p>
-                        <p className="text-white font-semibold">
+                        <p className="text-fg font-semibold">
                           {bestSymbol.displayName}
                         </p>
                         <p
                           className={`text-sm font-bold mt-1 ${
                             bestSymbol.netPnl >= 0
-                              ? "text-green-400"
-                              : "text-red-400"
+                              ? "text-success"
+                              : "text-danger"
                           }`}
                         >
                           {bestSymbol.netPnl >= 0 ? "+" : ""}$
@@ -1348,14 +1348,14 @@ export default function ProfilePage() {
                     )}
 
                     {mostTraded && (
-                      <div className="glass border border-white/5 rounded-xl p-4">
-                        <p className="text-white/40 text-xs mb-2">
+                      <div className="glass border border-border rounded-xl p-4">
+                        <p className="text-fg-dim text-xs mb-2">
                           Most Traded
                         </p>
-                        <p className="text-white font-semibold">
+                        <p className="text-fg font-semibold">
                           {mostTraded.displayName}
                         </p>
-                        <p className="text-white/50 text-sm mt-1">
+                        <p className="text-fg-muted text-sm mt-1">
                           {mostTraded.trades} trade
                           {mostTraded.trades !== 1 ? "s" : ""}
                         </p>
@@ -1363,18 +1363,18 @@ export default function ProfilePage() {
                     )}
 
                     {bestSession && (
-                      <div className="glass border border-white/5 rounded-xl p-4">
-                        <p className="text-white/40 text-xs mb-2">
+                      <div className="glass border border-border rounded-xl p-4">
+                        <p className="text-fg-dim text-xs mb-2">
                           Best Session (Paper)
                         </p>
-                        <p className="text-white font-semibold capitalize">
+                        <p className="text-fg font-semibold capitalize">
                           {bestSession.session}
                         </p>
                         <p
                           className={`text-sm font-bold mt-1 ${
                             bestSession.netPnl >= 0
-                              ? "text-green-400"
-                              : "text-red-400"
+                              ? "text-success"
+                              : "text-danger"
                           }`}
                         >
                           {bestSession.netPnl >= 0 ? "+" : ""}$
@@ -1388,41 +1388,41 @@ export default function ProfilePage() {
 
                 {/* Academy + strategy summary */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="glass border border-white/5 rounded-xl p-4">
-                    <p className="text-white/40 text-xs mb-2">Academy</p>
+                  <div className="glass border border-border rounded-xl p-4">
+                    <p className="text-fg-dim text-xs mb-2">Academy</p>
 
                     {enrolledCourseIds.length === 0 ? (
-                      <p className="text-white/20 text-sm">
+                      <p className="text-fg-dim text-sm">
                         Not enrolled in any courses yet.
                       </p>
                     ) : (
                       <>
-                        <p className="text-white text-sm">
+                        <p className="text-fg text-sm">
                           {completedCourses.length}/{enrolledCourseIds.length}{" "}
                           courses completed
                         </p>
-                        <p className="text-white/30 text-xs mt-0.5">
+                        <p className="text-fg-dim text-xs mt-0.5">
                           Certificates coming soon
                         </p>
                       </>
                     )}
                   </div>
 
-                  <div className="glass border border-white/5 rounded-xl p-4">
-                    <p className="text-white/40 text-xs mb-2">Strategies</p>
+                  <div className="glass border border-border rounded-xl p-4">
+                    <p className="text-fg-dim text-xs mb-2">Strategies</p>
 
                     {publishedStrategies.length === 0 &&
                     savedStrategyCount === 0 ? (
-                      <p className="text-white/20 text-sm">
+                      <p className="text-fg-dim text-sm">
                         No strategies saved or published yet.
                       </p>
                     ) : (
                       <>
-                        <p className="text-white text-sm">
+                        <p className="text-fg text-sm">
                           {publishedStrategies.length} published ·{" "}
                           {savedStrategyCount} saved
                         </p>
-                        <p className="text-white/30 text-xs mt-0.5">
+                        <p className="text-fg-dim text-xs mt-0.5">
                           &nbsp;
                         </p>
                       </>
@@ -1431,8 +1431,8 @@ export default function ProfilePage() {
                 </div>
 
                 {/* Disclaimer */}
-                <div className="p-3 bg-white/2 border border-white/5 rounded-xl">
-                  <p className="text-white/15 text-xs leading-relaxed">
+                <div className="p-3 bg-elevated border border-border rounded-xl">
+                  <p className="text-fg-dim text-xs leading-relaxed">
                     All stats are derived from your paper trading data. Not
                     verified. Not broker-connected.
                   </p>
@@ -1445,8 +1445,8 @@ export default function ProfilePage() {
               <div className="flex flex-col gap-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-bold text-white">Portfolio</h2>
-                    <p className="text-white/30 text-xs mt-0.5">
+                    <h2 className="text-lg font-bold text-fg">Portfolio</h2>
+                    <p className="text-fg-dim text-xs mt-0.5">
                       Paper trading performance
                     </p>
                   </div>
@@ -1454,10 +1454,10 @@ export default function ProfilePage() {
                   <Chip
                     className={`${
                       myProfile.portfolioVisibility === "PUBLIC"
-                        ? "text-green-400/70 border-green-500/20"
+                        ? "text-success/70 border-success/30"
                         : myProfile.portfolioVisibility === "PRIVATE"
-                          ? "text-red-400/60 border-red-500/20"
-                          : "text-amber-400/60 border-amber-500/20"
+                          ? "text-danger/60 border-danger/30"
+                          : "text-warning/60 border-warning/30"
                     } bg-transparent`}
                   >
                     {VIS_ICON[myProfile.portfolioVisibility]} Portfolio{" "}
@@ -1478,15 +1478,15 @@ export default function ProfilePage() {
                         {
                           label: "Total Trades",
                           value: perf.totalTrades,
-                          color: "text-white",
+                          color: "text-fg",
                         },
                         {
                           label: "Win Rate",
                           value: `${perf.winRate}%`,
                           color:
                             perf.winRate >= 50
-                              ? "text-green-400"
-                              : "text-red-400",
+                              ? "text-success"
+                              : "text-danger",
                           sub: `${perf.wins}W · ${perf.losses}L`,
                         },
                         {
@@ -1496,8 +1496,8 @@ export default function ProfilePage() {
                           }`,
                           color:
                             perf.netPnl >= 0
-                              ? "text-green-400"
-                              : "text-red-400",
+                              ? "text-success"
+                              : "text-danger",
                           sub: "after 0.01% commission",
                         },
                         {
@@ -1507,8 +1507,8 @@ export default function ProfilePage() {
                           }%`,
                           color:
                             perf.roiPercent >= 0
-                              ? "text-green-400"
-                              : "text-red-400",
+                              ? "text-success"
+                              : "text-danger",
                           sub: `from $${PAPER_INITIAL_BALANCE.toLocaleString()}`,
                         },
                         {
@@ -1519,47 +1519,47 @@ export default function ProfilePage() {
                               : perf.profitFactor,
                           color:
                             perf.profitFactor >= 1.5
-                              ? "text-green-400"
+                              ? "text-success"
                               : perf.profitFactor >= 1
-                                ? "text-amber-400"
-                                : "text-red-400",
+                                ? "text-warning"
+                                : "text-danger",
                         },
                         {
                           label: "Avg Duration",
                           value: formatDuration(perf.avgDurationMs),
-                          color: "text-white",
+                          color: "text-fg",
                         },
                         {
                           label: "Best Trade",
                           value: `+$${perf.bestTrade}`,
-                          color: "text-green-400",
+                          color: "text-success",
                         },
                         {
                           label: "Worst Trade",
                           value: `$${perf.worstTrade}`,
-                          color: "text-red-400",
+                          color: "text-danger",
                         },
                         {
                           label: "Avg Win",
                           value: `+$${perf.avgWin}`,
-                          color: "text-green-400",
+                          color: "text-success",
                           sub: `${perf.wins} wins`,
                         },
                         {
                           label: "Avg Loss",
                           value: `-$${perf.avgLoss}`,
-                          color: "text-red-400",
+                          color: "text-danger",
                           sub: `${perf.losses} losses`,
                         },
                         {
                           label: "SL Hits",
                           value: perf.slHits,
-                          color: "text-red-400",
+                          color: "text-danger",
                         },
                         {
                           label: "TP Hits",
                           value: perf.tpHits,
-                          color: "text-green-400",
+                          color: "text-success",
                         },
                       ].map(({ label, value, color, sub }) => (
                         <StatCard
@@ -1573,15 +1573,15 @@ export default function ProfilePage() {
                     </div>
 
                     {symbolStats.length > 0 && (
-                      <div className="glass border border-white/5 rounded-xl overflow-hidden">
-                        <p className="text-white/40 text-xs uppercase tracking-wider px-5 py-3 border-b border-white/5">
+                      <div className="glass border border-border rounded-xl overflow-hidden">
+                        <p className="text-fg-dim text-xs uppercase tracking-wider px-5 py-3 border-b border-border">
                           Symbol Breakdown
                         </p>
 
                         <div className="overflow-x-auto">
                           <table className="w-full text-xs">
                             <thead>
-                              <tr className="border-b border-white/5 bg-white/2">
+                              <tr className="border-b border-border bg-elevated">
                                 {[
                                   "Symbol",
                                   "Trades",
@@ -1592,7 +1592,7 @@ export default function ProfilePage() {
                                 ].map((h) => (
                                   <th
                                     key={h}
-                                    className={`py-3 px-5 text-white/40 ${
+                                    className={`py-3 px-5 text-fg-dim ${
                                       h === "Symbol"
                                         ? "text-left"
                                         : "text-right"
@@ -1608,31 +1608,31 @@ export default function ProfilePage() {
                               {symbolStats.map((s) => (
                                 <tr
                                   key={s.symbolId}
-                                  className="border-b border-white/5 hover:bg-white/2 transition"
+                                  className="border-b border-border hover:bg-elevated transition"
                                 >
                                   <td className="px-5 py-3">
                                     <div className="flex items-center gap-2">
                                       <span>{s.emoji}</span>
                                       <div>
-                                        <p className="text-white font-medium">
+                                        <p className="text-fg font-medium">
                                           {s.displayName}
                                         </p>
-                                        <p className="text-white/30 capitalize">
+                                        <p className="text-fg-dim capitalize">
                                           {s.category}
                                         </p>
                                       </div>
                                     </div>
                                   </td>
 
-                                  <td className="px-5 py-3 text-right text-white/60">
+                                  <td className="px-5 py-3 text-right text-fg-muted">
                                     {s.trades}
                                   </td>
 
                                   <td
                                     className={`px-5 py-3 text-right font-semibold ${
                                       s.winRate >= 50
-                                        ? "text-green-400"
-                                        : "text-red-400"
+                                        ? "text-success"
+                                        : "text-danger"
                                     }`}
                                   >
                                     {s.winRate}%
@@ -1647,11 +1647,11 @@ export default function ProfilePage() {
                                     {s.netPnl.toFixed(2)}
                                   </td>
 
-                                  <td className="px-5 py-3 text-right text-green-400">
+                                  <td className="px-5 py-3 text-right text-success">
                                     +${s.bestTrade.toFixed(2)}
                                   </td>
 
-                                  <td className="px-5 py-3 text-right text-red-400">
+                                  <td className="px-5 py-3 text-right text-danger">
                                     ${s.worstTrade.toFixed(2)}
                                   </td>
                                 </tr>
@@ -1664,8 +1664,8 @@ export default function ProfilePage() {
                   </>
                 ) : null}
 
-                <div className="p-3 bg-white/2 border border-white/5 rounded-xl">
-                  <p className="text-white/15 text-xs leading-relaxed">
+                <div className="p-3 bg-elevated border border-border rounded-xl">
+                  <p className="text-fg-dim text-xs leading-relaxed">
                     Paper trading only. Not broker-verified. Not real money.
                     Portfolio visibility is "{myProfile.portfolioVisibility.toLowerCase()}".
                   </p>
@@ -1677,10 +1677,10 @@ export default function ProfilePage() {
             {activeTab === "posts" && (
               <div className="flex flex-col gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-white mb-0.5">
+                  <h2 className="text-lg font-bold text-fg mb-0.5">
                     My Posts
                   </h2>
-                  <p className="text-white/30 text-xs">
+                  <p className="text-fg-dim text-xs">
                     {myPosts.length} post{myPosts.length !== 1 ? "s" : ""}
                   </p>
                 </div>
@@ -1705,10 +1705,10 @@ export default function ProfilePage() {
             {activeTab === "strategies" && (
               <div className="flex flex-col gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-white mb-0.5">
+                  <h2 className="text-lg font-bold text-fg mb-0.5">
                     Published Strategies
                   </h2>
-                  <p className="text-white/30 text-xs">
+                  <p className="text-fg-dim text-xs">
                     Creator-published by you
                   </p>
                 </div>
@@ -1724,40 +1724,40 @@ export default function ProfilePage() {
                     {publishedStrategies.map((s: Strategy) => (
                       <div
                         key={s.id}
-                        className="glass border border-white/5 rounded-xl p-5 hover:border-white/10 transition"
+                        className="glass border border-border rounded-xl p-5 hover:border-border transition"
                       >
                         <div className="flex items-start justify-between mb-2">
-                          <h3 className="text-white font-semibold text-sm leading-snug flex-1 pr-2">
+                          <h3 className="text-fg font-semibold text-sm leading-snug flex-1 pr-2">
                             {s.title}
                           </h3>
                           {!s.verified && (
-                            <Chip className="text-amber-400 bg-amber-500/10 border-amber-500/20 shrink-0">
+                            <Chip className="text-warning bg-warning-soft border-warning/30 shrink-0">
                               Not verified
                             </Chip>
                           )}
                         </div>
 
-                        <p className="text-white/40 text-xs leading-relaxed line-clamp-2 mb-3">
+                        <p className="text-fg-dim text-xs leading-relaxed line-clamp-2 mb-3">
                           {s.description}
                         </p>
 
                         <div className="flex flex-wrap gap-1.5">
-                          <Chip className="text-white/30 bg-white/5 border-white/10 capitalize">
+                          <Chip className="text-fg-dim bg-elevated border-border capitalize">
                             {s.riskLevel.toLowerCase()} risk
                           </Chip>
 
-                          <Chip className="text-white/30 bg-white/5 border-white/10">
+                          <Chip className="text-fg-dim bg-elevated border-border">
                             {s.timeframe === "any" ? "Any TF" : s.timeframe}
                           </Chip>
 
-                          <Chip className="text-white/30 bg-white/5 border-white/10 capitalize">
+                          <Chip className="text-fg-dim bg-elevated border-border capitalize">
                             {s.assetCategory === "all"
                               ? "All assets"
                               : s.assetCategory}
                           </Chip>
 
                           {s._count.reviews > 0 && (
-                            <Chip className="text-white/30 bg-white/5 border-white/10">
+                            <Chip className="text-fg-dim bg-elevated border-border">
                               {s._count.reviews} review
                               {s._count.reviews !== 1 ? "s" : ""}
                             </Chip>
@@ -1769,10 +1769,10 @@ export default function ProfilePage() {
                 )}
 
                 {savedStrategyCount > 0 && (
-                  <div className="p-4 glass border border-white/5 rounded-xl">
-                    <p className="text-white/40 text-xs">
+                  <div className="p-4 glass border border-border rounded-xl">
+                    <p className="text-fg-dim text-xs">
                       You also have{" "}
-                      <span className="text-white font-semibold">
+                      <span className="text-fg font-semibold">
                         {savedStrategyCount}
                       </span>{" "}
                       saved strategy record{savedStrategyCount !== 1 ? "s" : ""}{" "}
@@ -1788,10 +1788,10 @@ export default function ProfilePage() {
             {activeTab === "academy" && (
               <div className="flex flex-col gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-white mb-0.5">
+                  <h2 className="text-lg font-bold text-fg mb-0.5">
                     Academy Progress
                   </h2>
-                  <p className="text-white/30 text-xs">
+                  <p className="text-fg-dim text-xs">
                     Progress persists across sessions
                   </p>
                 </div>
@@ -1824,7 +1824,7 @@ export default function ProfilePage() {
                         return (
                           <div
                             key={course.id}
-                            className="glass border border-white/5 rounded-xl p-5 flex items-start gap-4"
+                            className="glass border border-border rounded-xl p-5 flex items-start gap-4"
                           >
                             <span className="text-3xl shrink-0 mt-0.5">
                               {course.thumbnail}
@@ -1832,43 +1832,43 @@ export default function ProfilePage() {
 
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between gap-2 mb-1">
-                                <p className="text-white font-semibold text-sm leading-snug">
+                                <p className="text-fg font-semibold text-sm leading-snug">
                                   {course.title}
                                 </p>
 
                                 {done && (
-                                  <Chip className="text-green-400 bg-green-500/10 border-green-500/20 shrink-0">
+                                  <Chip className="text-success bg-success-soft border-success/30 shrink-0">
                                     ✓ Completed
                                   </Chip>
                                 )}
                               </div>
 
                               <div className="flex items-center justify-between mb-1.5">
-                                <span className="text-white/40 text-xs capitalize">
+                                <span className="text-fg-dim text-xs capitalize">
                                   {course.type.toLowerCase().replace(/_/g, " ")} ·{" "}
                                   {course.level.toLowerCase()}
                                 </span>
 
                                 <span
                                   className={`text-xs font-semibold ${
-                                    done ? "text-green-400" : "text-white/50"
+                                    done ? "text-success" : "text-fg-muted"
                                   }`}
                                 >
                                   {pct}%
                                 </span>
                               </div>
 
-                              <div className="w-full bg-white/5 rounded-full h-1.5 mb-1.5">
+                              <div className="w-full bg-elevated rounded-full h-1.5 mb-1.5">
                                 <div
                                   className={`h-1.5 rounded-full transition-all ${
-                                    done ? "bg-green-400" : "bg-green-500/50"
+                                    done ? "bg-success" : "bg-success-soft"
                                   }`}
                                   style={{ width: `${pct}%` }}
                                 />
                               </div>
 
                               {done && (
-                                <p className="text-amber-400/60 text-xs">
+                                <p className="text-warning/60 text-xs">
                                   🏆 Certificate coming soon
                                 </p>
                               )}
@@ -1885,10 +1885,10 @@ export default function ProfilePage() {
             {activeTab === "copy_trading" && (
               <div className="flex flex-col gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-white mb-0.5">
+                  <h2 className="text-lg font-bold text-fg mb-0.5">
                     Copy Trading
                   </h2>
-                  <p className="text-white/30 text-xs">
+                  <p className="text-fg-dim text-xs">
                     Paper-copy mode only · No real broker execution
                   </p>
                 </div>
@@ -1904,10 +1904,10 @@ export default function ProfilePage() {
             {activeTab === "settings" && (
               <div>
                 <div className="mb-5">
-                  <h2 className="text-lg font-bold text-white mb-0.5">
+                  <h2 className="text-lg font-bold text-fg mb-0.5">
                     Profile Settings
                   </h2>
-                  <p className="text-white/30 text-xs">
+                  <p className="text-fg-dim text-xs">
                     Edit your profile, trading identity, and visibility
                     settings.
                   </p>

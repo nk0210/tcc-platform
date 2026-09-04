@@ -40,27 +40,29 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center relative overflow-hidden">
+    <div className="min-h-screen bg-canvas flex items-center justify-center relative overflow-hidden">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-green-500/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/5 rounded-full blur-3xl" />
       </div>
 
       <div className="relative w-full max-w-md px-4">
         <div className="text-center mb-8">
-          <h1 className="text-5xl font-bold text-green-400 tracking-widest mb-2">TCC</h1>
-          <p className="text-white/40 text-sm tracking-widest uppercase">Trader's Command Center</p>
-          <p className="text-white/20 text-xs mt-2">The world's first platform where trading is a sport</p>
+          <div className="inline-flex w-14 h-14 rounded-2xl bg-accent/15 border border-accent/30 items-center justify-center mb-4">
+            <span className="text-2xl font-black text-accent-hover">TC</span>
+          </div>
+          <h1 className="text-3xl font-bold text-fg tracking-tight mb-1">Trader's Command Center</h1>
+          <p className="text-fg-dim text-xs">The world's first platform where trading is a sport</p>
         </div>
 
-        <div className="glass border border-white/10 rounded-2xl p-8">
-          <div className="flex mb-6 bg-white/5 rounded-xl p-1">
+        <div className="glass rounded-2xl p-8" style={{ boxShadow: "var(--shadow-elevated)" }}>
+          <div className="flex mb-6 bg-elevated rounded-xl p-1 border border-border">
             <button onClick={() => setIsRegister(false)}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition ${!isRegister ? "bg-green-500/20 text-green-400" : "text-white/40 hover:text-white/60"}`}>
+              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition ${!isRegister ? "bg-accent text-white shadow-sm" : "text-fg-dim hover:text-fg-muted"}`}>
               Login
             </button>
             <button onClick={() => setIsRegister(true)}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition ${isRegister ? "bg-green-500/20 text-green-400" : "text-white/40 hover:text-white/60"}`}>
+              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition ${isRegister ? "bg-accent text-white shadow-sm" : "text-fg-dim hover:text-fg-muted"}`}>
               Register
             </button>
           </div>
@@ -68,51 +70,51 @@ export default function LoginPage() {
           <div className="flex flex-col gap-3">
             {isRegister && (
               <div>
-                <label className="text-white/40 text-xs mb-1 block">Handle</label>
+                <label className="text-fg-dim text-xs mb-1 block">Handle</label>
                 <input type="text" placeholder="e.g. nk0210"
                   value={form.handle}
                   onChange={(e) => setForm({ ...form, handle: e.target.value })}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 text-sm focus:outline-none focus:border-green-400/50 transition" />
+                  className="w-full bg-elevated border border-border rounded-xl px-4 py-3 text-fg placeholder-fg-dim text-sm focus:outline-none focus:border-accent transition" />
               </div>
             )}
             <div>
-              <label className="text-white/40 text-xs mb-1 block">Email</label>
+              <label className="text-fg-dim text-xs mb-1 block">Email</label>
               <input type="email" placeholder="your@email.com"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 text-sm focus:outline-none focus:border-green-400/50 transition" />
+                className="w-full bg-elevated border border-border rounded-xl px-4 py-3 text-fg placeholder-fg-dim text-sm focus:outline-none focus:border-accent transition" />
             </div>
             <div>
-              <label className="text-white/40 text-xs mb-1 block">Password</label>
+              <label className="text-fg-dim text-xs mb-1 block">Password</label>
               <input type="password" placeholder="••••••••"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 text-sm focus:outline-none focus:border-green-400/50 transition" />
+                className="w-full bg-elevated border border-border rounded-xl px-4 py-3 text-fg placeholder-fg-dim text-sm focus:outline-none focus:border-accent transition" />
             </div>
             {error && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-                <p className="text-red-400 text-xs">{error}</p>
+              <div className="bg-danger-soft border border-danger/30 rounded-lg px-3 py-2">
+                <p className="text-danger text-xs">{error}</p>
               </div>
             )}
             <button onClick={handleSubmit} disabled={loading}
-              className="mt-2 w-full bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 py-3.5 rounded-xl text-sm font-semibold transition disabled:opacity-50">
-              {loading ? "Please wait..." : isRegister ? "Create Account" : "Enter the Platform"}
+              className="btn btn-primary mt-2 w-full py-3.5 rounded-xl text-sm">
+              {loading ? "Please wait…" : isRegister ? "Create Account" : "Enter the Platform"}
             </button>
           </div>
 
-          <div className="mt-6 pt-4 border-t border-white/5">
-            <p className="text-white/20 text-xs text-center">Demo version · Paper trading · No real money</p>
-            <p className="text-white/10 text-xs text-center mt-1">Owner access: set localStorage 'tcc:dev:role' = 'owner'</p>
+          <div className="mt-6 pt-4 border-t border-border">
+            <p className="text-fg-dim text-xs text-center">Demo version · Paper trading · No real money</p>
+            <p className="text-fg-dim text-xs text-center mt-1">Owner access: set localStorage 'tcc:dev:role' = 'owner'</p>
           </div>
         </div>
 
         <div className="mt-6 grid grid-cols-3 gap-3">
           {[{ emoji: "📊", label: "Live Charts" }, { emoji: "🤖", label: "AI Journal" }, { emoji: "🏆", label: "Competitions" }].map(f => (
-            <div key={f.label} className="glass border border-white/5 rounded-xl p-3 text-center">
+            <div key={f.label} className="glass rounded-xl p-3 text-center">
               <p className="text-xl mb-1">{f.emoji}</p>
-              <p className="text-white/30 text-xs">{f.label}</p>
+              <p className="text-fg-dim text-xs">{f.label}</p>
             </div>
           ))}
         </div>

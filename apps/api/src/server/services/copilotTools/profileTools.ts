@@ -11,7 +11,13 @@ const GetUserProfileArgs = z.object({});
 
 const getUserProfile: ToolDefinition<z.infer<typeof GetUserProfileArgs>> = {
   name:        "get_user_profile",
-  description: "Get the authenticated user's own TCC profile: handle, display name, bio, experience level, verification status, and trading identity (markets/symbols/strategies they trade).",
+  description:
+    "Get the authenticated user's own TCC profile. Returns two DIFFERENT identifiers — never treat them as " +
+    "interchangeable or guess one from the other: `tccId` is the account's unique TCC ID (format like " +
+    "\"TCC-GL-TRD-83401180\") — give this ONLY when asked for the \"TCC ID\" specifically. `handle` is the " +
+    "user's @-style username/handle (e.g. \"nknk\") used for social features and copy-trading — give this when " +
+    "asked for the \"username\", \"handle\", or what to share so others can find/follow them. Also returns " +
+    "display name, bio, experience level, verification status, and trading identity (markets/symbols/strategies traded).",
   parameters:  GetUserProfileArgs,
   jsonSchema:  { type: "object", properties: {}, additionalProperties: false },
   riskLevel:   "LOW",
@@ -20,6 +26,7 @@ const getUserProfile: ToolDefinition<z.infer<typeof GetUserProfileArgs>> = {
   async execute(_args, ctx) {
     const profile = await profileService.getOwnProfile(ctx.userId);
     return {
+      tccId:           profile.tccId,
       handle:          profile.handle,
       displayName:     profile.displayName,
       bio:             profile.bio,

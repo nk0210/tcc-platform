@@ -64,13 +64,13 @@ function timeAgo(iso: string): string {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  draft:              "text-white/40 bg-white/5 border-white/10",
+  draft:              "text-fg-dim bg-elevated border-border",
   submitted:          "text-blue-400 bg-blue-500/10 border-blue-500/20",
-  under_review:       "text-amber-400 bg-amber-500/10 border-amber-500/20",
-  approved:           "text-green-400 bg-green-500/10 border-green-500/20",
-  rejected:           "text-red-400 bg-red-500/10 border-red-500/20",
+  under_review:       "text-warning bg-warning-soft border-warning/30",
+  approved:           "text-success bg-success-soft border-success/30",
+  rejected:           "text-danger bg-danger-soft border-danger/30",
   more_info_required: "text-orange-400 bg-orange-500/10 border-orange-500/20",
-  suspended:          "text-red-400 bg-red-500/15 border-red-500/30",
+  suspended:          "text-danger bg-danger-soft border-danger/30",
 };
 
 const STATUS_ICONS: Record<string, string> = {
@@ -263,7 +263,7 @@ export default function OwnerCopyTradingPage() {
   if (isLoading) {
     return (
       <div className="p-6 flex items-center justify-center h-48">
-        <p className="text-white/30 text-sm">Loading applications...</p>
+        <p className="text-fg-dim text-sm">Loading applications...</p>
       </div>
     );
   }
@@ -273,8 +273,8 @@ export default function OwnerCopyTradingPage() {
 
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-white">📡 Copy Trading Applications</h1>
-        <p className="text-white/30 text-xs mt-1">
+        <h1 className="text-xl font-bold text-fg">📡 Copy Trading Applications</h1>
+        <p className="text-fg-dim text-xs mt-1">
           Review master trader applications. Approval labels accounts as locally verified only.
           Phase Alpha requires broker-verified performance data.
         </p>
@@ -284,19 +284,19 @@ export default function OwnerCopyTradingPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {[
           { label: "Submitted",      count: counts.submitted,    color: "text-blue-400"  },
-          { label: "Under Review",   count: counts.under_review, color: "text-amber-400" },
-          { label: "Active Masters", count: counts.approved,     color: "text-green-400" },
-          { label: "Rejected",       count: counts.rejected,     color: "text-red-400"   },
+          { label: "Under Review",   count: counts.under_review, color: "text-warning" },
+          { label: "Active Masters", count: counts.approved,     color: "text-success" },
+          { label: "Rejected",       count: counts.rejected,     color: "text-danger"   },
         ].map(item => (
-          <div key={item.label} className="bg-white/2 border border-white/5 rounded-xl p-4">
-            <p className="text-white/30 text-xs mb-1">{item.label}</p>
+          <div key={item.label} className="bg-elevated border border-border rounded-xl p-4">
+            <p className="text-fg-dim text-xs mb-1">{item.label}</p>
             <p className={`text-2xl font-bold ${item.color}`}>{item.count}</p>
           </div>
         ))}
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-1 bg-white/5 rounded-lg p-1 mb-5 overflow-x-auto">
+      <div className="flex gap-1 bg-elevated rounded-lg p-1 mb-5 overflow-x-auto">
         {[
           { key: "all",                 label: `All (${counts.all})`              },
           { key: "submitted",           label: `Submitted (${counts.submitted})`  },
@@ -307,7 +307,7 @@ export default function OwnerCopyTradingPage() {
         ].map(tab => (
           <button key={tab.key} onClick={() => setFilterStatus(tab.key)}
             className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition ${
-              filterStatus === tab.key ? "bg-green-500/20 text-green-400" : "text-white/40 hover:text-white/60"
+              filterStatus === tab.key ? "bg-success-soft text-success" : "text-fg-dim hover:text-fg-muted"
             }`}>
             {tab.label}
           </button>
@@ -323,20 +323,20 @@ export default function OwnerCopyTradingPage() {
             <div className="flex items-center justify-center h-48">
               <div className="text-center">
                 <p className="text-3xl mb-2">📡</p>
-                <p className="text-white/20 text-sm">No applications in this category.</p>
+                <p className="text-fg-dim text-sm">No applications in this category.</p>
               </div>
             </div>
           ) : (
             filtered.map(app => (
               <div key={app.id}
                 onClick={() => { setSelectedId(app.id); setActionNote(""); }}
-                className={`bg-white/2 border rounded-xl p-4 cursor-pointer transition hover:border-white/15 ${
-                  selectedId === app.id ? "border-green-500/30 bg-green-500/3" : "border-white/5"
+                className={`bg-elevated border rounded-xl p-4 cursor-pointer transition hover:border-border ${
+                  selectedId === app.id ? "border-success/30 bg-success-soft" : "border-border"
                 }`}>
                 <div className="flex items-start justify-between mb-2">
                   <div>
-                    <p className="text-white font-semibold text-sm">{app.displayName}</p>
-                    <p className="text-white/30 text-xs font-mono">{app.tccId}</p>
+                    <p className="text-fg font-semibold text-sm">{app.displayName}</p>
+                    <p className="text-fg-dim text-xs font-mono">{app.tccId}</p>
                   </div>
                   <span className={`text-xs px-2 py-0.5 rounded-full border capitalize ${
                     STATUS_COLORS[app.status.toLowerCase()] ?? STATUS_COLORS.draft
@@ -344,7 +344,7 @@ export default function OwnerCopyTradingPage() {
                     {STATUS_ICONS[app.status.toLowerCase()] ?? "📝"} {app.status.toLowerCase().replace(/_/g, " ")}
                   </span>
                 </div>
-                <div className="flex items-center gap-4 text-xs text-white/30">
+                <div className="flex items-center gap-4 text-xs text-fg-dim">
                   <span>{app.marketsTraded.join(", ") || "No markets listed"}</span>
                   {app.submittedAt && <span>{timeAgo(app.submittedAt)}</span>}
                 </div>
@@ -356,13 +356,13 @@ export default function OwnerCopyTradingPage() {
         {/* Application detail panel */}
         {selected && (
           <div className="w-80 shrink-0">
-            <div className="bg-white/2 border border-white/10 rounded-xl p-5 sticky top-0 max-h-[calc(100vh-12rem)] overflow-y-auto">
+            <div className="bg-elevated border border-border rounded-xl p-5 sticky top-0 max-h-[calc(100vh-12rem)] overflow-y-auto">
 
               <div className="flex items-center justify-between mb-4">
-                <p className="text-white font-semibold text-sm">{selected.displayName}</p>
+                <p className="text-fg font-semibold text-sm">{selected.displayName}</p>
                 <button
                   onClick={() => setSelectedId(null)}
-                  className="text-white/30 hover:text-white text-lg leading-none">
+                  className="text-fg-dim hover:text-fg text-lg leading-none">
                   ✕
                 </button>
               </div>
@@ -383,49 +383,49 @@ export default function OwnerCopyTradingPage() {
                   { l: "Copy terms",   v: selected.hasAcceptedCopyTradingTerms       ? "✅ Yes" : "❌ No" },
                 ].map(item => (
                   <div key={item.l} className="flex gap-2">
-                    <span className="text-white/30 w-24 shrink-0">{item.l}</span>
-                    <span className="text-white/60 capitalize break-all">{item.v}</span>
+                    <span className="text-fg-dim w-24 shrink-0">{item.l}</span>
+                    <span className="text-fg-muted capitalize break-all">{item.v}</span>
                   </div>
                 ))}
               </div>
 
               {/* Experience summary */}
               {selected.experienceSummary && (
-                <div className="bg-white/3 border border-white/5 rounded-lg p-3 mb-2">
-                  <p className="text-white/30 text-xs mb-1">Experience Summary</p>
-                  <p className="text-white/50 text-xs leading-relaxed">{selected.experienceSummary}</p>
+                <div className="bg-elevated border border-border rounded-lg p-3 mb-2">
+                  <p className="text-fg-dim text-xs mb-1">Experience Summary</p>
+                  <p className="text-fg-muted text-xs leading-relaxed">{selected.experienceSummary}</p>
                 </div>
               )}
 
               {/* Risk management */}
               {selected.riskManagementSummary && (
-                <div className="bg-white/3 border border-white/5 rounded-lg p-3 mb-2">
-                  <p className="text-white/30 text-xs mb-1">Risk Management</p>
-                  <p className="text-white/50 text-xs leading-relaxed">{selected.riskManagementSummary}</p>
+                <div className="bg-elevated border border-border rounded-lg p-3 mb-2">
+                  <p className="text-fg-dim text-xs mb-1">Risk Management</p>
+                  <p className="text-fg-muted text-xs leading-relaxed">{selected.riskManagementSummary}</p>
                 </div>
               )}
 
               {/* Reason for applying */}
               {selected.reasonForApplying && (
-                <div className="bg-white/3 border border-white/5 rounded-lg p-3 mb-3">
-                  <p className="text-white/30 text-xs mb-1">Reason for Applying</p>
-                  <p className="text-white/50 text-xs leading-relaxed">{selected.reasonForApplying}</p>
+                <div className="bg-elevated border border-border rounded-lg p-3 mb-3">
+                  <p className="text-fg-dim text-xs mb-1">Reason for Applying</p>
+                  <p className="text-fg-muted text-xs leading-relaxed">{selected.reasonForApplying}</p>
                 </div>
               )}
 
               {/* Admin note (existing) */}
               {selected.adminNotes && (
-                <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-lg p-3 mb-2">
-                  <p className="text-indigo-400 text-xs font-semibold mb-1">Admin Note</p>
-                  <p className="text-white/50 text-xs">{selected.adminNotes}</p>
+                <div className="bg-accent/5 border border-accent/30 rounded-lg p-3 mb-2">
+                  <p className="text-accent-hover text-xs font-semibold mb-1">Admin Note</p>
+                  <p className="text-fg-muted text-xs">{selected.adminNotes}</p>
                 </div>
               )}
 
               {/* Rejection reason (existing) */}
               {selected.rejectionReason && (
-                <div className="bg-red-500/5 border border-red-500/10 rounded-lg p-3 mb-2">
-                  <p className="text-red-400 text-xs font-semibold mb-1">Rejection Reason</p>
-                  <p className="text-white/50 text-xs">{selected.rejectionReason}</p>
+                <div className="bg-danger-soft border border-danger/30 rounded-lg p-3 mb-2">
+                  <p className="text-danger text-xs font-semibold mb-1">Rejection Reason</p>
+                  <p className="text-fg-muted text-xs">{selected.rejectionReason}</p>
                 </div>
               )}
 
@@ -433,7 +433,7 @@ export default function OwnerCopyTradingPage() {
               {selected.moreInfoRequest && (
                 <div className="bg-orange-500/5 border border-orange-500/10 rounded-lg p-3 mb-3">
                   <p className="text-orange-400 text-xs font-semibold mb-1">Info Requested</p>
-                  <p className="text-white/50 text-xs">{selected.moreInfoRequest}</p>
+                  <p className="text-fg-muted text-xs">{selected.moreInfoRequest}</p>
                 </div>
               )}
 
@@ -443,7 +443,7 @@ export default function OwnerCopyTradingPage() {
                 onChange={e => setActionNote(e.target.value)}
                 placeholder="Rejection reason / info request..."
                 rows={3}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white text-xs resize-none focus:outline-none mb-3"
+                className="w-full bg-elevated border border-border rounded-xl px-3 py-2 text-fg text-xs resize-none focus:outline-none mb-3"
               />
 
               {/* Action buttons — only for actionable statuses */}
@@ -460,13 +460,13 @@ export default function OwnerCopyTradingPage() {
                   )}
                   <button
                     onClick={handleApprove}
-                    className="w-full bg-green-500/20 text-green-400 border border-green-500/30 py-2 rounded-lg text-xs font-semibold transition hover:bg-green-500/30">
+                    className="w-full bg-success-soft text-success border border-success/30 py-2 rounded-lg text-xs font-semibold transition hover:bg-success/22">
                     ✅ Approve
                   </button>
                   <button
                     onClick={handleReject}
                     disabled={!actionNote.trim()}
-                    className="w-full bg-red-500/10 text-red-400 border border-red-500/20 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-40 hover:bg-red-500/20">
+                    className="w-full bg-danger-soft text-danger border border-danger/30 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-40 hover:bg-danger/22">
                     ❌ Reject (requires note)
                   </button>
                   <button
@@ -484,28 +484,28 @@ export default function OwnerCopyTradingPage() {
         {/* Active masters panel */}
         {counts.approved > 0 && (
           <div className="w-64 shrink-0 flex flex-col gap-2">
-            <p className="text-white/40 text-xs uppercase tracking-wider">
+            <p className="text-fg-dim text-xs uppercase tracking-wider">
               Active Masters ({counts.approved})
             </p>
             {approvedMasters.filter(m => m.status === "ACTIVE").map(master => (
-              <div key={master.id} className="bg-green-500/3 border border-green-500/10 rounded-xl p-4">
-                <p className="text-white font-semibold text-sm">{master.displayName}</p>
-                <p className="text-green-400/60 text-xs font-mono">{master.tccId}</p>
-                <p className="text-white/30 text-xs mt-1">
+              <div key={master.id} className="bg-success-soft border border-success/30 rounded-xl p-4">
+                <p className="text-fg font-semibold text-sm">{master.displayName}</p>
+                <p className="text-success/60 text-xs font-mono">{master.tccId}</p>
+                <p className="text-fg-dim text-xs mt-1">
                   Approved {timeAgo(master.approvedAt)} by {master.approvedBy}
                 </p>
-                <p className="text-white/20 text-xs mt-0.5">
+                <p className="text-fg-dim text-xs mt-0.5">
                   Trust: {master.trustScoreStatus.replace(/_/g, " ")}
                 </p>
                 <div className="flex gap-1.5 mt-3">
                   <button
                     onClick={() => handleSuspendMaster(master.id, master.displayName)}
-                    className="flex-1 text-xs text-red-400/60 hover:text-red-400 bg-red-500/5 border border-red-500/10 px-2 py-1 rounded-lg transition">
+                    className="flex-1 text-xs text-danger/60 hover:text-danger bg-danger-soft border border-danger/30 px-2 py-1 rounded-lg transition">
                     Suspend
                   </button>
                   <button
                     onClick={() => handleRemoveMaster(master.id, master.displayName)}
-                    className="flex-1 text-xs text-white/20 hover:text-white/50 bg-white/3 border border-white/8 px-2 py-1 rounded-lg transition">
+                    className="flex-1 text-xs text-fg-dim hover:text-fg-muted bg-elevated border border-border px-2 py-1 rounded-lg transition">
                     Remove
                   </button>
                 </div>

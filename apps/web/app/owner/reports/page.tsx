@@ -6,14 +6,14 @@ import { useAuthStore } from "@/store/authStore";
 import { getEffectiveRole } from "@/lib/auth/roles";
 
 const STATUS_COLORS: Record<ReportStatus, string> = {
-  pending: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+  pending: "text-warning bg-warning-soft border-warning/30",
   under_review: "text-blue-400 bg-blue-500/10 border-blue-500/20",
-  resolved_no_action: "text-white/30 bg-white/5 border-white/10",
+  resolved_no_action: "text-fg-dim bg-elevated border-border",
   content_hidden: "text-orange-400 bg-orange-500/10 border-orange-500/20",
-  content_deleted: "text-red-400 bg-red-500/10 border-red-500/20",
-  user_warned: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-  user_suspended: "text-red-400 bg-red-500/10 border-red-500/20",
-  rejected_false_report: "text-white/20 bg-white/2 border-white/5",
+  content_deleted: "text-danger bg-danger-soft border-danger/30",
+  user_warned: "text-warning bg-warning-soft border-warning/30",
+  user_suspended: "text-danger bg-danger-soft border-danger/30",
+  rejected_false_report: "text-fg-dim bg-elevated border-border",
 };
 
 const STATUS_LABELS: Record<ReportStatus, string> = {
@@ -28,10 +28,10 @@ const STATUS_LABELS: Record<ReportStatus, string> = {
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  critical: "text-red-400 bg-red-500/10 border-red-500/20",
-  high: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+  critical: "text-danger bg-danger-soft border-danger/30",
+  high: "text-warning bg-warning-soft border-warning/30",
   medium: "text-blue-400 bg-blue-500/10 border-blue-500/20",
-  low: "text-white/30 bg-white/5 border-white/10",
+  low: "text-fg-dim bg-elevated border-border",
 };
 
 function timeAgo(ts: number): string {
@@ -85,14 +85,14 @@ export default function ReportsQueuePage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-white">🚨 Reports Queue</h1>
-          <p className="text-white/30 text-xs mt-1">{reports.length} total reports · {reports.filter(r => r.status === "pending").length} pending</p>
+          <h1 className="text-xl font-bold text-fg">🚨 Reports Queue</h1>
+          <p className="text-fg-dim text-xs mt-1">{reports.length} total reports · {reports.filter(r => r.status === "pending").length} pending</p>
         </div>
       </div>
 
       {/* Filters */}
       <div className="flex gap-2 flex-wrap mb-5">
-        <div className="flex gap-1 bg-white/3 rounded-lg p-1">
+        <div className="flex gap-1 bg-elevated rounded-lg p-1">
           {[
             { key: "all", label: `All (${reports.length})` },
             { key: "pending", label: `Pending (${reports.filter(r => r.status === "pending").length})` },
@@ -101,20 +101,20 @@ export default function ReportsQueuePage() {
             { key: "resolved", label: `Resolved (${reports.filter(r => !["pending", "under_review"].includes(r.status)).length})` },
           ].map(f => (
             <button key={f.key} onClick={() => setStatusFilter(f.key)}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${statusFilter === f.key ? "bg-red-500/20 text-red-400" : "text-white/30 hover:text-white/60"}`}>
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${statusFilter === f.key ? "bg-danger-soft text-danger" : "text-fg-dim hover:text-fg-muted"}`}>
               {f.label}
             </button>
           ))}
         </div>
 
         <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-          className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs">
+          className="bg-elevated border border-border rounded-lg px-2 py-1.5 text-fg text-xs">
           <option value="all" className="bg-[#0a0a0f]">All types</option>
           {types.map(t => <option key={t} value={t} className="bg-[#0a0a0f]">{t.replace("_", " ")}</option>)}
         </select>
 
         <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}
-          className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs">
+          className="bg-elevated border border-border rounded-lg px-2 py-1.5 text-fg text-xs">
           <option value="all" className="bg-[#0a0a0f]">All priorities</option>
           {["critical", "high", "medium", "low"].map(p => <option key={p} value={p} className="bg-[#0a0a0f]">{p}</option>)}
         </select>
@@ -124,7 +124,7 @@ export default function ReportsQueuePage() {
         <div className="flex items-center justify-center h-48">
           <div className="text-center">
             <p className="text-3xl mb-2">✅</p>
-            <p className="text-white/30 text-sm">No reports matching filters</p>
+            <p className="text-fg-dim text-sm">No reports matching filters</p>
           </div>
         </div>
       ) : (
@@ -134,19 +134,19 @@ export default function ReportsQueuePage() {
             {filtered.map(report => (
               <div key={report.id}
                 onClick={() => { setSelectedReport(report); setAdminNote(report.adminNote || ""); }}
-                className={`bg-white/2 border rounded-xl p-4 cursor-pointer transition hover:border-white/15 ${selectedReport?.id === report.id ? "border-red-500/30 bg-red-500/3" : "border-white/5"}`}>
+                className={`bg-elevated border rounded-xl p-4 cursor-pointer transition hover:border-border ${selectedReport?.id === report.id ? "border-danger/30 bg-danger-soft" : "border-border"}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className={`text-xs px-1.5 py-0.5 rounded border ${PRIORITY_COLORS[report.priority]}`}>{report.priority.toUpperCase()}</span>
                       <span className={`text-xs px-1.5 py-0.5 rounded border ${STATUS_COLORS[report.status]}`}>{STATUS_LABELS[report.status]}</span>
-                      <span className="text-xs bg-white/5 text-white/30 px-1.5 py-0.5 rounded border border-white/10 capitalize">{report.reportedItemType.replace("_", " ")}</span>
+                      <span className="text-xs bg-elevated text-fg-dim px-1.5 py-0.5 rounded border border-border capitalize">{report.reportedItemType.replace("_", " ")}</span>
                     </div>
-                    <p className="text-white/80 text-sm font-semibold">{report.reason}</p>
-                    {report.reportedItemTitle && <p className="text-white/30 text-xs mt-0.5 truncate">"{report.reportedItemTitle}"</p>}
-                    <p className="text-white/20 text-xs mt-1">Reported by {report.reporterHandle} · {report.sourceFeature} · {timeAgo(report.createdAt)}</p>
+                    <p className="text-fg-muted text-sm font-semibold">{report.reason}</p>
+                    {report.reportedItemTitle && <p className="text-fg-dim text-xs mt-0.5 truncate">"{report.reportedItemTitle}"</p>}
+                    <p className="text-fg-dim text-xs mt-1">Reported by {report.reporterHandle} · {report.sourceFeature} · {timeAgo(report.createdAt)}</p>
                   </div>
-                  <span className="text-xs text-white/20 shrink-0 font-mono">{report.id}</span>
+                  <span className="text-xs text-fg-dim shrink-0 font-mono">{report.id}</span>
                 </div>
               </div>
             ))}
@@ -155,34 +155,34 @@ export default function ReportsQueuePage() {
           {/* Report Detail */}
           {selectedReport && (
             <div className="w-80 shrink-0">
-              <div className="bg-white/2 border border-white/10 rounded-xl p-5 sticky top-0">
+              <div className="bg-elevated border border-border rounded-xl p-5 sticky top-0">
                 <div className="flex items-center justify-between mb-4">
-                  <p className="text-white font-semibold text-sm">{selectedReport.id}</p>
-                  <button onClick={() => setSelectedReport(null)} className="text-white/30 hover:text-white">✕</button>
+                  <p className="text-fg font-semibold text-sm">{selectedReport.id}</p>
+                  <button onClick={() => setSelectedReport(null)} className="text-fg-dim hover:text-fg">✕</button>
                 </div>
 
                 <div className="flex flex-col gap-2 mb-4 text-xs">
-                  <div className="flex justify-between"><span className="text-white/30">Type</span><span className="text-white capitalize">{selectedReport.reportedItemType.replace("_", " ")}</span></div>
-                  <div className="flex justify-between"><span className="text-white/30">Reason</span><span className="text-white text-right max-w-[160px]">{selectedReport.reason}</span></div>
-                  <div className="flex justify-between"><span className="text-white/30">Priority</span><span className={PRIORITY_COLORS[selectedReport.priority].split(" ")[0]}>{selectedReport.priority}</span></div>
-                  <div className="flex justify-between"><span className="text-white/30">Status</span><span className="text-white">{STATUS_LABELS[selectedReport.status]}</span></div>
-                  <div className="flex justify-between"><span className="text-white/30">Reporter</span><span className="text-white">{selectedReport.reporterHandle}</span></div>
-                  <div className="flex justify-between"><span className="text-white/30">Feature</span><span className="text-white">{selectedReport.sourceFeature}</span></div>
-                  <div className="flex justify-between"><span className="text-white/30">Submitted</span><span className="text-white">{timeAgo(selectedReport.createdAt)}</span></div>
-                  {selectedReport.resolvedBy && <div className="flex justify-between"><span className="text-white/30">Resolved by</span><span className="text-white">{selectedReport.resolvedBy}</span></div>}
+                  <div className="flex justify-between"><span className="text-fg-dim">Type</span><span className="text-fg capitalize">{selectedReport.reportedItemType.replace("_", " ")}</span></div>
+                  <div className="flex justify-between"><span className="text-fg-dim">Reason</span><span className="text-fg text-right max-w-[160px]">{selectedReport.reason}</span></div>
+                  <div className="flex justify-between"><span className="text-fg-dim">Priority</span><span className={PRIORITY_COLORS[selectedReport.priority].split(" ")[0]}>{selectedReport.priority}</span></div>
+                  <div className="flex justify-between"><span className="text-fg-dim">Status</span><span className="text-fg">{STATUS_LABELS[selectedReport.status]}</span></div>
+                  <div className="flex justify-between"><span className="text-fg-dim">Reporter</span><span className="text-fg">{selectedReport.reporterHandle}</span></div>
+                  <div className="flex justify-between"><span className="text-fg-dim">Feature</span><span className="text-fg">{selectedReport.sourceFeature}</span></div>
+                  <div className="flex justify-between"><span className="text-fg-dim">Submitted</span><span className="text-fg">{timeAgo(selectedReport.createdAt)}</span></div>
+                  {selectedReport.resolvedBy && <div className="flex justify-between"><span className="text-fg-dim">Resolved by</span><span className="text-fg">{selectedReport.resolvedBy}</span></div>}
                 </div>
 
                 {selectedReport.description && (
-                  <div className="bg-white/3 border border-white/5 rounded-lg p-3 mb-4">
-                    <p className="text-white/30 text-xs mb-1">Reporter description</p>
-                    <p className="text-white/60 text-xs leading-relaxed">{selectedReport.description}</p>
+                  <div className="bg-elevated border border-border rounded-lg p-3 mb-4">
+                    <p className="text-fg-dim text-xs mb-1">Reporter description</p>
+                    <p className="text-fg-muted text-xs leading-relaxed">{selectedReport.description}</p>
                   </div>
                 )}
 
                 {selectedReport.adminNote && (
-                  <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-lg p-3 mb-4">
-                    <p className="text-indigo-400 text-xs mb-1">Admin note</p>
-                    <p className="text-white/60 text-xs">{selectedReport.adminNote}</p>
+                  <div className="bg-accent/5 border border-accent/30 rounded-lg p-3 mb-4">
+                    <p className="text-accent-hover text-xs mb-1">Admin note</p>
+                    <p className="text-fg-muted text-xs">{selectedReport.adminNote}</p>
                   </div>
                 )}
 
@@ -192,7 +192,7 @@ export default function ReportsQueuePage() {
                       value={adminNote}
                       onChange={e => setAdminNote(e.target.value)}
                       placeholder="Admin note (optional)..."
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-white text-xs resize-none h-16 mb-3"
+                      className="w-full bg-elevated border border-border rounded-lg px-2 py-2 text-fg text-xs resize-none h-16 mb-3"
                     />
                     <div className="flex flex-col gap-2">
                       {selectedReport.status === "pending" && (
@@ -202,7 +202,7 @@ export default function ReportsQueuePage() {
                         </button>
                       )}
                       <button onClick={() => handleAction(selectedReport.id, "resolved_no_action", "Resolved — No Action", "report_resolved")}
-                        className="w-full bg-white/5 text-white/50 border border-white/10 py-2 rounded-lg text-xs font-semibold">
+                        className="w-full bg-elevated text-fg-muted border border-border py-2 rounded-lg text-xs font-semibold">
                         ✓ Resolve — No Action
                       </button>
                       <button onClick={() => handleAction(selectedReport.id, "content_hidden", "Content Hidden", "content_hidden")}
@@ -210,19 +210,19 @@ export default function ReportsQueuePage() {
                         👁 Hide Content
                       </button>
                       <button onClick={() => handleAction(selectedReport.id, "content_deleted", "Content Deleted", "content_deleted")}
-                        className="w-full bg-red-500/10 text-red-400 border border-red-500/20 py-2 rounded-lg text-xs font-semibold">
+                        className="w-full bg-danger-soft text-danger border border-danger/30 py-2 rounded-lg text-xs font-semibold">
                         🗑 Delete Content
                       </button>
                       <button onClick={() => handleAction(selectedReport.id, "user_warned", "User Warned", "user_warned")}
-                        className="w-full bg-amber-500/10 text-amber-400 border border-amber-500/20 py-2 rounded-lg text-xs font-semibold">
+                        className="w-full bg-warning-soft text-warning border border-warning/30 py-2 rounded-lg text-xs font-semibold">
                         ⚠ Warn User
                       </button>
                       <button onClick={() => handleAction(selectedReport.id, "user_suspended", "User Suspended", "user_suspended")}
-                        className="w-full bg-red-500/20 text-red-400 border border-red-500/30 py-2 rounded-lg text-xs font-semibold">
+                        className="w-full bg-danger-soft text-danger border border-danger/30 py-2 rounded-lg text-xs font-semibold">
                         🚫 Suspend User
                       </button>
                       <button onClick={() => handleAction(selectedReport.id, "rejected_false_report", "Rejected — False Report", "false_report_rejected")}
-                        className="w-full bg-white/2 text-white/20 border border-white/5 py-2 rounded-lg text-xs font-semibold">
+                        className="w-full bg-elevated text-fg-dim border border-border py-2 rounded-lg text-xs font-semibold">
                         ❌ Reject — False Report
                       </button>
                     </div>

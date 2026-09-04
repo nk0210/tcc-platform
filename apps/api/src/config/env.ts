@@ -10,17 +10,39 @@ const schema = z.object({
   JWT_REFRESH_EXPIRES_IN: z.string().default("30d"),
   CORS_ORIGIN:            z.string().default("http://localhost:3000"),
   BCRYPT_ROUNDS:          z.string().default("12"),
+  // Which AIProvider implementation powers Copilot chat/agent completions —
+  // see copilotAiProvider.ts. "groq" (default) uses GROQ_API_KEY via
+  // groq-sdk; "openrouter" calls OpenRouter's OpenAI-compatible API via
+  // fetch, configured by the OPENROUTER_* vars below. Unprefixed (not
+  // COPILOT_AI_PROVIDER) since it selects the provider for the whole chat
+  // layer, same scope as GROQ_API_KEY itself being unprefixed. Completely
+  // independent of COPILOT_EMBEDDING_PROVIDER — chat and embeddings are
+  // separate systems that can each point at a different backend.
+  AI_PROVIDER:                     z.enum(["groq", "openrouter"]).default("groq"),
   // Optional, not required to boot: Copilot degrades to a 503
-  // ("AI service not configured") on its own routes when this is unset,
-  // rather than blocking the rest of the API from starting.
+  // ("AI service not configured") on its own routes when the vars its
+  // active AI_PROVIDER needs are unset, rather than blocking the rest of
+  // the API from starting. Only the active provider's key is ever required
+  // — selecting "openrouter" never requires GROQ_API_KEY, and vice versa.
   GROQ_API_KEY:                    z.string().optional(),
+  OPENROUTER_API_KEY:              z.string().optional(),
+  // No default — deliberately never a hard-coded model slug (see
+  // copilotAiProvider.ts's module doc comment). Required only when
+  // AI_PROVIDER=openrouter; OpenRouterAIProvider throws
+  // AIProviderNotConfiguredError if this is unset when actually called.
+  OPENROUTER_MODEL:                z.string().optional(),
+  // Optional — OpenRouter's recommended (not required) attribution headers
+  // for their own request leaderboard. Omitted from the request entirely
+  // when unset.
+  OPENROUTER_SITE_URL:             z.string().optional(),
+  OPENROUTER_SITE_NAME:            z.string().optional(),
   // Copilot agent loop limits — sensible defaults, overridable per
   // environment without a code change. See copilotAgentService.ts.
   COPILOT_MAX_AGENT_STEPS:         z.string().default("5"),
-  // Per-attempt provider timeout — how long a single Groq call is allowed
-  // to take before the retry layer (copilotAiProvider.ts) treats it as
-  // failed and (if retryable) tries again. Not the overall request bound —
-  // see COPILOT_PROVIDER_MAX_TOTAL_MS for that.
+  // Per-attempt provider timeout — how long a single AI_PROVIDER call is
+  // allowed to take before the retry layer (copilotAiProvider.ts) treats it
+  // as failed and (if retryable) tries again. Not the overall request
+  // bound — see COPILOT_PROVIDER_MAX_TOTAL_MS for that.
   COPILOT_PROVIDER_TIMEOUT_MS:     z.string().default("20000"),
   COPILOT_TOOL_TIMEOUT_MS:         z.string().default("10000"),
   // Provider retry policy (copilotAiProvider.ts's ReliableAIProvider).

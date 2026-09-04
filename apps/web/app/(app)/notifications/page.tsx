@@ -55,10 +55,10 @@ const TYPE_LABEL: Record<NotificationType, string> = {
 };
 
 const PRIORITY_DOT: Record<string, string> = {
-  low:      "bg-white/20",
+  low:      "bg-elevated",
   medium:   "bg-blue-400",
-  high:     "bg-amber-400",
-  critical: "bg-red-500 animate-pulse",
+  high:     "bg-warning",
+  critical: "bg-danger animate-pulse",
 };
 
 type TabFilter = "all" | NotificationType | "unread";
@@ -92,12 +92,12 @@ function NotificationCard({
   return (
     <div
       className={`glass border rounded-xl p-4 transition ${
-        read ? "border-white/5 bg-transparent" : "border-white/10 bg-white/2"
+        read ? "border-border bg-transparent" : "border-border bg-elevated"
       }`}>
       <div className="flex items-start gap-3">
         {/* Priority dot */}
         <div className="flex flex-col items-center gap-1 pt-0.5 shrink-0">
-          <div className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[priority] ?? "bg-white/20"}`} />
+          <div className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[priority] ?? "bg-elevated"}`} />
         </div>
 
         {/* Icon */}
@@ -108,27 +108,27 @@ function NotificationCard({
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-3 mb-0.5">
-            <p className={`text-sm font-semibold truncate ${read ? "text-white/60" : "text-white"}`}>
+            <p className={`text-sm font-semibold truncate ${read ? "text-fg-muted" : "text-fg"}`}>
               {title}
             </p>
-            <span className="text-white/20 text-xs shrink-0 mt-0.5">
+            <span className="text-fg-dim text-xs shrink-0 mt-0.5">
               {timeAgo(new Date(createdAt).getTime())}
             </span>
           </div>
 
-          <p className={`text-xs leading-relaxed mb-2 ${read ? "text-white/30" : "text-white/60"}`}>
+          <p className={`text-xs leading-relaxed mb-2 ${read ? "text-fg-dim" : "text-fg-muted"}`}>
             {message}
           </p>
 
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-white/20 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+            <span className="text-xs text-fg-dim bg-elevated border border-border px-2 py-0.5 rounded-full">
               {TYPE_LABEL[type] ?? type}
             </span>
 
             {actionLabel && actionPath && (
               <button
                 onClick={() => onAction(actionPath)}
-                className="text-xs text-green-400/80 hover:text-green-400 bg-green-500/5 border border-green-500/20 px-2 py-0.5 rounded-full transition">
+                className="text-xs text-success/80 hover:text-success bg-success-soft border border-success/30 px-2 py-0.5 rounded-full transition">
                 {actionLabel} →
               </button>
             )}
@@ -136,14 +136,14 @@ function NotificationCard({
             {!read && (
               <button
                 onClick={() => onRead(id)}
-                className="text-xs text-white/30 hover:text-white/60 transition">
+                className="text-xs text-fg-dim hover:text-fg-muted transition">
                 Mark read
               </button>
             )}
 
             <button
               onClick={() => onDelete(id)}
-              className="text-xs text-white/20 hover:text-red-400 transition ml-auto">
+              className="text-xs text-fg-dim hover:text-danger transition ml-auto">
               🗑
             </button>
           </div>
@@ -212,7 +212,7 @@ export default function NotificationsPage() {
   if (!isInitialized || isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <p className="text-white/30 text-sm animate-pulse">Loading notifications...</p>
+        <p className="text-fg-dim text-sm animate-pulse">Loading notifications...</p>
       </div>
     );
   }
@@ -220,11 +220,11 @@ export default function NotificationsPage() {
   if (error) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3">
-        <p className="text-red-400 text-sm">{error}</p>
+        <p className="text-danger text-sm">{error}</p>
         <button
           type="button"
           onClick={() => useNotificationStore.getState().init()}
-          className="text-white/40 text-xs border border-white/10 px-3 py-1 rounded hover:text-white/70 hover:border-white/20 transition"
+          className="text-fg-dim text-xs border border-border px-3 py-1 rounded hover:text-fg-muted hover:border-border-strong transition"
         >
           Retry
         </button>
@@ -239,15 +239,15 @@ export default function NotificationsPage() {
             {/* Header */}
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h1 className="text-2xl font-bold text-white">
+                <h1 className="text-2xl font-bold text-fg">
                   🔔 Notifications
                   {totalUnread > 0 && (
-                    <span className="ml-2 text-sm font-semibold text-white/40 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                    <span className="ml-2 text-sm font-semibold text-fg-dim bg-elevated border border-border px-2 py-0.5 rounded-full">
                       {totalUnread} unread
                     </span>
                   )}
                 </h1>
-                <p className="text-white/30 text-xs mt-0.5">
+                <p className="text-fg-dim text-xs mt-0.5">
                   {notifications.length} total · User-scoped · Local only
                 </p>
               </div>
@@ -256,7 +256,7 @@ export default function NotificationsPage() {
                 {totalUnread > 0 && (
                   <button
                     onClick={markAllAsRead}
-                    className="text-xs text-white/50 hover:text-white bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg transition">
+                    className="text-xs text-fg-muted hover:text-fg bg-elevated border border-border px-3 py-1.5 rounded-lg transition">
                     Mark all read
                   </button>
                 )}
@@ -265,7 +265,7 @@ export default function NotificationsPage() {
                     onClick={() => {
                       if (confirm("Clear all notifications?")) clearAll();
                     }}
-                    className="text-xs text-red-400/60 hover:text-red-400 bg-red-500/5 border border-red-500/10 px-3 py-1.5 rounded-lg transition">
+                    className="text-xs text-danger/60 hover:text-danger bg-danger-soft border border-danger/30 px-3 py-1.5 rounded-lg transition">
                     Clear all
                   </button>
                 )}
@@ -277,11 +277,11 @@ export default function NotificationsPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search notifications..."
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-white/25 placeholder-white/20 mb-4"
+              className="w-full bg-elevated border border-border rounded-lg px-3 py-1.5 text-fg text-sm focus:outline-none focus:border-border placeholder-white/20 mb-4"
             />
 
             {/* Tabs */}
-            <div className="flex gap-1 bg-white/5 rounded-lg p-1 mb-5 overflow-x-auto">
+            <div className="flex gap-1 bg-elevated rounded-lg p-1 mb-5 overflow-x-auto">
               {TABS.map((tab) => {
                 const count =
                   tab.key === "all"
@@ -296,12 +296,12 @@ export default function NotificationsPage() {
                     onClick={() => setActiveTab(tab.key)}
                     className={`flex-shrink-0 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition ${
                       activeTab === tab.key
-                        ? "bg-green-500/20 text-green-400"
-                        : "text-white/40 hover:text-white/60"
+                        ? "bg-success-soft text-success"
+                        : "text-fg-dim hover:text-fg-muted"
                     }`}>
                     {tab.label}
                     {count > 0 && (
-                      <span className="ml-1 text-white/30">({count})</span>
+                      <span className="ml-1 text-fg-dim">({count})</span>
                     )}
                   </button>
                 );
@@ -312,14 +312,14 @@ export default function NotificationsPage() {
             {uniqueFiltered.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-4">
                 <p className="text-4xl">🔔</p>
-                <p className="text-white/30 text-sm">
+                <p className="text-fg-dim text-sm">
                   {searchQuery
                     ? "No notifications match your search."
                     : activeTab === "unread"
                     ? "No unread notifications."
                     : "No notifications yet."}
                 </p>
-                <p className="text-white/15 text-xs text-center max-w-xs leading-relaxed">
+                <p className="text-fg-dim text-xs text-center max-w-xs leading-relaxed">
                   Notifications appear here when you trade, enroll in Academy courses,
                   interact with Community, or use Copy Trading.
                 </p>
@@ -343,7 +343,7 @@ export default function NotificationsPage() {
 
             {/* Footer note */}
             {notifications.length > 0 && (
-              <p className="text-white/10 text-xs text-center mt-6 leading-relaxed">
+              <p className="text-fg-dim text-xs text-center mt-6 leading-relaxed">
                 Notifications are stored locally per user. Maximum 200 stored.
                 Phase Alpha will add real-time push notifications.
               </p>

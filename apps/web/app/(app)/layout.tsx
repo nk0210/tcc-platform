@@ -24,7 +24,7 @@ import Sidebar from "@/components/Sidebar";
  */
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-canvas text-fg">
       <Topbar />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />

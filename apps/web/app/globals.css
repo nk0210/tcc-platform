@@ -1,41 +1,211 @@
 @import "tailwindcss";
 
+/**
+ * TCC Design System
+ *
+ * Semantic color tokens, theme-aware (dark default, light opt-in via
+ * `data-theme="light"` on <html> — see store/themeStore.ts + ThemeToggle).
+ * Tailwind v4's `@theme` block below both (a) generates utility classes
+ * (bg-canvas, text-accent, border-border, ...) and (b) seeds these as real
+ * CSS custom properties on :root — the `[data-theme="light"]` block further
+ * down overrides the same property names, so every utility that already
+ * exists (here or on any not-yet-redesigned page) stays theme-reactive
+ * automatically, no per-page changes required.
+ *
+ * Token names deliberately avoid Tailwind's own reserved words (e.g. not
+ * `base`/`primary` alone, which would collide with the built-in `text-base`
+ * font-size utility and read ambiguously against `bg-primary` etc.) —
+ * `canvas`/`fg`/`fg-muted`/`fg-dim` name what they ARE (page background,
+ * foreground text at three emphasis levels), not a generic priority label.
+ *
+ * Color semantics (kept consistent everywhere):
+ *   accent  (indigo/violet) — brand, navigation, primary actions, focus rings
+ *   success (green)         — profit, buys, positive movement, confirmations
+ *   danger  (red)           — loss, sells, negative movement, destructive actions
+ *   warning (amber)         — caution, pending states
+ */
+@theme {
+  --color-canvas:   #0a0e17;
+  --color-surface:  #10141f;
+  --color-elevated: #161b29;
+  --color-border:        rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+
+  --color-fg:       #eef1f7;
+  --color-fg-muted: #a3abbd;
+  --color-fg-dim:   #6b7386;
+
+  --color-accent:      #6366f1;
+  --color-accent-hover: #818cf8;
+  --color-accent-soft:  rgba(99, 102, 241, 0.14);
+
+  --color-success:      #22c55e;
+  --color-success-soft: rgba(34, 197, 94, 0.14);
+  --color-danger:       #ef4444;
+  --color-danger-soft:  rgba(239, 68, 68, 0.14);
+  --color-warning:      #f59e0b;
+  --color-warning-soft: rgba(245, 158, 11, 0.14);
+
+  --shadow-elevated: 0 4px 24px -4px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-glow-accent: 0 0 0 1px rgba(99, 102, 241, 0.4), 0 0 20px -4px rgba(99, 102, 241, 0.35);
+}
+
+/* Light theme — same token names, light-appropriate values. Applied via
+   [data-theme="light"] on <html> (see ThemeProvider). Accent/success/danger
+   hues stay recognizably the same family, just deepened for contrast on a
+   light background. */
+:root[data-theme="light"] {
+  --color-canvas:   #f2f4f9;
+  --color-surface:  #ffffff;
+  --color-elevated: #ffffff;
+  --color-border:        rgba(15, 23, 42, 0.09);
+  --color-border-strong: rgba(15, 23, 42, 0.16);
+
+  --color-fg:       #0f1420;
+  --color-fg-muted: #4b5468;
+  --color-fg-dim:   #8891a3;
+
+  --color-accent:       #5b5bf0;
+  --color-accent-hover: #4749d6;
+  --color-accent-soft:  rgba(91, 91, 240, 0.10);
+
+  --color-success:      #16a34a;
+  --color-success-soft: rgba(22, 163, 74, 0.10);
+  --color-danger:       #dc2626;
+  --color-danger-soft:  rgba(220, 38, 38, 0.10);
+  --color-warning:      #d97706;
+  --color-warning-soft: rgba(217, 119, 6, 0.10);
+
+  --shadow-elevated: 0 4px 20px -6px rgba(15, 23, 42, 0.12), 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-glow-accent: 0 0 0 1px rgba(91, 91, 240, 0.35), 0 0 20px -6px rgba(91, 91, 240, 0.25);
+}
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+html {
+  color-scheme: dark;
+}
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
 body {
-  background-color: #0a0a0f;
-  color: #e2e8f0;
+  background-color: var(--color-canvas);
+  color: var(--color-fg);
   font-family: 'Inter', sans-serif;
   overflow: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 ::-webkit-scrollbar {
   width: 4px;
+  height: 4px;
 }
-
 ::-webkit-scrollbar-track {
-  background: #0a0a0f;
+  background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #1a1a2e;
+  background: var(--color-border-strong);
   border-radius: 2px;
 }
 
+/* ── Glass surface — the platform's one shared "elevated panel" look ──── */
 .glass {
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--color-elevated) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-elevated);
 }
 
-.neon-green {
-  color: #00ff88;
+/* Legacy aliases — many not-yet-redesigned pages still use these directly.
+   Kept theme-reactive rather than removed, so every page benefits from
+   theme switching immediately, not just the ones explicitly redesigned. */
+.neon-green { color: var(--color-success); }
+.neon-red   { color: var(--color-danger); }
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  border-radius: 0.6rem;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  cursor: pointer;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-canvas), 0 0 0 4px var(--color-accent);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
 }
 
-.neon-red {
-  color: #ff4466;
+.btn-primary {
+  background: var(--color-accent);
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
+.btn-primary:hover:not(:disabled) { background: var(--color-accent-hover); }
+
+.btn-secondary {
+  background: color-mix(in srgb, var(--color-fg) 5%, transparent);
+  color: var(--color-fg-muted);
+  border-color: var(--color-border);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-fg) 9%, transparent);
+  color: var(--color-fg);
+  border-color: var(--color-border-strong);
+}
+
+.btn-success {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  border-color: color-mix(in srgb, var(--color-success) 35%, transparent);
+}
+.btn-success:hover:not(:disabled) { background: color-mix(in srgb, var(--color-success) 24%, transparent); }
+
+.btn-danger {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  border-color: color-mix(in srgb, var(--color-danger) 35%, transparent);
+}
+.btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--color-danger) 24%, transparent); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-fg-dim);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-fg) 6%, transparent);
+  color: var(--color-fg);
+}
+
+/* ── Badges ───────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  letter-spacing: 0.02em;
+}
+.badge-accent  { background: var(--color-accent-soft);  color: var(--color-accent-hover); border-color: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+.badge-success { background: var(--color-success-soft); color: var(--color-success);       border-color: color-mix(in srgb, var(--color-success) 30%, transparent); }
+.badge-danger  { background: var(--color-danger-soft);  color: var(--color-danger);        border-color: color-mix(in srgb, var(--color-danger) 30%, transparent); }
+.badge-warning { background: var(--color-warning-soft); color: var(--color-warning);       border-color: color-mix(in srgb, var(--color-warning) 30%, transparent); }
+.badge-neutral { background: color-mix(in srgb, var(--color-fg) 7%, transparent); color: var(--color-fg-muted); }

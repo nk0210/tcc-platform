@@ -93,8 +93,8 @@ export default function MarketsPage() {
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-white">📊 Markets</h1>
-              <p className="text-white/40 text-sm mt-1">
+              <h1 className="text-2xl font-bold text-fg">📊 Markets</h1>
+              <p className="text-fg-dim text-sm mt-1">
                 {loading
                   ? "Loading crypto prices..."
                   : wsConnected
@@ -103,8 +103,8 @@ export default function MarketsPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${loading ? "bg-amber-400 animate-pulse" : wsConnected ? "bg-green-400 animate-pulse" : "bg-amber-400"}`} />
-              <span className="text-xs text-white/40">{wsConnected ? "Live" : loading ? "Loading" : "REST"}</span>
+              <div className={`w-2 h-2 rounded-full ${loading ? "bg-warning animate-pulse" : wsConnected ? "bg-success animate-pulse" : "bg-warning"}`} />
+              <span className="text-xs text-fg-dim">{wsConnected ? "Live" : loading ? "Loading" : "REST"}</span>
             </div>
           </div>
 
@@ -114,10 +114,10 @@ export default function MarketsPage() {
             <div className="flex-1 min-w-0">
 
               {/* Tabs */}
-              <div className="flex gap-1 bg-white/5 rounded-lg p-1 mb-4 flex-wrap">
+              <div className="flex gap-1 bg-elevated rounded-lg p-1 mb-4 flex-wrap">
                 {tabs.map(tab => (
                   <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${activeTab === tab.key ? "bg-green-500/20 text-green-400" : "text-white/40 hover:text-white/70"}`}>
+                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${activeTab === tab.key ? "bg-success-soft text-success" : "text-fg-dim hover:text-fg-muted"}`}>
                     {tab.label}
                   </button>
                 ))}
@@ -129,10 +129,10 @@ export default function MarketsPage() {
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Search symbol or name..."
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white text-sm placeholder-white/20 focus:outline-none focus:border-white/20"
+                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-fg text-sm placeholder-white/20 focus:outline-none focus:border-border-strong"
                 />
                 {search && (
-                  <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 text-sm">✕</button>
+                  <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-fg-dim hover:text-fg-muted text-sm">✕</button>
                 )}
               </div>
 
@@ -140,7 +140,7 @@ export default function MarketsPage() {
               {(activeTab === "forex" || activeTab === "commodity" || activeTab === "index") && (
                 <div className="bg-blue-500/5 border border-blue-500/10 rounded-xl p-3 mb-4 flex items-center gap-3">
                   <span className="text-blue-400 text-lg shrink-0">📊</span>
-                  <p className="text-white/40 text-xs leading-relaxed">
+                  <p className="text-fg-dim text-xs leading-relaxed">
                     Live price API is not connected for Forex, Commodities, and Indices.
                     Charts are available via TradingView. Click "Trade" to open the chart.
                     Live prices require a broker integration (Phase Alpha).
@@ -153,8 +153,8 @@ export default function MarketsPage() {
                 <div className="flex items-center justify-center h-48">
                   <div className="text-center">
                     <p className="text-4xl mb-3">⭐</p>
-                    <p className="text-white/40 text-sm">Your watchlist is empty</p>
-                    <p className="text-white/20 text-xs mt-1">Switch to "All" and click ☆ to add symbols</p>
+                    <p className="text-fg-dim text-sm">Your watchlist is empty</p>
+                    <p className="text-fg-dim text-xs mt-1">Switch to "All" and click ☆ to add symbols</p>
                   </div>
                 </div>
               )}
@@ -162,30 +162,30 @@ export default function MarketsPage() {
               {/* No search results */}
               {displaySymbols.length === 0 && search && (
                 <div className="flex items-center justify-center h-32">
-                  <p className="text-white/20 text-sm">No TCC-supported symbol found for "{search}"</p>
+                  <p className="text-fg-dim text-sm">No TCC-supported symbol found for "{search}"</p>
                 </div>
               )}
 
               {/* Symbol table */}
               {displaySymbols.length > 0 && (
-                <div className="glass border border-white/5 rounded-xl overflow-hidden">
+                <div className="glass border border-border rounded-xl overflow-hidden">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-white/5 bg-white/2">
-                        <th className="text-left px-4 py-3 text-white/40">Symbol</th>
-                        <th className="text-right px-4 py-3 text-white/40">Price</th>
-                        <th className="text-right px-4 py-3 text-white/40">24h Change</th>
-                        <th className="text-right px-4 py-3 text-white/40">24h High</th>
-                        <th className="text-right px-4 py-3 text-white/40">24h Low</th>
-                        <th className="text-right px-4 py-3 text-white/40">Volume</th>
-                        <th className="text-right px-4 py-3 text-white/40">Actions</th>
+                      <tr className="border-b border-border bg-elevated">
+                        <th className="text-left px-4 py-3 text-fg-dim">Symbol</th>
+                        <th className="text-right px-4 py-3 text-fg-dim">Price</th>
+                        <th className="text-right px-4 py-3 text-fg-dim">24h Change</th>
+                        <th className="text-right px-4 py-3 text-fg-dim">24h High</th>
+                        <th className="text-right px-4 py-3 text-fg-dim">24h Low</th>
+                        <th className="text-right px-4 py-3 text-fg-dim">Volume</th>
+                        <th className="text-right px-4 py-3 text-fg-dim">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {loading && activeTab === "crypto" && displaySymbols.slice(0, 10).map((_, i) => (
-                        <tr key={i} className="border-b border-white/5">
+                        <tr key={i} className="border-b border-border">
                           <td colSpan={7} className="px-4 py-3">
-                            <div className="h-4 bg-white/5 rounded animate-pulse" />
+                            <div className="h-4 bg-elevated rounded animate-pulse" />
                           </td>
                         </tr>
                       ))}
@@ -195,15 +195,15 @@ export default function MarketsPage() {
                         const hasLivePrice = symbol.livePriceSupported && ticker && ticker.price > 0;
 
                         return (
-                          <tr key={symbol.id} className="border-b border-white/5 hover:bg-white/2 transition">
+                          <tr key={symbol.id} className="border-b border-border hover:bg-elevated transition">
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-base shrink-0">
+                                <div className="w-8 h-8 rounded-lg bg-elevated flex items-center justify-center text-base shrink-0">
                                   {symbol.emoji}
                                 </div>
                                 <div>
-                                  <p className="text-white font-semibold">{symbol.displayName}</p>
-                                  <p className="text-white/30 text-xs">{symbol.description}</p>
+                                  <p className="text-fg font-semibold">{symbol.displayName}</p>
+                                  <p className="text-fg-dim text-xs">{symbol.description}</p>
                                 </div>
                               </div>
                             </td>
@@ -211,47 +211,47 @@ export default function MarketsPage() {
                             {/* Price */}
                             <td className="px-4 py-3 text-right">
                               {hasLivePrice ? (
-                                <span className="text-white font-semibold">{formatPrice(ticker!.price)}</span>
+                                <span className="text-fg font-semibold">{formatPrice(ticker!.price)}</span>
                               ) : (
-                                <span className="text-white/20 text-xs italic">{symbol.statusLabel || "—"}</span>
+                                <span className="text-fg-dim text-xs italic">{symbol.statusLabel || "—"}</span>
                               )}
                             </td>
 
                             {/* 24h Change */}
                             <td className="px-4 py-3 text-right">
                               {hasLivePrice ? (
-                                <span className={`font-bold ${ticker!.changePct >= 0 ? "text-green-400" : "text-red-400"}`}>
+                                <span className={`font-bold ${ticker!.changePct >= 0 ? "text-success" : "text-danger"}`}>
                                   {ticker!.changePct >= 0 ? "+" : ""}{ticker!.changePct.toFixed(2)}%
                                 </span>
                               ) : (
-                                <span className="text-white/15 text-xs">—</span>
+                                <span className="text-fg-dim text-xs">—</span>
                               )}
                             </td>
 
                             {/* 24h High */}
                             <td className="px-4 py-3 text-right">
                               {hasLivePrice ? (
-                                <span className="text-white/60">{formatPrice(ticker!.high)}</span>
+                                <span className="text-fg-muted">{formatPrice(ticker!.high)}</span>
                               ) : (
-                                <span className="text-white/15 text-xs">—</span>
+                                <span className="text-fg-dim text-xs">—</span>
                               )}
                             </td>
 
                             {/* 24h Low */}
                             <td className="px-4 py-3 text-right">
                               {hasLivePrice ? (
-                                <span className="text-white/60">{formatPrice(ticker!.low)}</span>
+                                <span className="text-fg-muted">{formatPrice(ticker!.low)}</span>
                               ) : (
-                                <span className="text-white/15 text-xs">—</span>
+                                <span className="text-fg-dim text-xs">—</span>
                               )}
                             </td>
 
                             {/* Volume */}
                             <td className="px-4 py-3 text-right">
                               {hasLivePrice ? (
-                                <span className="text-white/60">{formatVolume(ticker!.quoteVolume)}</span>
+                                <span className="text-fg-muted">{formatVolume(ticker!.quoteVolume)}</span>
                               ) : (
-                                <span className="text-white/15 text-xs">—</span>
+                                <span className="text-fg-dim text-xs">—</span>
                               )}
                             </td>
 
@@ -261,12 +261,12 @@ export default function MarketsPage() {
                                 <button
                                   onClick={() => toggleWatchlist(symbol.id)}
                                   title={isWatched ? "Remove from watchlist" : "Add to watchlist"}
-                                  className={`text-sm px-2 py-1 rounded border transition ${isWatched ? "text-amber-400 bg-amber-500/10 border-amber-500/20" : "text-white/30 bg-white/5 border-white/10 hover:border-white/20"}`}>
+                                  className={`text-sm px-2 py-1 rounded border transition ${isWatched ? "text-warning bg-warning-soft border-warning/30" : "text-fg-dim bg-elevated border-border hover:border-border-strong"}`}>
                                   {isWatched ? "★" : "☆"}
                                 </button>
                                 <button
                                   onClick={() => handleTrade(symbol)}
-                                  className="text-xs px-2 py-1 rounded border text-green-400 bg-green-500/10 border-green-500/20 hover:bg-green-500/20 transition">
+                                  className="text-xs px-2 py-1 rounded border text-success bg-success-soft border-success/30 hover:bg-success/22 transition">
                                   {symbol.livePriceSupported ? "Trade" : "Chart"}
                                 </button>
                               </div>
@@ -284,67 +284,67 @@ export default function MarketsPage() {
             <div className="w-52 shrink-0 flex flex-col gap-4">
 
               {/* Top Gainers */}
-              <div className="glass border border-green-500/10 rounded-xl p-4">
-                <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-3">🔥 Top Gainers</p>
+              <div className="glass border border-success/30 rounded-xl p-4">
+                <p className="text-xs font-semibold text-fg-muted uppercase tracking-wider mb-3">🔥 Top Gainers</p>
                 {topGainers.length === 0 ? (
-                  <p className="text-white/20 text-xs italic">Unavailable until live data loads</p>
+                  <p className="text-fg-dim text-xs italic">Unavailable until live data loads</p>
                 ) : (
                   topGainers.map(({ symbol, ticker }) => (
                     <div key={symbol.id} className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-1">
                         <span className="text-base">{symbol.emoji}</span>
-                        <span className="text-white/70 text-xs">{symbol.id.replace("USDT", "")}</span>
+                        <span className="text-fg-muted text-xs">{symbol.id.replace("USDT", "")}</span>
                       </div>
-                      <span className="text-green-400 text-xs font-bold">+{ticker.changePct.toFixed(2)}%</span>
+                      <span className="text-success text-xs font-bold">+{ticker.changePct.toFixed(2)}%</span>
                     </div>
                   ))
                 )}
               </div>
 
               {/* Top Losers */}
-              <div className="glass border border-red-500/10 rounded-xl p-4">
-                <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-3">📉 Top Losers</p>
+              <div className="glass border border-danger/30 rounded-xl p-4">
+                <p className="text-xs font-semibold text-fg-muted uppercase tracking-wider mb-3">📉 Top Losers</p>
                 {topLosers.length === 0 ? (
-                  <p className="text-white/20 text-xs italic">Unavailable until live data loads</p>
+                  <p className="text-fg-dim text-xs italic">Unavailable until live data loads</p>
                 ) : (
                   topLosers.filter(({ ticker }) => ticker.changePct < 0).map(({ symbol, ticker }) => (
                     <div key={symbol.id} className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-1">
                         <span className="text-base">{symbol.emoji}</span>
-                        <span className="text-white/70 text-xs">{symbol.id.replace("USDT", "")}</span>
+                        <span className="text-fg-muted text-xs">{symbol.id.replace("USDT", "")}</span>
                       </div>
-                      <span className="text-red-400 text-xs font-bold">{ticker.changePct.toFixed(2)}%</span>
+                      <span className="text-danger text-xs font-bold">{ticker.changePct.toFixed(2)}%</span>
                     </div>
                   ))
                 )}
               </div>
 
               {/* Data source note */}
-              <div className="glass border border-white/5 rounded-xl p-4">
-                <p className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">Data Sources</p>
+              <div className="glass border border-border rounded-xl p-4">
+                <p className="text-xs font-semibold text-fg-muted uppercase tracking-wider mb-2">Data Sources</p>
                 <div className="flex flex-col gap-2 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-white/40">Crypto prices</span>
-                    <span className="text-green-400">Binance</span>
+                    <span className="text-fg-dim">Crypto prices</span>
+                    <span className="text-success">Binance</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-white/40">Forex prices</span>
-                    <span className="text-white/20">Not connected</span>
+                    <span className="text-fg-dim">Forex prices</span>
+                    <span className="text-fg-dim">Not connected</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-white/40">Commodities</span>
-                    <span className="text-white/20">Not connected</span>
+                    <span className="text-fg-dim">Commodities</span>
+                    <span className="text-fg-dim">Not connected</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-white/40">Indices</span>
-                    <span className="text-white/20">Not connected</span>
+                    <span className="text-fg-dim">Indices</span>
+                    <span className="text-fg-dim">Not connected</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-white/40">Charts</span>
+                    <span className="text-fg-dim">Charts</span>
                     <span className="text-blue-400">TradingView</span>
                   </div>
                 </div>
-                <p className="text-white/15 text-xs mt-3 leading-relaxed">
+                <p className="text-fg-dim text-xs mt-3 leading-relaxed">
                   Non-crypto live prices require broker/market data API integration in Phase Alpha.
                 </p>
               </div>

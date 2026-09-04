@@ -3,6 +3,8 @@ import {
   ReliableAIProvider,
   classifyProviderError,
   AIProviderNotConfiguredError,
+  ProviderHttpError,
+  ProviderConnectionError,
   type AIProvider,
   type AICompletionResult,
 } from "./copilotAiProvider";
@@ -58,6 +60,40 @@ describe("classifyProviderError", () => {
 
   it("an unrecognized error is treated as non-retryable by default", () => {
     expect(classifyProviderError(new Error("something weird"))).toEqual({ category: "unknown", retryable: false });
+  });
+
+  // ── Fetch-based providers (OpenRouterAIProvider) — same classification
+  // rules as the groq-sdk error classes above, read from a different
+  // error shape (see copilotAiProvider.ts's ProviderHttpError/
+  // ProviderConnectionError doc comments).
+
+  it("ProviderHttpError 429 is rate_limit and retryable", () => {
+    expect(classifyProviderError(new ProviderHttpError(429, "rate limited")))
+      .toEqual({ category: "rate_limit", retryable: true });
+  });
+
+  it("ProviderHttpError 5xx is server_error and retryable", () => {
+    expect(classifyProviderError(new ProviderHttpError(503, "service unavailable")))
+      .toEqual({ category: "server_error", retryable: true });
+  });
+
+  it("ProviderHttpError 401/403 is auth and NOT retryable", () => {
+    expect(classifyProviderError(new ProviderHttpError(401, "invalid key")))
+      .toEqual({ category: "auth", retryable: false });
+    expect(classifyProviderError(new ProviderHttpError(403, "forbidden")))
+      .toEqual({ category: "auth", retryable: false });
+  });
+
+  it("ProviderHttpError 400/404 is bad_request and NOT retryable", () => {
+    expect(classifyProviderError(new ProviderHttpError(400, "bad request")))
+      .toEqual({ category: "bad_request", retryable: false });
+    expect(classifyProviderError(new ProviderHttpError(404, "model not found")))
+      .toEqual({ category: "bad_request", retryable: false });
+  });
+
+  it("ProviderConnectionError (no HTTP response at all) is connection_error and retryable", () => {
+    expect(classifyProviderError(new ProviderConnectionError("fetch failed")))
+      .toEqual({ category: "connection_error", retryable: true });
   });
 });
 
@@ -171,6 +207,29 @@ describe("ReliableAIProvider", () => {
 
     let settled = false;
     const promise = new ReliableAIProvider(inner).complete({ systemPrompt: "s", messages: [] });
+    void promise.then(() => { settled = true; });
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(settled).toBe(false); // still honoring the 3s Retry-After, not a shorter computed backoff
+
+    await vi.advanceTimersByTimeAsync(2500);
+    await promise;
+    expect(settled).toBe(true);
+  });
+
+  it("honors a ProviderHttpError's Retry-After the same way (fetch-based providers, e.g. OpenRouter)", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    const inner: AIProvider = {
+      async complete() {
+        calls += 1;
+        if (calls === 1) throw new ProviderHttpError(429, "rate limited", "3");
+        return ok();
+      },
+    };
+
+    let settled = false;
+    const promise = new ReliableAIProvider(inner, "openrouter").complete({ systemPrompt: "s", messages: [] });
     void promise.then(() => { settled = true; });
 
     await vi.advanceTimersByTimeAsync(1000);

@@ -122,7 +122,7 @@ export default function SystemHealthPage() {
   ];
 
   const statusIcon = { ok: "✅", warning: "⚠️", error: "❌", unknown: "⏳" };
-  const statusColor = { ok: "text-green-400", warning: "text-amber-400", error: "text-red-400", unknown: "text-white/30" };
+  const statusColor = { ok: "text-success", warning: "text-warning", error: "text-danger", unknown: "text-fg-dim" };
 
   const allOk = services.filter(s => s.status === "ok").length;
   const warnings = services.filter(s => s.status === "warning").length;
@@ -131,33 +131,33 @@ export default function SystemHealthPage() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-white">🖥 System Health</h1>
-        <p className="text-white/30 text-xs mt-1">Real status only — no fake green indicators</p>
+        <h1 className="text-xl font-bold text-fg">🖥 System Health</h1>
+        <p className="text-fg-dim text-xs mt-1">Real status only — no fake green indicators</p>
       </div>
 
       {/* Summary */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-4 text-center">
-          <p className="text-2xl font-bold text-green-400">{allOk}</p>
-          <p className="text-green-400/60 text-xs mt-1">Services OK</p>
+        <div className="bg-success-soft border border-success/30 rounded-xl p-4 text-center">
+          <p className="text-2xl font-bold text-success">{allOk}</p>
+          <p className="text-success/60 text-xs mt-1">Services OK</p>
         </div>
-        <div className={`border rounded-xl p-4 text-center ${warnings > 0 ? "bg-amber-500/5 border-amber-500/20" : "bg-white/2 border-white/5"}`}>
-          <p className={`text-2xl font-bold ${warnings > 0 ? "text-amber-400" : "text-white/20"}`}>{warnings}</p>
-          <p className={`text-xs mt-1 ${warnings > 0 ? "text-amber-400/60" : "text-white/20"}`}>Warnings</p>
+        <div className={`border rounded-xl p-4 text-center ${warnings > 0 ? "bg-warning-soft border-warning/30" : "bg-elevated border-border"}`}>
+          <p className={`text-2xl font-bold ${warnings > 0 ? "text-warning" : "text-fg-dim"}`}>{warnings}</p>
+          <p className={`text-xs mt-1 ${warnings > 0 ? "text-warning/60" : "text-fg-dim"}`}>Warnings</p>
         </div>
-        <div className={`border rounded-xl p-4 text-center ${errors > 0 ? "bg-red-500/5 border-red-500/20" : "bg-white/2 border-white/5"}`}>
-          <p className={`text-2xl font-bold ${errors > 0 ? "text-red-400" : "text-white/20"}`}>{errors}</p>
-          <p className={`text-xs mt-1 ${errors > 0 ? "text-red-400/60" : "text-white/20"}`}>Errors</p>
+        <div className={`border rounded-xl p-4 text-center ${errors > 0 ? "bg-danger-soft border-danger/30" : "bg-elevated border-border"}`}>
+          <p className={`text-2xl font-bold ${errors > 0 ? "text-danger" : "text-fg-dim"}`}>{errors}</p>
+          <p className={`text-xs mt-1 ${errors > 0 ? "text-danger/60" : "text-fg-dim"}`}>Errors</p>
         </div>
       </div>
 
       {/* Services */}
-      <div className="bg-white/2 border border-white/5 rounded-xl overflow-hidden mb-6">
+      <div className="bg-elevated border border-border rounded-xl overflow-hidden mb-6">
         {services.map((service, i) => (
-          <div key={service.name} className={`flex items-center gap-4 px-5 py-4 ${i < services.length - 1 ? "border-b border-white/5" : ""}`}>
+          <div key={service.name} className={`flex items-center gap-4 px-5 py-4 ${i < services.length - 1 ? "border-b border-border" : ""}`}>
             <span className="text-lg shrink-0">{statusIcon[service.status]}</span>
             <div className="flex-1">
-              <p className="text-white/80 text-sm font-semibold">{service.name}</p>
+              <p className="text-fg-muted text-sm font-semibold">{service.name}</p>
               <p className={`text-xs mt-0.5 ${statusColor[service.status]}`}>{service.detail}</p>
             </div>
             <span className={`text-xs font-bold uppercase ${statusColor[service.status]}`}>{service.status}</span>
@@ -166,8 +166,8 @@ export default function SystemHealthPage() {
       </div>
 
       {/* Store State */}
-      <div className="bg-white/2 border border-white/5 rounded-xl p-5 mb-6">
-        <p className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-4">Live Store State</p>
+      <div className="bg-elevated border border-border rounded-xl p-5 mb-6">
+        <p className="text-sm font-semibold text-fg-muted uppercase tracking-wider mb-4">Live Store State</p>
         <div className="grid grid-cols-2 gap-4 text-xs">
           {[
             { label: "Open Positions", value: positions.length },
@@ -177,9 +177,9 @@ export default function SystemHealthPage() {
             { label: "Notifications", value: notifications.length },
             { label: "Reports", value: reports.length },
           ].map(item => (
-            <div key={item.label} className="flex justify-between items-center p-2 bg-white/2 rounded-lg">
-              <span className="text-white/40">{item.label}</span>
-              <span className="text-white font-semibold">{item.value}</span>
+            <div key={item.label} className="flex justify-between items-center p-2 bg-elevated rounded-lg">
+              <span className="text-fg-dim">{item.label}</span>
+              <span className="text-fg font-semibold">{item.value}</span>
             </div>
           ))}
         </div>
@@ -187,8 +187,8 @@ export default function SystemHealthPage() {
 
       {/* localStorage Keys */}
       {localStorageKeys.length > 0 && (
-        <div className="bg-white/2 border border-white/5 rounded-xl p-5">
-          <p className="text-sm font-semibold text-white/60 uppercase tracking-wider mb-3">
+        <div className="bg-elevated border border-border rounded-xl p-5">
+          <p className="text-sm font-semibold text-fg-muted uppercase tracking-wider mb-3">
             Persisted Keys ({localStorageKeys.length})
           </p>
           <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
@@ -197,8 +197,8 @@ export default function SystemHealthPage() {
               const sizeKB = (val.length / 1024).toFixed(1);
               return (
                 <div key={key} className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-white/40 truncate max-w-xs">{key}</span>
-                  <span className="text-white/20 shrink-0 ml-2">{sizeKB} KB</span>
+                  <span className="text-fg-dim truncate max-w-xs">{key}</span>
+                  <span className="text-fg-dim shrink-0 ml-2">{sizeKB} KB</span>
                 </div>
               );
             })}

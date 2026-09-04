@@ -41,7 +41,7 @@ const ASSET_TABS: AssetTab[] = [
 ];
 
 const CATEGORY_BADGE: Record<SymbolCategory, string> = {
-  crypto: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+  crypto: "text-warning bg-warning-soft border-warning/30",
   forex: "text-blue-400 bg-blue-500/10 border-blue-500/20",
   commodity: "text-yellow-400 bg-yellow-500/10 border-yellow-500/20",
   index: "text-purple-400 bg-purple-500/10 border-purple-500/20",
@@ -86,7 +86,7 @@ function CenterChart() {
       ? parseFloat(manualPrice)
       : 0;
 
-  const priceColor = change >= 0 ? "text-green-400" : "text-red-400";
+  const priceColor = change >= 0 ? "text-success" : "text-danger";
   const priceMark = change >= 0 ? "+" : "";
 
   const filteredSymbols = TCC_SYMBOLS.filter(
@@ -185,46 +185,46 @@ function CenterChart() {
   if (!mounted) {
     return (
       <div className="flex flex-col flex-1 overflow-hidden relative min-h-0">
-        <div className="glass flex items-center gap-3 px-4 py-2 border-b border-white/5 flex-wrap relative z-40 shrink-0">
-          <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5">
-            <span className="text-white/30 text-sm animate-pulse">
+        <div className="glass flex items-center gap-3 px-4 py-2 border-b border-border flex-wrap relative z-40 shrink-0">
+          <div className="flex items-center gap-2 bg-elevated border border-border rounded-lg px-3 py-1.5">
+            <span className="text-fg-dim text-sm animate-pulse">
               Loading trading panel...
             </span>
           </div>
 
-          <span className="ml-auto text-xs text-green-400/60 bg-green-500/5 border border-green-500/10 px-2 py-0.5 rounded-full">
+          <span className="ml-auto text-xs text-success/60 bg-success-soft border border-success/30 px-2 py-0.5 rounded-full">
             📊 Paper Mode
           </span>
         </div>
 
         <div className="flex-1 min-h-0 flex items-center justify-center bg-[#050509]">
-          <p className="text-white/25 text-sm animate-pulse">
+          <p className="text-fg-dim text-sm animate-pulse">
             Loading chart...
           </p>
         </div>
 
-        <div className="glass border-t border-white/5 px-4 py-3 shrink-0">
+        <div className="glass border-t border-border px-4 py-3 shrink-0">
           <div className="flex items-center gap-3 flex-wrap">
             <button
               disabled
-              className="bg-green-500/20 opacity-40 text-green-400 border border-green-500/30 px-6 py-2 rounded-lg text-sm font-bold"
+              className="bg-success-soft opacity-40 text-success border border-success/30 px-6 py-2 rounded-lg text-sm font-bold"
             >
               BUY
             </button>
 
             <button
               disabled
-              className="bg-red-500/20 opacity-40 text-red-400 border border-red-500/30 px-6 py-2 rounded-lg text-sm font-bold"
+              className="bg-danger-soft opacity-40 text-danger border border-danger/30 px-6 py-2 rounded-lg text-sm font-bold"
             >
               SELL
             </button>
 
-            <div className="ml-auto flex items-center gap-4 text-xs text-white/40">
+            <div className="ml-auto flex items-center gap-4 text-xs text-fg-dim">
               <span>
-                Free margin: <span className="text-white/70">$10000.00</span>
+                Free margin: <span className="text-fg-muted">$10000.00</span>
               </span>
               <span>
-                Open: <span className="text-white font-semibold">0</span>
+                Open: <span className="text-fg font-semibold">0</span>
               </span>
             </div>
           </div>
@@ -237,17 +237,17 @@ function CenterChart() {
     <div className="flex flex-col flex-1 overflow-hidden relative min-h-0">
       {showRiskWarning && (
         <div className="absolute inset-0 bg-black/85 z-50 flex items-center justify-center p-4">
-          <div className="bg-[#111217] border border-red-500/30 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
-            <p className="text-red-400 font-bold text-base mb-1">
+          <div className="bg-[#111217] border border-danger/30 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+            <p className="text-danger font-bold text-base mb-1">
               ⚠ Risk Warning
             </p>
 
-            <p className="text-white/50 text-xs mb-3">
+            <p className="text-fg-muted text-xs mb-3">
               Current risk level is elevated. Opening another position
               increases exposure.
             </p>
 
-            <p className="text-white/70 text-sm mb-4">
+            <p className="text-fg-muted text-sm mb-4">
               {calculateRiskScore().recommendation}
             </p>
 
@@ -258,7 +258,7 @@ function CenterChart() {
                     executeTrade(pendingSide);
                   }
                 }}
-                className="flex-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 py-2 rounded-xl text-sm font-semibold transition"
+                className="flex-1 bg-danger-soft hover:bg-danger/22 text-danger border border-danger/30 py-2 rounded-xl text-sm font-semibold transition"
               >
                 Open Anyway
               </button>
@@ -268,7 +268,7 @@ function CenterChart() {
                   setShowRiskWarning(false);
                   setPendingSide(null);
                 }}
-                className="flex-1 bg-white/5 hover:bg-white/10 text-white/60 border border-white/10 py-2 rounded-xl text-sm font-semibold transition"
+                className="flex-1 bg-elevated hover:bg-elevated text-fg-muted border border-border py-2 rounded-xl text-sm font-semibold transition"
               >
                 Cancel
               </button>
@@ -284,23 +284,23 @@ function CenterChart() {
         />
       )}
 
-      <div className="glass flex items-center gap-3 px-4 py-2 border-b border-white/5 flex-wrap relative z-40 shrink-0">
+      <div className="glass flex items-center gap-3 px-4 py-2 border-b border-border flex-wrap relative z-40 shrink-0">
         <div className="relative">
           <button
             onClick={() => setShowDropdown(!showDropdown)}
-            className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg px-3 py-1.5 transition"
+            className="flex items-center gap-2 bg-elevated hover:bg-elevated border border-border rounded-lg px-3 py-1.5 transition"
           >
             <span className="text-lg leading-none">{activeSymbol.emoji}</span>
-            <span className="text-white font-semibold text-sm">
+            <span className="text-fg font-semibold text-sm">
               {activeSymbol.displayName}
             </span>
-            <span className="text-white/30 text-xs">
+            <span className="text-fg-dim text-xs">
               {showDropdown ? "▲" : "▼"}
             </span>
           </button>
 
           {showDropdown && (
-            <div className="absolute top-full left-0 mt-1 z-50 bg-[#111217] border border-white/10 rounded-xl p-3 w-80 shadow-2xl">
+            <div className="absolute top-full left-0 mt-1 z-50 bg-[#111217] border border-border rounded-xl p-3 w-80 shadow-2xl">
               <div className="flex gap-1 mb-3">
                 {ASSET_TABS.map((tab) => (
                   <button
@@ -308,8 +308,8 @@ function CenterChart() {
                     onClick={() => setDropdownCategory(tab.category)}
                     className={`flex-1 py-1 rounded-lg text-xs font-semibold transition ${
                       dropdownCategory === tab.category
-                        ? "bg-green-500/20 text-green-400"
-                        : "text-white/40 hover:text-white/60 hover:bg-white/5"
+                        ? "bg-success-soft text-success"
+                        : "text-fg-dim hover:text-fg-muted hover:bg-elevated"
                     }`}
                   >
                     {tab.label}
@@ -330,17 +330,17 @@ function CenterChart() {
                     }}
                     className={`flex items-center gap-2 px-2 py-2 rounded-lg text-xs text-left transition ${
                       activeSymbol.id === s.id
-                        ? "bg-green-500/10 text-green-400"
-                        : "text-white/60 hover:bg-white/5"
+                        ? "bg-success-soft text-success"
+                        : "text-fg-muted hover:bg-elevated"
                     }`}
                   >
                     <span className="text-base leading-none">{s.emoji}</span>
                     <span className="font-semibold">{s.displayName}</span>
-                    <span className="text-white/30 ml-auto">
+                    <span className="text-fg-dim ml-auto">
                       {s.description}
                     </span>
                     {!s.livePriceSupported && (
-                      <span className="text-white/20 text-xs">📊</span>
+                      <span className="text-fg-dim text-xs">📊</span>
                     )}
                   </button>
                 ))}
@@ -373,17 +373,17 @@ function CenterChart() {
               </span>
             </>
           ) : (
-            <span className="text-white/30 text-sm animate-pulse">
+            <span className="text-fg-dim text-sm animate-pulse">
               Loading live price...
             </span>
           )
         ) : (
-          <span className="text-white/30 text-xs italic">
+          <span className="text-fg-dim text-xs italic">
             {activeSymbol.statusLabel || "Live price not connected"}
           </span>
         )}
 
-        <span className="ml-auto text-xs text-green-400/60 bg-green-500/5 border border-green-500/10 px-2 py-0.5 rounded-full">
+        <span className="ml-auto text-xs text-success/60 bg-success-soft border border-success/30 px-2 py-0.5 rounded-full">
           📊 Paper Mode
         </span>
       </div>
@@ -397,12 +397,12 @@ function CenterChart() {
         />
       </div>
 
-      <div className="glass border-t border-white/5 px-4 py-3 shrink-0">
+      <div className="glass border-t border-border px-4 py-3 shrink-0">
         <div className="flex items-center gap-3 flex-wrap">
           <button
             onClick={() => handleTradeClick("BUY")}
             disabled={effectivePrice <= 0}
-            className="bg-green-500/20 hover:bg-green-500/30 disabled:opacity-40 text-green-400 border border-green-500/30 px-6 py-2 rounded-lg text-sm font-bold transition"
+            className="bg-success-soft hover:bg-success/22 disabled:opacity-40 text-success border border-success/30 px-6 py-2 rounded-lg text-sm font-bold transition"
           >
             BUY
           </button>
@@ -410,66 +410,66 @@ function CenterChart() {
           <button
             onClick={() => handleTradeClick("SELL")}
             disabled={effectivePrice <= 0}
-            className="bg-red-500/20 hover:bg-red-500/30 disabled:opacity-40 text-red-400 border border-red-500/30 px-6 py-2 rounded-lg text-sm font-bold transition"
+            className="bg-danger-soft hover:bg-danger/22 disabled:opacity-40 text-danger border border-danger/30 px-6 py-2 rounded-lg text-sm font-bold transition"
           >
             SELL
           </button>
 
-          <div className="w-px h-8 bg-white/10" />
+          <div className="w-px h-8 bg-elevated" />
 
           <div className="flex items-center gap-1.5">
-            <span className="text-white/40 text-xs">Lots</span>
+            <span className="text-fg-dim text-xs">Lots</span>
             <input
               value={lotSize}
               onChange={(e) => handleNumericInput(e.target.value, setLotSize)}
-              className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-sm w-20 text-center focus:outline-none focus:border-white/25"
+              className="bg-elevated border border-border rounded-lg px-2 py-1 text-fg text-sm w-20 text-center focus:outline-none focus:border-border"
             />
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-white/40 text-xs">SL</span>
+            <span className="text-fg-dim text-xs">SL</span>
             <input
               value={slInput}
               onChange={(e) => handleNumericInput(e.target.value, setSlInput)}
               placeholder="Optional"
-              className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-sm w-24 text-center focus:outline-none focus:border-white/25"
+              className="bg-elevated border border-border rounded-lg px-2 py-1 text-fg text-sm w-24 text-center focus:outline-none focus:border-border"
             />
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-white/40 text-xs">TP</span>
+            <span className="text-fg-dim text-xs">TP</span>
             <input
               value={tpInput}
               onChange={(e) => handleNumericInput(e.target.value, setTpInput)}
               placeholder="Optional"
-              className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-sm w-24 text-center focus:outline-none focus:border-white/25"
+              className="bg-elevated border border-border rounded-lg px-2 py-1 text-fg text-sm w-24 text-center focus:outline-none focus:border-border"
             />
           </div>
 
           {!isCrypto && (
             <div className="flex items-center gap-1.5">
-              <span className="text-amber-400/70 text-xs">Ref. Price</span>
+              <span className="text-warning/70 text-xs">Ref. Price</span>
               <input
                 value={manualPrice}
                 onChange={(e) =>
                   handleNumericInput(e.target.value, setManualPrice)
                 }
                 placeholder="Enter price"
-                className="bg-amber-500/5 border border-amber-500/20 rounded-lg px-2 py-1 text-amber-400 text-sm w-28 text-center focus:outline-none focus:border-amber-500/40"
+                className="bg-warning-soft border border-warning/30 rounded-lg px-2 py-1 text-warning text-sm w-28 text-center focus:outline-none focus:border-warning/30"
               />
-              <span className="text-white/20 text-xs italic">manual</span>
+              <span className="text-fg-dim text-xs italic">manual</span>
             </div>
           )}
 
-          <div className="ml-auto flex items-center gap-4 text-xs text-white/40">
+          <div className="ml-auto flex items-center gap-4 text-xs text-fg-dim">
             <span>
               Free margin:{" "}
-              <span className="text-white/70">${freeMargin.toFixed(2)}</span>
+              <span className="text-fg-muted">${freeMargin.toFixed(2)}</span>
             </span>
 
             <span>
               Open:{" "}
-              <span className="text-white font-semibold">
+              <span className="text-fg font-semibold">
                 {positions.length}
               </span>
             </span>
@@ -477,7 +477,7 @@ function CenterChart() {
         </div>
 
         {!isCrypto && (
-          <p className="text-amber-400/50 text-xs mt-1.5">
+          <p className="text-warning/50 text-xs mt-1.5">
             ⚠ Non-crypto: enter a reference price manually. Paper P&L uses
             internal calculation model — not broker-accurate.
           </p>

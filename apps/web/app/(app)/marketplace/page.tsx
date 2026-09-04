@@ -31,9 +31,9 @@ import ReportButton from "@/components/ReportButton";
 // ── Badge / label helpers (uppercase enum keys) ────────────────────────────
 
 const RISK_BADGE: Record<StrategyRiskLevel, string> = {
-  LOW:    "text-green-400  bg-green-500/10  border-green-500/20",
-  MEDIUM: "text-amber-400  bg-amber-500/10  border-amber-500/20",
-  HIGH:   "text-red-400    bg-red-500/10    border-red-500/20",
+  LOW:    "text-success  bg-success-soft  border-success/30",
+  MEDIUM: "text-warning  bg-warning-soft  border-warning/30",
+  HIGH:   "text-danger    bg-danger-soft    border-danger/30",
 };
 
 const RISK_LABEL: Record<StrategyRiskLevel, string> = {
@@ -44,7 +44,7 @@ const RISK_LABEL: Record<StrategyRiskLevel, string> = {
 
 const TYPE_BADGE: Record<StrategyType, string> = {
   OFFICIAL:             "text-blue-400   bg-blue-500/10   border-blue-500/20",
-  EDUCATIONAL_TEMPLATE: "text-indigo-400 bg-indigo-500/10 border-indigo-500/20",
+  EDUCATIONAL_TEMPLATE: "text-accent-hover bg-accent/10 border-accent/30",
   CREATOR_PUBLISHED:    "text-purple-400 bg-purple-500/10 border-purple-500/20",
 };
 
@@ -55,9 +55,9 @@ const TYPE_LABEL: Record<StrategyType, string> = {
 };
 
 const PERF_BADGE: Record<PerformanceStatus, string> = {
-  UNVERIFIED:    "text-white/40 bg-white/5 border-white/10",
-  SELF_REPORTED: "text-amber-400 bg-amber-500/10 border-amber-500/20",
-  VERIFIED:      "text-green-400 bg-green-500/10 border-green-500/20",
+  UNVERIFIED:    "text-fg-dim bg-elevated border-border",
+  SELF_REPORTED: "text-warning bg-warning-soft border-warning/30",
+  VERIFIED:      "text-success bg-success-soft border-success/30",
 };
 
 const PERF_LABEL: Record<PerformanceStatus, string> = {
@@ -152,8 +152,8 @@ function StrategyDetail({
     <div className="flex flex-col h-full overflow-hidden">
 
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 shrink-0">
-        <button onClick={onClose} className="text-white/40 hover:text-white text-xs transition">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+        <button onClick={onClose} className="text-fg-dim hover:text-fg text-xs transition">
           ← Back
         </button>
         <div className="flex items-center gap-2">
@@ -169,7 +169,7 @@ function StrategyDetail({
       <div className="flex-1 overflow-y-auto">
 
         {/* Strategy header section */}
-        <div className="p-6 border-b border-white/5">
+        <div className="p-6 border-b border-border">
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <span className={`text-xs px-2 py-0.5 rounded-full border ${TYPE_BADGE[strategy.type]}`}>
               {TYPE_LABEL[strategy.type]}
@@ -177,31 +177,31 @@ function StrategyDetail({
             <span className={`text-xs px-2 py-0.5 rounded-full border capitalize ${RISK_BADGE[strategy.riskLevel]}`}>
               {RISK_LABEL[strategy.riskLevel]} risk
             </span>
-            <span className="text-xs bg-white/5 text-white/40 border border-white/10 px-2 py-0.5 rounded-full">
+            <span className="text-xs bg-elevated text-fg-dim border border-border px-2 py-0.5 rounded-full">
               {strategy.timeframe === "any" ? "Any timeframe" : strategy.timeframe}
             </span>
             <span className={`text-xs px-2 py-0.5 rounded-full border ${PERF_BADGE[strategy.performanceStatus]}`}>
               {PERF_LABEL[strategy.performanceStatus]}
             </span>
             {strategy.isFeatured && (
-              <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+              <span className="text-xs text-warning bg-warning-soft border border-warning/30 px-2 py-0.5 rounded-full">
                 ⭐ Featured
               </span>
             )}
           </div>
 
-          <h1 className="text-xl font-bold text-white mb-2">{strategy.title}</h1>
-          <p className="text-white/50 text-sm leading-relaxed mb-4">{strategy.description}</p>
+          <h1 className="text-xl font-bold text-fg mb-2">{strategy.title}</h1>
+          <p className="text-fg-muted text-sm leading-relaxed mb-4">{strategy.description}</p>
 
           {/* Disclaimer */}
-          <div className="bg-amber-500/5 border border-amber-500/15 rounded-xl p-3 mb-4">
-            <p className="text-amber-400/80 text-xs leading-relaxed">
+          <div className="bg-warning-soft border border-warning/30 rounded-xl p-3 mb-4">
+            <p className="text-warning/80 text-xs leading-relaxed">
               ⚠ <strong>Disclaimer:</strong> {strategy.disclaimer}
             </p>
           </div>
 
           {/* Asset / Timeframe / Author meta */}
-          <div className="flex flex-wrap gap-3 text-xs text-white/40 mb-4">
+          <div className="flex flex-wrap gap-3 text-xs text-fg-dim mb-4">
             <span>
               🪙 {strategy.assetCategory === "all" ? "All assets" : strategy.assetCategory}
             </span>
@@ -216,8 +216,8 @@ function StrategyDetail({
               onClick={handleSave}
               className={`px-4 py-2 rounded-lg text-xs font-semibold border transition ${
                 saved
-                  ? "bg-green-500/10 text-green-400 border-green-500/20"
-                  : "bg-white/5 text-white/60 border-white/10 hover:border-white/20 hover:bg-white/8"
+                  ? "bg-success-soft text-success border-success/30"
+                  : "bg-elevated text-fg-muted border-border hover:border-border-strong hover:bg-elevated"
               }`}>
               {saved ? "✓ Saved" : "💾 Save Strategy"}
             </button>
@@ -226,8 +226,8 @@ function StrategyDetail({
               onClick={handlePlaybook}
               className={`px-4 py-2 rounded-lg text-xs font-semibold border transition ${
                 inPlaybook
-                  ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30"
-                  : "bg-white/5 text-white/60 border-white/10 hover:border-white/20 hover:bg-white/8"
+                  ? "bg-accent-soft text-accent-hover border-accent/30"
+                  : "bg-elevated text-fg-muted border-border hover:border-border-strong hover:bg-elevated"
               }`}>
               {inPlaybook ? "📋 In Playbook" : "📋 Add to Playbook"}
             </button>
@@ -244,44 +244,44 @@ function StrategyDetail({
         </div>
 
         {/* Rules & Conditions grid */}
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4 border-b border-white/5">
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4 border-b border-border">
 
-          <div className="glass border border-white/5 rounded-xl p-4">
-            <p className="text-white/40 text-xs uppercase tracking-wider mb-3">📋 Core Rules</p>
+          <div className="glass border border-border rounded-xl p-4">
+            <p className="text-fg-dim text-xs uppercase tracking-wider mb-3">📋 Core Rules</p>
             {strategy.rules.map((rule, i) => (
               <div key={i} className="flex items-start gap-2 mb-2">
-                <span className="text-green-400 text-xs mt-0.5 shrink-0">✓</span>
-                <p className="text-white/60 text-xs">{rule}</p>
+                <span className="text-success text-xs mt-0.5 shrink-0">✓</span>
+                <p className="text-fg-muted text-xs">{rule}</p>
               </div>
             ))}
           </div>
 
-          <div className="glass border border-white/5 rounded-xl p-4">
-            <p className="text-white/40 text-xs uppercase tracking-wider mb-3">🎯 Entry Conditions</p>
+          <div className="glass border border-border rounded-xl p-4">
+            <p className="text-fg-dim text-xs uppercase tracking-wider mb-3">🎯 Entry Conditions</p>
             {strategy.entryConditions.map((cond, i) => (
               <div key={i} className="flex items-start gap-2 mb-2">
                 <span className="text-blue-400 text-xs mt-0.5 shrink-0">{i + 1}.</span>
-                <p className="text-white/60 text-xs">{cond}</p>
+                <p className="text-fg-muted text-xs">{cond}</p>
               </div>
             ))}
           </div>
 
-          <div className="glass border border-white/5 rounded-xl p-4">
-            <p className="text-white/40 text-xs uppercase tracking-wider mb-3">🚪 Exit Conditions</p>
+          <div className="glass border border-border rounded-xl p-4">
+            <p className="text-fg-dim text-xs uppercase tracking-wider mb-3">🚪 Exit Conditions</p>
             {strategy.exitConditions.map((cond, i) => (
               <div key={i} className="flex items-start gap-2 mb-2">
-                <span className="text-red-400 text-xs mt-0.5 shrink-0">→</span>
-                <p className="text-white/60 text-xs">{cond}</p>
+                <span className="text-danger text-xs mt-0.5 shrink-0">→</span>
+                <p className="text-fg-muted text-xs">{cond}</p>
               </div>
             ))}
           </div>
 
-          <div className="glass border border-white/5 rounded-xl p-4">
-            <p className="text-white/40 text-xs uppercase tracking-wider mb-3">🛡 Risk Management</p>
+          <div className="glass border border-border rounded-xl p-4">
+            <p className="text-fg-dim text-xs uppercase tracking-wider mb-3">🛡 Risk Management</p>
             {strategy.riskManagement.map((rule, i) => (
               <div key={i} className="flex items-start gap-2 mb-2">
-                <span className="text-amber-400 text-xs mt-0.5 shrink-0">⚠</span>
-                <p className="text-white/60 text-xs">{rule}</p>
+                <span className="text-warning text-xs mt-0.5 shrink-0">⚠</span>
+                <p className="text-fg-muted text-xs">{rule}</p>
               </div>
             ))}
           </div>
@@ -289,8 +289,8 @@ function StrategyDetail({
 
         {/* Linked Academy resource */}
         {linkedCourse && (
-          <div className="px-6 pt-5 pb-0 border-b border-white/5">
-            <p className="text-white/40 text-xs uppercase tracking-wider mb-3">
+          <div className="px-6 pt-5 pb-0 border-b border-border">
+            <p className="text-fg-dim text-xs uppercase tracking-wider mb-3">
               🎓 Learn This Strategy in Academy
             </p>
             <div
@@ -298,19 +298,19 @@ function StrategyDetail({
               className="glass border border-blue-500/20 bg-blue-500/5 rounded-xl p-4 mb-5 cursor-pointer hover:border-blue-500/30 transition flex items-center gap-4">
               <span className="text-3xl">{linkedCourse.thumbnail}</span>
               <div className="flex-1">
-                <p className="text-white font-semibold text-sm">{linkedCourse.title}</p>
-                <p className="text-white/40 text-xs mt-0.5 line-clamp-1">
+                <p className="text-fg font-semibold text-sm">{linkedCourse.title}</p>
+                <p className="text-fg-dim text-xs mt-0.5 line-clamp-1">
                   {linkedCourse.description.slice(0, 80)}...
                 </p>
                 <div className="flex gap-2 mt-1.5">
                   <span className="text-xs text-blue-400">Free</span>
-                  <span className="text-xs text-white/30">·</span>
-                  <span className="text-xs text-white/40">{linkedCourse.totalDuration}</span>
-                  <span className="text-xs text-white/30">·</span>
-                  <span className="text-xs text-white/40 capitalize">{linkedCourse.level.toLowerCase()}</span>
+                  <span className="text-xs text-fg-dim">·</span>
+                  <span className="text-xs text-fg-dim">{linkedCourse.totalDuration}</span>
+                  <span className="text-xs text-fg-dim">·</span>
+                  <span className="text-xs text-fg-dim capitalize">{linkedCourse.level.toLowerCase()}</span>
                 </div>
               </div>
-              <span className="text-white/40 text-sm">→</span>
+              <span className="text-fg-dim text-sm">→</span>
             </div>
           </div>
         )}
@@ -318,28 +318,28 @@ function StrategyDetail({
         {/* Reviews */}
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-white/40 text-xs uppercase tracking-wider">
+            <p className="text-fg-dim text-xs uppercase tracking-wider">
               User Reviews ({strategy._count.reviews})
             </p>
             {saved && (
               <button
                 onClick={() => setShowReviewForm(!showReviewForm)}
-                className="bg-white/5 hover:bg-white/10 text-white/50 border border-white/10 px-3 py-1 rounded-lg text-xs transition">
+                className="bg-elevated hover:bg-elevated text-fg-muted border border-border px-3 py-1 rounded-lg text-xs transition">
                 ⭐ Write a Review
               </button>
             )}
           </div>
 
           {showReviewForm && (
-            <div className="glass border border-white/10 rounded-xl p-4 mb-4">
-              <p className="text-white/50 text-xs mb-2">Your rating</p>
+            <div className="glass border border-border rounded-xl p-4 mb-4">
+              <p className="text-fg-muted text-xs mb-2">Your rating</p>
               <div className="flex gap-1 mb-3">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <button
                     key={star}
                     onClick={() => setReviewRating(star)}
                     className="text-xl transition">
-                    <span className={star <= reviewRating ? "text-amber-400" : "text-white/20"}>★</span>
+                    <span className={star <= reviewRating ? "text-warning" : "text-fg-dim"}>★</span>
                   </button>
                 ))}
               </div>
@@ -348,18 +348,18 @@ function StrategyDetail({
                 onChange={(e) => setReviewComment(e.target.value)}
                 placeholder="Share your experience using this strategy in paper trading..."
                 rows={3}
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs resize-none focus:outline-none focus:border-white/25 placeholder-white/20 mb-3"
+                className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-fg text-xs resize-none focus:outline-none focus:border-border placeholder-white/20 mb-3"
               />
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowReviewForm(false)}
-                  className="bg-white/5 text-white/40 border border-white/10 px-3 py-1.5 rounded-lg text-xs">
+                  className="bg-elevated text-fg-dim border border-border px-3 py-1.5 rounded-lg text-xs">
                   Cancel
                 </button>
                 <button
                   onClick={handleSubmitReview}
                   disabled={!reviewComment.trim()}
-                  className="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40">
+                  className="bg-accent-soft text-accent-hover border border-accent/30 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40">
                   Submit Review
                 </button>
               </div>
@@ -367,28 +367,28 @@ function StrategyDetail({
           )}
 
           {reviews.length === 0 ? (
-            <p className="text-white/20 text-xs">
+            <p className="text-fg-dim text-xs">
               No reviews yet. Save this strategy and share your paper trading experience.
             </p>
           ) : (
             <div className="flex flex-col gap-3">
               {reviews.map((review) => (
-                <div key={review.id} className="glass border border-white/5 rounded-xl p-4">
+                <div key={review.id} className="glass border border-border rounded-xl p-4">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-white/70 text-xs font-semibold">{review.handle}</span>
+                      <span className="text-fg-muted text-xs font-semibold">{review.handle}</span>
                       <div className="flex">
                         {Array.from({ length: 5 }).map((_, i) => (
                           <span
                             key={i}
-                            className={i < review.rating ? "text-amber-400 text-xs" : "text-white/20 text-xs"}>
+                            className={i < review.rating ? "text-warning text-xs" : "text-fg-dim text-xs"}>
                             ★
                           </span>
                         ))}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-white/20 text-xs">
+                      <span className="text-fg-dim text-xs">
                         {new Date(review.timestamp).toLocaleDateString()}
                       </span>
                       <ReportButton
@@ -400,7 +400,7 @@ function StrategyDetail({
                       />
                     </div>
                   </div>
-                  <p className="text-white/50 text-xs leading-relaxed">{review.comment}</p>
+                  <p className="text-fg-muted text-xs leading-relaxed">{review.comment}</p>
                 </div>
               ))}
             </div>
@@ -426,7 +426,7 @@ function StrategyCard({
   return (
     <div
       onClick={onClick}
-      className="glass border border-white/5 rounded-xl p-5 cursor-pointer hover:border-white/15 transition relative group">
+      className="glass border border-border rounded-xl p-5 cursor-pointer hover:border-border transition relative group">
 
       {/* Report button — on hover */}
       <div
@@ -450,14 +450,14 @@ function StrategyCard({
           {RISK_LABEL[strategy.riskLevel]}
         </span>
         {strategy.isFeatured && (
-          <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+          <span className="text-xs text-warning bg-warning-soft border border-warning/30 px-2 py-0.5 rounded-full">
             ⭐ Featured
           </span>
         )}
       </div>
 
-      <h3 className="text-white font-semibold text-sm mb-1 pr-6">{strategy.title}</h3>
-      <p className="text-white/40 text-xs leading-relaxed mb-3 line-clamp-2">
+      <h3 className="text-fg font-semibold text-sm mb-1 pr-6">{strategy.title}</h3>
+      <p className="text-fg-dim text-xs leading-relaxed mb-3 line-clamp-2">
         {strategy.description}
       </p>
 
@@ -467,7 +467,7 @@ function StrategyCard({
       </div>
 
       {/* Meta row */}
-      <div className="flex items-center gap-3 text-xs text-white/30 mb-3">
+      <div className="flex items-center gap-3 text-xs text-fg-dim mb-3">
         <span>{strategy.timeframe === "any" ? "Any TF" : strategy.timeframe}</span>
         <span>·</span>
         <span className="capitalize">
@@ -485,12 +485,12 @@ function StrategyCard({
       <div className="flex items-center justify-between">
         <div className="flex gap-1.5">
           {saved && (
-            <span className="text-xs text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full">
+            <span className="text-xs text-success bg-success-soft border border-success/30 px-2 py-0.5 rounded-full">
               ✓ Saved
             </span>
           )}
           {inPlaybook && (
-            <span className="text-xs text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">
+            <span className="text-xs text-accent-hover bg-accent/10 border border-accent/30 px-2 py-0.5 rounded-full">
               📋 Playbook
             </span>
           )}
@@ -498,11 +498,11 @@ function StrategyCard({
 
         <div className="flex items-center gap-2">
           {strategy._count.reviews > 0 && (
-            <span className="text-xs text-white/30">
+            <span className="text-xs text-fg-dim">
               {strategy._count.reviews} review{strategy._count.reviews > 1 ? "s" : ""}
             </span>
           )}
-          <span className="text-xs text-white/40 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+          <span className="text-xs text-fg-dim bg-elevated border border-border px-2 py-0.5 rounded-full">
             {strategy.pricingModel === "FREE" ? "Free" : `$${strategy.price}`}
           </span>
         </div>
@@ -573,18 +573,18 @@ function PublishForm({ onClose }: { onClose: () => void }) {
     <div
       className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-[#111217] border border-white/10 rounded-2xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl">
+      <div className="bg-[#111217] border border-border rounded-2xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl">
 
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h2 className="text-white font-bold">Publish Strategy</h2>
-            <p className="text-white/30 text-xs mt-0.5">
+            <h2 className="text-fg font-bold">Publish Strategy</h2>
+            <p className="text-fg-dim text-xs mt-0.5">
               Creator-published · Not verified
             </p>
           </div>
           <button
             onClick={onClose}
-            className="text-white/30 hover:text-white text-xl w-7 h-7 flex items-center justify-center">
+            className="text-fg-dim hover:text-fg text-xl w-7 h-7 flex items-center justify-center">
             ✕
           </button>
         </div>
@@ -592,33 +592,33 @@ function PublishForm({ onClose }: { onClose: () => void }) {
         <div className="flex flex-col gap-3">
 
           <div>
-            <p className="text-white/40 text-xs mb-1">Title *</p>
+            <p className="text-fg-dim text-xs mb-1">Title *</p>
             <input
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
               placeholder="Strategy name..."
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-white/25"
+              className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-fg text-xs focus:outline-none focus:border-border"
             />
           </div>
 
           <div>
-            <p className="text-white/40 text-xs mb-1">Description *</p>
+            <p className="text-fg-dim text-xs mb-1">Description *</p>
             <textarea
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               placeholder="What is this strategy about?"
               rows={3}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs resize-none focus:outline-none focus:border-white/25"
+              className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-fg text-xs resize-none focus:outline-none focus:border-border"
             />
           </div>
 
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <p className="text-white/40 text-xs mb-1">Asset Category</p>
+              <p className="text-fg-dim text-xs mb-1">Asset Category</p>
               <select
                 value={form.assetCategory}
                 onChange={(e) => setForm({ ...form, assetCategory: e.target.value })}
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs">
+                className="w-full bg-elevated border border-border rounded-lg px-2 py-1.5 text-fg text-xs">
                 <option value="all">All</option>
                 <option value="crypto">Crypto</option>
                 <option value="forex">Forex</option>
@@ -628,11 +628,11 @@ function PublishForm({ onClose }: { onClose: () => void }) {
             </div>
 
             <div>
-              <p className="text-white/40 text-xs mb-1">Timeframe</p>
+              <p className="text-fg-dim text-xs mb-1">Timeframe</p>
               <select
                 value={form.timeframe}
                 onChange={(e) => setForm({ ...form, timeframe: e.target.value })}
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs">
+                className="w-full bg-elevated border border-border rounded-lg px-2 py-1.5 text-fg text-xs">
                 {["M5", "M15", "M30", "H1", "H4", "D1"].map((tf) => (
                   <option key={tf} value={tf}>{tf}</option>
                 ))}
@@ -640,13 +640,13 @@ function PublishForm({ onClose }: { onClose: () => void }) {
             </div>
 
             <div>
-              <p className="text-white/40 text-xs mb-1">Risk Level</p>
+              <p className="text-fg-dim text-xs mb-1">Risk Level</p>
               <select
                 value={form.riskLevel}
                 onChange={(e) =>
                   setForm({ ...form, riskLevel: e.target.value as StrategyRiskLevel })
                 }
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs">
+                className="w-full bg-elevated border border-border rounded-lg px-2 py-1.5 text-fg text-xs">
                 <option value="LOW">Low</option>
                 <option value="MEDIUM">Medium</option>
                 <option value="HIGH">High</option>
@@ -661,29 +661,29 @@ function PublishForm({ onClose }: { onClose: () => void }) {
             { label: "Risk Management",      key: "riskManagement" as const,  placeholder: "Risk rule 1\n..." },
           ].map((f) => (
             <div key={f.key}>
-              <p className="text-white/40 text-xs mb-1">{f.label}</p>
+              <p className="text-fg-dim text-xs mb-1">{f.label}</p>
               <textarea
                 value={form[f.key]}
                 onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
                 placeholder={f.placeholder}
                 rows={2}
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs resize-none focus:outline-none focus:border-white/25"
+                className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-fg text-xs resize-none focus:outline-none focus:border-border"
               />
             </div>
           ))}
 
           <div>
-            <p className="text-white/40 text-xs mb-1">Tags (comma separated)</p>
+            <p className="text-fg-dim text-xs mb-1">Tags (comma separated)</p>
             <input
               value={form.tags}
               onChange={(e) => setForm({ ...form, tags: e.target.value })}
               placeholder="SMC, XAUUSD, breakout"
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-white/25"
+              className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-fg text-xs focus:outline-none focus:border-border"
             />
           </div>
 
-          <div className="bg-amber-500/5 border border-amber-500/15 rounded-xl p-3">
-            <p className="text-amber-400/80 text-xs leading-relaxed">
+          <div className="bg-warning-soft border border-warning/30 rounded-xl p-3">
+            <p className="text-warning/80 text-xs leading-relaxed">
               Your strategy will be published and labeled "Creator Published — Educational
               only, not verified." No performance claims will be added automatically.
             </p>
@@ -692,13 +692,13 @@ function PublishForm({ onClose }: { onClose: () => void }) {
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="flex-1 bg-white/5 text-white/40 border border-white/10 py-2.5 rounded-xl text-sm">
+              className="flex-1 bg-elevated text-fg-dim border border-border py-2.5 rounded-xl text-sm">
               Cancel
             </button>
             <button
               onClick={handlePublish}
               disabled={!form.title || !form.description || isSubmitting}
-              className="flex-1 bg-green-500/20 text-green-400 border border-green-500/30 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-40 hover:bg-green-500/30 transition">
+              className="flex-1 bg-success-soft text-success border border-success/30 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-40 hover:bg-success/22 transition">
               {isSubmitting ? "Publishing..." : "Publish"}
             </button>
           </div>
@@ -771,7 +771,7 @@ export default function MarketplacePage() {
   if (!isInitialized || isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <p className="text-white/30 text-sm animate-pulse">Loading marketplace...</p>
+        <p className="text-fg-dim text-sm animate-pulse">Loading marketplace...</p>
       </div>
     );
   }
@@ -779,11 +779,11 @@ export default function MarketplacePage() {
   if (error) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3">
-        <p className="text-red-400 text-sm">{error}</p>
+        <p className="text-danger text-sm">{error}</p>
         <button
           type="button"
           onClick={() => useStrategyStore.getState().init()}
-          className="text-white/40 text-xs border border-white/10 px-3 py-1 rounded hover:text-white/70 hover:border-white/20 transition"
+          className="text-fg-dim text-xs border border-border px-3 py-1 rounded hover:text-fg-muted hover:border-border-strong transition"
         >
           Retry
         </button>
@@ -796,34 +796,34 @@ export default function MarketplacePage() {
         <div className="flex flex-1 overflow-hidden">
 
           {/* Left — strategy list */}
-          <div className={`flex flex-col overflow-hidden ${selectedStrategy ? "w-96 shrink-0 border-r border-white/5" : "flex-1"}`}>
+          <div className={`flex flex-col overflow-hidden ${selectedStrategy ? "w-96 shrink-0 border-r border-border" : "flex-1"}`}>
 
             {/* Header */}
-            <div className="px-6 py-5 border-b border-white/5 shrink-0">
+            <div className="px-6 py-5 border-b border-border shrink-0">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <h1 className="text-xl font-bold text-white">🏪 Strategy Marketplace</h1>
-                  <p className="text-white/30 text-xs mt-0.5">
+                  <h1 className="text-xl font-bold text-fg">🏪 Strategy Marketplace</h1>
+                  <p className="text-fg-dim text-xs mt-0.5">
                     Official TCC templates and educational frameworks. No fake performance claims.
                   </p>
                 </div>
                 <button
                   onClick={() => setShowPublish(true)}
-                  className="bg-green-500/20 text-green-400 border border-green-500/30 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-green-500/30 transition shrink-0 ml-3">
+                  className="bg-success-soft text-success border border-success/30 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-success/22 transition shrink-0 ml-3">
                   + Publish
                 </button>
               </div>
 
               {/* Tabs */}
-              <div className="flex gap-0.5 bg-white/5 rounded-lg p-1 mb-3 overflow-x-auto">
+              <div className="flex gap-0.5 bg-elevated rounded-lg p-1 mb-3 overflow-x-auto">
                 {tabConfig.map((tab) => (
                   <button
                     key={tab.key}
                     onClick={() => setActiveTab(tab.key)}
                     className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition ${
                       activeTab === tab.key
-                        ? "bg-green-500/20 text-green-400"
-                        : "text-white/40 hover:text-white/60"
+                        ? "bg-success-soft text-success"
+                        : "text-fg-dim hover:text-fg-muted"
                     }`}>
                     {tab.label}
                   </button>
@@ -835,7 +835,7 @@ export default function MarketplacePage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search strategies..."
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-white/25 placeholder-white/20 mb-2"
+                className="w-full bg-elevated border border-border rounded-lg px-3 py-1.5 text-fg text-xs focus:outline-none focus:border-border placeholder-white/20 mb-2"
               />
 
               {/* Filters */}
@@ -843,7 +843,7 @@ export default function MarketplacePage() {
                 <select
                   value={filterRisk}
                   onChange={(e) => setFilterRisk(e.target.value)}
-                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs flex-1 min-w-0">
+                  className="bg-elevated border border-border rounded-lg px-2 py-1 text-fg text-xs flex-1 min-w-0">
                   <option value="all">All risk</option>
                   <option value="LOW">Low risk</option>
                   <option value="MEDIUM">Medium risk</option>
@@ -853,7 +853,7 @@ export default function MarketplacePage() {
                 <select
                   value={filterAsset}
                   onChange={(e) => setFilterAsset(e.target.value)}
-                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs flex-1 min-w-0">
+                  className="bg-elevated border border-border rounded-lg px-2 py-1 text-fg text-xs flex-1 min-w-0">
                   <option value="all">All assets</option>
                   <option value="crypto">Crypto</option>
                   <option value="forex">Forex</option>
@@ -864,7 +864,7 @@ export default function MarketplacePage() {
                 <select
                   value={filterTF}
                   onChange={(e) => setFilterTF(e.target.value)}
-                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs flex-1 min-w-0">
+                  className="bg-elevated border border-border rounded-lg px-2 py-1 text-fg text-xs flex-1 min-w-0">
                   <option value="all">All TF</option>
                   {["M5", "M15", "H1", "H4", "D1"].map((tf) => (
                     <option key={tf} value={tf}>{tf}</option>
@@ -878,8 +878,8 @@ export default function MarketplacePage() {
 
               {/* Educational disclaimer banner */}
               {(activeTab === "all" || activeTab === "EDUCATIONAL_TEMPLATE") && (
-                <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-xl p-3 mb-4">
-                  <p className="text-indigo-400/70 text-xs leading-relaxed">
+                <div className="bg-accent/5 border border-accent/30 rounded-xl p-3 mb-4">
+                  <p className="text-accent-hover/70 text-xs leading-relaxed">
                     <strong>📖 Educational Note:</strong> All educational templates are for learning only.
                     No performance data is verified. Paper trade extensively before considering real capital.
                   </p>
@@ -890,7 +890,7 @@ export default function MarketplacePage() {
                 <div className="flex items-center justify-center h-48">
                   <div className="text-center">
                     <p className="text-3xl mb-3">🏪</p>
-                    <p className="text-white/30 text-sm">
+                    <p className="text-fg-dim text-sm">
                       {activeTab === "saved"
                         ? "No saved strategies yet"
                         : "No strategies match your filters"}
@@ -910,9 +910,9 @@ export default function MarketplacePage() {
               )}
 
               {/* Footer disclaimer */}
-              <div className="mt-6 p-4 bg-white/2 border border-white/5 rounded-xl">
-                <p className="text-white/20 text-xs leading-relaxed">
-                  <strong className="text-white/30">TCC Strategy Marketplace —</strong>{" "}
+              <div className="mt-6 p-4 bg-elevated border border-border rounded-xl">
+                <p className="text-fg-dim text-xs leading-relaxed">
+                  <strong className="text-fg-dim">TCC Strategy Marketplace —</strong>{" "}
                   All strategies are saved to your account. No payment processing connected.
                   Strategy performance data is either educational (theoretical) or self-reported.
                   Real trading involves substantial risk of loss.

@@ -188,14 +188,14 @@ export default function TradingViewChart({
         }}
         className="flex flex-col items-center justify-center gap-3 bg-[#0a0a0f]"
       >
-        <p className="text-white/30 text-sm">Chart failed to load.</p>
-        <p className="text-white/15 text-xs max-w-xs text-center">
+        <p className="text-fg-dim text-sm">Chart failed to load.</p>
+        <p className="text-fg-dim text-xs max-w-xs text-center">
           TradingView's chart widget couldn't load — check your connection, or an ad-blocker/firewall may be blocking s3.tradingview.com.
         </p>
         <button
           type="button"
           onClick={() => { resetTVScriptLoader(); setLoadFailed(false); setRetryToken((n) => n + 1); }}
-          className="text-white/40 text-xs border border-white/10 px-3 py-1 rounded hover:text-white/70 hover:border-white/20 transition"
+          className="text-fg-dim text-xs border border-border px-3 py-1 rounded hover:text-fg-muted hover:border-border-strong transition"
         >
           Retry
         </button>

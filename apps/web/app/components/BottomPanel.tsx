@@ -53,20 +53,20 @@ function SLTPEditor({
           value={value}
           onChange={e => { if (/^\d*\.?\d*$/.test(e.target.value)) setValue(e.target.value); }}
           onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setEditing(false); }}
-          className="bg-white/10 border border-white/20 rounded px-1 py-0.5 text-white text-xs w-20 text-center focus:outline-none"
+          className="bg-elevated border border-border-strong rounded px-1 py-0.5 text-fg text-xs w-20 text-center focus:outline-none"
         />
-        <button onClick={handleSave} className="text-green-400 text-xs hover:text-green-300">✓</button>
-        <button onClick={() => setEditing(false)} className="text-white/30 text-xs hover:text-white/60">✕</button>
+        <button onClick={handleSave} className="text-success text-xs hover:text-success">✓</button>
+        <button onClick={() => setEditing(false)} className="text-fg-dim text-xs hover:text-fg-muted">✕</button>
       </div>
     );
   }
 
   return (
     <div className="flex items-center gap-1 cursor-pointer group" onClick={() => setEditing(true)}>
-      <span className="text-white/60 text-xs">
+      <span className="text-fg-muted text-xs">
         {currentValue && currentValue > 0 ? formatPrice(currentValue) : "—"}
       </span>
-      <span className="text-white/20 text-xs opacity-0 group-hover:opacity-100 transition">✏</span>
+      <span className="text-fg-dim text-xs opacity-0 group-hover:opacity-100 transition">✏</span>
     </div>
   );
 }
@@ -84,22 +84,22 @@ function PositionRow({ position }: { position: Position }) {
   }, [position.id, closePositionAtMarket]);
 
   const pnl = position.floatingPnl;
-  const pnlColor = pnl > 0 ? "text-green-400" : pnl < 0 ? "text-red-400" : "text-white/50";
-  const sideColor = position.side === "BUY" ? "text-green-400" : "text-red-400";
+  const pnlColor = pnl > 0 ? "text-success" : pnl < 0 ? "text-danger" : "text-fg-muted";
+  const sideColor = position.side === "BUY" ? "text-success" : "text-danger";
   const duration = Date.now() - new Date(position.openedAt).getTime();
 
   return (
-    <tr className="border-b border-white/5 hover:bg-white/2 transition">
+    <tr className="border-b border-border hover:bg-elevated transition">
       <td className="px-3 py-2">
         <div className="flex items-center gap-1.5">
           <span className={`text-xs font-bold ${sideColor}`}>{position.side}</span>
-          <span className="text-white text-xs font-semibold">{position.displayName}</span>
+          <span className="text-fg text-xs font-semibold">{position.displayName}</span>
         </div>
-        <p className="text-white/20 text-xs">{formatDuration(duration)}</p>
+        <p className="text-fg-dim text-xs">{formatDuration(duration)}</p>
       </td>
-      <td className="px-3 py-2 text-white/60 text-xs text-right">{position.lotSize}</td>
-      <td className="px-3 py-2 text-white/70 text-xs text-right">{formatPrice(position.entryPrice)}</td>
-      <td className="px-3 py-2 text-white text-xs text-right font-medium">
+      <td className="px-3 py-2 text-fg-muted text-xs text-right">{position.lotSize}</td>
+      <td className="px-3 py-2 text-fg-muted text-xs text-right">{formatPrice(position.entryPrice)}</td>
+      <td className="px-3 py-2 text-fg text-xs text-right font-medium">
         {position.currentPrice > 0 ? formatPrice(position.currentPrice) : "Updating..."}
       </td>
       <td className="px-3 py-2 text-right">
@@ -109,7 +109,7 @@ function PositionRow({ position }: { position: Position }) {
         <SLTPEditor positionId={position.id} field="tp" currentValue={position.tp} />
       </td>
       <td className="px-3 py-2 text-right">
-        <span className="text-white/40 text-xs">${position.marginUsed.toFixed(2)}</span>
+        <span className="text-fg-dim text-xs">${position.marginUsed.toFixed(2)}</span>
       </td>
       <td className={`px-3 py-2 text-right font-bold text-xs ${pnlColor}`}>
         {pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}
@@ -117,7 +117,7 @@ function PositionRow({ position }: { position: Position }) {
       <td className="px-3 py-2 text-right">
         <button
           onClick={handleClose}
-          className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 px-2 py-1 rounded-lg text-xs font-semibold transition">
+          className="bg-danger-soft hover:bg-danger/22 text-danger border border-danger/30 px-2 py-1 rounded-lg text-xs font-semibold transition">
           Close
         </button>
       </td>
@@ -129,30 +129,30 @@ function PositionRow({ position }: { position: Position }) {
 
 function HistoryRow({ trade }: { trade: ClosedTrade }) {
   const pnl = trade.netPnl;
-  const pnlColor = pnl > 0 ? "text-green-400" : pnl < 0 ? "text-red-400" : "text-white/50";
-  const sideColor = trade.side === "BUY" ? "text-green-400" : "text-red-400";
+  const pnlColor = pnl > 0 ? "text-success" : pnl < 0 ? "text-danger" : "text-fg-muted";
+  const sideColor = trade.side === "BUY" ? "text-success" : "text-danger";
   const reasonBadge = {
-    MANUAL: "text-white/30 bg-white/5",
-    STOP_LOSS: "text-red-400 bg-red-500/10",
-    TAKE_PROFIT: "text-green-400 bg-green-500/10",
+    MANUAL: "text-fg-dim bg-elevated",
+    STOP_LOSS: "text-danger bg-danger-soft",
+    TAKE_PROFIT: "text-success bg-success-soft",
   }[trade.closeReason];
   const reasonLabel = {
     MANUAL: "Manual", STOP_LOSS: "SL Hit", TAKE_PROFIT: "TP Hit"
   }[trade.closeReason];
 
   return (
-    <tr className="border-b border-white/5 hover:bg-white/2 transition">
+    <tr className="border-b border-border hover:bg-elevated transition">
       <td className="px-3 py-2">
         <div className="flex items-center gap-1.5">
           <span className={`text-xs font-bold ${sideColor}`}>{trade.side}</span>
-          <span className="text-white text-xs font-semibold">{trade.displayName}</span>
+          <span className="text-fg text-xs font-semibold">{trade.displayName}</span>
         </div>
-        <p className="text-white/20 text-xs">{new Date(trade.closedAt).toLocaleString()}</p>
+        <p className="text-fg-dim text-xs">{new Date(trade.closedAt).toLocaleString()}</p>
       </td>
-      <td className="px-3 py-2 text-white/60 text-xs text-right">{trade.lotSize}</td>
-      <td className="px-3 py-2 text-white/60 text-xs text-right">{formatPrice(trade.entryPrice)}</td>
-      <td className="px-3 py-2 text-white/70 text-xs text-right">{formatPrice(trade.exitPrice)}</td>
-      <td className="px-3 py-2 text-white/40 text-xs text-right">{formatDuration(trade.durationMs)}</td>
+      <td className="px-3 py-2 text-fg-muted text-xs text-right">{trade.lotSize}</td>
+      <td className="px-3 py-2 text-fg-muted text-xs text-right">{formatPrice(trade.entryPrice)}</td>
+      <td className="px-3 py-2 text-fg-muted text-xs text-right">{formatPrice(trade.exitPrice)}</td>
+      <td className="px-3 py-2 text-fg-dim text-xs text-right">{formatDuration(trade.durationMs)}</td>
       <td className="px-3 py-2 text-right">
         <span className={`text-xs px-1.5 py-0.5 rounded-full ${reasonBadge}`}>{reasonLabel}</span>
       </td>
@@ -173,7 +173,7 @@ export default function BottomPanel() {
 
   const totalPnl = positions.reduce((s, p) => s + p.floatingPnl, 0);
   const totalClosedPnl = closedTrades.reduce((s, t) => s + t.netPnl, 0);
-  const totalPnlColor = totalPnl >= 0 ? "text-green-400" : "text-red-400";
+  const totalPnlColor = totalPnl >= 0 ? "text-success" : "text-danger";
 
   // Notifications + journal entries are handled centrally by useSystemNotifications
   // reacting to the TradeEvents each close produces — no manual work needed here.
@@ -182,19 +182,19 @@ export default function BottomPanel() {
   }, [closeAllPositions]);
 
   return (
-    <div className="glass border-t border-white/5 flex flex-col" style={{ minHeight: "160px", maxHeight: "300px" }}>
+    <div className="glass border-t border-border flex flex-col" style={{ minHeight: "160px", maxHeight: "300px" }}>
 
       {/* Tab bar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
         <div className="flex gap-1">
           <button
             onClick={() => setActiveTab("positions")}
-            className={`px-3 py-1 rounded-md text-xs font-semibold transition ${activeTab === "positions" ? "bg-green-500/20 text-green-400" : "text-white/40 hover:text-white/70"}`}>
+            className={`px-3 py-1 rounded-md text-xs font-semibold transition ${activeTab === "positions" ? "bg-success-soft text-success" : "text-fg-dim hover:text-fg-muted"}`}>
             Open Positions ({positions.length})
           </button>
           <button
             onClick={() => setActiveTab("history")}
-            className={`px-3 py-1 rounded-md text-xs font-semibold transition ${activeTab === "history" ? "bg-green-500/20 text-green-400" : "text-white/40 hover:text-white/70"}`}>
+            className={`px-3 py-1 rounded-md text-xs font-semibold transition ${activeTab === "history" ? "bg-success-soft text-success" : "text-fg-dim hover:text-fg-muted"}`}>
             History ({closedTrades.length})
           </button>
         </div>
@@ -207,17 +207,17 @@ export default function BottomPanel() {
               </span>
               <button
                 onClick={handleCloseAll}
-                className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 px-3 py-1 rounded-lg text-xs font-semibold transition">
+                className="bg-danger-soft hover:bg-danger/22 text-danger border border-danger/30 px-3 py-1 rounded-lg text-xs font-semibold transition">
                 Close All
               </button>
             </>
           )}
           {activeTab === "history" && closedTrades.length > 0 && (
-            <span className={`text-xs font-bold ${totalClosedPnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+            <span className={`text-xs font-bold ${totalClosedPnl >= 0 ? "text-success" : "text-danger"}`}>
               Realized: {totalClosedPnl >= 0 ? "+" : ""}${totalClosedPnl.toFixed(2)}
             </span>
           )}
-          <span className="text-xs text-green-400/40 bg-green-500/5 border border-green-500/10 px-2 py-0.5 rounded-full">Paper</span>
+          <span className="text-xs text-success/40 bg-success-soft border border-success/30 px-2 py-0.5 rounded-full">Paper</span>
         </div>
       </div>
 
@@ -228,20 +228,20 @@ export default function BottomPanel() {
         {activeTab === "positions" && (
           positions.length === 0 ? (
             <div className="flex items-center justify-center h-24">
-              <p className="text-white/20 text-sm">No open paper positions. BUY or SELL from the chart above.</p>
+              <p className="text-fg-dim text-sm">No open paper positions. BUY or SELL from the chart above.</p>
             </div>
           ) : (
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-[#0a0a0f] z-10">
-                <tr className="border-b border-white/5">
-                  <th className="text-left px-3 py-2 text-white/30">Symbol</th>
-                  <th className="text-right px-3 py-2 text-white/30">Lots</th>
-                  <th className="text-right px-3 py-2 text-white/30">Entry</th>
-                  <th className="text-right px-3 py-2 text-white/30">Current</th>
-                  <th className="text-right px-3 py-2 text-white/30">SL ✏</th>
-                  <th className="text-right px-3 py-2 text-white/30">TP ✏</th>
-                  <th className="text-right px-3 py-2 text-white/30">Margin</th>
-                  <th className="text-right px-3 py-2 text-white/30">Float P&L</th>
+                <tr className="border-b border-border">
+                  <th className="text-left px-3 py-2 text-fg-dim">Symbol</th>
+                  <th className="text-right px-3 py-2 text-fg-dim">Lots</th>
+                  <th className="text-right px-3 py-2 text-fg-dim">Entry</th>
+                  <th className="text-right px-3 py-2 text-fg-dim">Current</th>
+                  <th className="text-right px-3 py-2 text-fg-dim">SL ✏</th>
+                  <th className="text-right px-3 py-2 text-fg-dim">TP ✏</th>
+                  <th className="text-right px-3 py-2 text-fg-dim">Margin</th>
+                  <th className="text-right px-3 py-2 text-fg-dim">Float P&L</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
@@ -258,19 +258,19 @@ export default function BottomPanel() {
         {activeTab === "history" && (
           closedTrades.length === 0 ? (
             <div className="flex items-center justify-center h-24">
-              <p className="text-white/20 text-sm">No closed paper trades yet.</p>
+              <p className="text-fg-dim text-sm">No closed paper trades yet.</p>
             </div>
           ) : (
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-[#0a0a0f] z-10">
-                <tr className="border-b border-white/5">
-                  <th className="text-left px-3 py-2 text-white/30">Symbol</th>
-                  <th className="text-right px-3 py-2 text-white/30">Lots</th>
-                  <th className="text-right px-3 py-2 text-white/30">Entry</th>
-                  <th className="text-right px-3 py-2 text-white/30">Exit</th>
-                  <th className="text-right px-3 py-2 text-white/30">Duration</th>
-                  <th className="text-right px-3 py-2 text-white/30">Reason</th>
-                  <th className="text-right px-3 py-2 text-white/30">Net P&L</th>
+                <tr className="border-b border-border">
+                  <th className="text-left px-3 py-2 text-fg-dim">Symbol</th>
+                  <th className="text-right px-3 py-2 text-fg-dim">Lots</th>
+                  <th className="text-right px-3 py-2 text-fg-dim">Entry</th>
+                  <th className="text-right px-3 py-2 text-fg-dim">Exit</th>
+                  <th className="text-right px-3 py-2 text-fg-dim">Duration</th>
+                  <th className="text-right px-3 py-2 text-fg-dim">Reason</th>
+                  <th className="text-right px-3 py-2 text-fg-dim">Net P&L</th>
                 </tr>
               </thead>
               <tbody>
