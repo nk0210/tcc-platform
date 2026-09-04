@@ -19,9 +19,27 @@ const AUTHOR_SELECT = {
 
 // ── Base include (counts only — no viewer-specific data) ──────────────────
 
+// Embedded shape for the post a repost points at — one level deep only
+// (a repost of a repost is re-pointed at the ultimate original at create
+// time, see communityPostService.createRepost, so this never needs to
+// recurse). No viewer-specific like/save state on the embedded post itself
+// — reactions always target the repost wrapper the viewer is looking at.
+const REPOST_OF_INCLUDE = {
+  repostOf: {
+    select: {
+      id: true, authorId: true, type: true, content: true, visibility: true,
+      isHiddenByAdmin: true, tradeSnapshot: true, symbol: true, tags: true,
+      createdAt: true,
+      author: { select: AUTHOR_SELECT },
+      _count: { select: { likes: true, comments: true, shares: true } },
+    },
+  },
+} as const;
+
 const POST_COUNT_INCLUDE = {
   author: { select: AUTHOR_SELECT },
   _count: { select: { likes: true, comments: true, shares: true } },
+  ...REPOST_OF_INCLUDE,
 } as const;
 
 // ── Viewer-aware include builder ───────────────────────────────────────────
@@ -31,8 +49,13 @@ function buildInclude(viewerId?: string) {
   if (!viewerId) return POST_COUNT_INCLUDE;
   return {
     ...POST_COUNT_INCLUDE,
-    likes:   { where: { userId: viewerId }, select: { userId: true } },
+    // `type` selected alongside userId so the service can derive
+    // myReaction (which of the 6 reaction types, if any, this viewer has
+    // on the post) without a second query — the composite PK means this
+    // filtered-to-one-user include can only ever return 0 or 1 row anyway.
+    likes:   { where: { userId: viewerId }, select: { userId: true, type: true } },
     savedBy: { where: { userId: viewerId }, select: { userId: true } },
+    ...REPOST_OF_INCLUDE,
   } as const;
 }
 
@@ -52,6 +75,7 @@ export interface CreatePostInput {
   linkedCourseTitle?:  string | null;
   symbol?:             string | null;
   tags?:               string[];
+  repostOfId?:         string | null;
 }
 
 export interface UpdatePostInput {
@@ -65,6 +89,20 @@ export interface FeedParams {
   pageSize: number;
   type?:    PostType;
   symbol?:  string;
+  /** Hashtag filter (without the leading #), matched against CommunityPost.tags. */
+  tag?:     string;
+  /** "latest" (default) = createdAt desc. "trending" = a simple, explicit
+   *  heuristic (most-liked, tie-broken by most-commented, tie-broken by
+   *  recency) — not a scoring column or a background job, just an
+   *  alternate ORDER BY, per the "keep the feed algorithm simple" brief. */
+  sort?:    "latest" | "trending";
+}
+
+function feedOrderBy(sort: FeedParams["sort"]): Prisma.CommunityPostOrderByWithRelationInput[] {
+  if (sort === "trending") {
+    return [{ likes: { _count: "desc" } }, { comments: { _count: "desc" } }, { createdAt: "desc" }];
+  }
+  return [{ createdAt: "desc" }];
 }
 
 // ── Repository ────────────────────────────────────────────────────────────
@@ -98,6 +136,10 @@ export const communityPostRepository = {
 
   if (input.tradeSnapshot !== undefined) {
     data.tradeSnapshot = input.tradeSnapshot as Prisma.InputJsonValue;
+  }
+
+  if (input.repostOfId) {
+    data.repostOf = { connect: { id: input.repostOfId } };
   }
 
   return db.communityPost.create({
@@ -147,19 +189,20 @@ export const communityPostRepository = {
   // ── Global feed (public posts only) ──────────────────────────────────────
 
   async findGlobalFeed(params: FeedParams, viewerId?: string) {
-    const { page, pageSize, type, symbol } = params;
+    const { page, pageSize, type, symbol, tag, sort } = params;
 
     const where: Prisma.CommunityPostWhereInput = {
       visibility:     "PUBLIC",
       isHiddenByAdmin: false,
       ...(type   ? { type }   : {}),
       ...(symbol ? { symbol } : {}),
+      ...(tag    ? { tags: { has: tag } } : {}),
     };
 
     const [items, total] = await Promise.all([
       db.communityPost.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        orderBy: feedOrderBy(sort),
         skip:    (page - 1) * pageSize,
         take:    pageSize,
         include: buildInclude(viewerId),
@@ -173,7 +216,7 @@ export const communityPostRepository = {
   // ── Following feed ────────────────────────────────────────────────────────
 
   async findFollowingFeed(userId: string, params: FeedParams) {
-    const { page, pageSize, type, symbol } = params;
+    const { page, pageSize, type, symbol, tag, sort } = params;
 
     const follows = await db.follow.findMany({
       where:  { sourceId: userId, status: "ACTIVE" },
@@ -185,6 +228,7 @@ export const communityPostRepository = {
       isHiddenByAdmin: false,
       ...(type   ? { type }   : {}),
       ...(symbol ? { symbol } : {}),
+      ...(tag    ? { tags: { has: tag } } : {}),
       OR: [
         // Own posts: all visibilities
         { authorId: userId },
@@ -199,7 +243,7 @@ export const communityPostRepository = {
     const [items, total] = await Promise.all([
       db.communityPost.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        orderBy: feedOrderBy(sort),
         skip:    (page - 1) * pageSize,
         take:    pageSize,
         include: buildInclude(userId),
@@ -248,14 +292,73 @@ export const communityPostRepository = {
     return { items, total };
   },
 
+  // ── Search ─────────────────────────────────────────────────────────────
+  // Public posts only, same visibility rule as the global feed — search
+  // must never surface a private/followers-only post to someone who
+  // couldn't otherwise see it in a feed.
+
+  async searchPosts(query: string, limit: number, viewerId?: string) {
+    return db.communityPost.findMany({
+      where: {
+        content:         { contains: query, mode: "insensitive" },
+        visibility:      "PUBLIC",
+        isHiddenByAdmin: false,
+      },
+      orderBy: { createdAt: "desc" },
+      take:    limit,
+      include: buildInclude(viewerId),
+    });
+  },
+
+  // ── Trending hashtags ─────────────────────────────────────────────────────
+  // `tags` is a Postgres array column — Prisma has no groupBy over array
+  // elements, so this is the one place in the community layer that uses a
+  // raw query. Parameterized via Prisma's tagged-template $queryRaw (the
+  // `${limit}` below is bound as a real query parameter, never string-
+  // interpolated), scoped to public/non-hidden posts from the last 7 days
+  // so this reflects current conversation, not the platform's all-time tag
+  // history.
+  /** Hashtags whose text contains `query` (case-insensitive), ranked by how
+   *  many public posts currently carry them — same underlying raw query
+   *  shape as findTrendingHashtags, just with a WHERE on the unnested tag. */
+  async searchHashtags(query: string, limit: number): Promise<{ tag: string; count: number }[]> {
+    const rows = await db.$queryRaw<{ tag: string; count: bigint }[]>`
+      SELECT tag, COUNT(*) AS count FROM (
+        SELECT unnest(tags) AS tag
+        FROM "CommunityPost"
+        WHERE "isHiddenByAdmin" = false AND visibility = 'PUBLIC'
+      ) AS t
+      WHERE tag ILIKE ${`%${query}%`}
+      GROUP BY tag
+      ORDER BY count DESC
+      LIMIT ${limit}
+    `;
+    return rows.map((r) => ({ tag: r.tag, count: Number(r.count) }));
+  },
+
+  async findTrendingHashtags(limit: number): Promise<{ tag: string; count: number }[]> {
+    const rows = await db.$queryRaw<{ tag: string; count: bigint }[]>`
+      SELECT unnest(tags) AS tag, COUNT(*) AS count
+      FROM "CommunityPost"
+      WHERE "isHiddenByAdmin" = false
+        AND visibility = 'PUBLIC'
+        AND "createdAt" > NOW() - INTERVAL '7 days'
+      GROUP BY tag
+      ORDER BY count DESC
+      LIMIT ${limit}
+    `;
+    return rows.map((r) => ({ tag: r.tag, count: Number(r.count) }));
+  },
+
   // ── Bookmarked (saved) posts ─────────────────────────────────────────────
 
   async findSavedByUser(userId: string, params: FeedParams) {
-    const { page, pageSize } = params;
+    const { page, pageSize, type } = params;
 
     const where: Prisma.CommunityPostWhereInput = {
       isHiddenByAdmin: false,
       savedBy:         { some: { userId } },
+      ...(type ? { type } : {}),
     };
 
     const [items, total] = await Promise.all([

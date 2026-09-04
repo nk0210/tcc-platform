@@ -127,4 +127,10 @@ export const communityFollowService = {
     const { items, total } = await communityFollowRepository.findMutuals(userId, page, pageSize);
     return { items, ...paginate(total, page, pageSize) };
   },
+
+  // ── "People you may know" ─────────────────────────────────────────────────
+
+  getSuggestions(userId: string, limit: number) {
+    return communityFollowRepository.findSuggestions(userId, limit);
+  },
 };

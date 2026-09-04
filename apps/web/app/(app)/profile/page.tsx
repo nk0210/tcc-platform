@@ -238,11 +238,38 @@ function PostCard({ post }: { post: CommunityPost }) {
         </span>
       </div>
 
-      <p className="text-fg-muted text-sm leading-relaxed line-clamp-3 mb-3">
-        {post.content}
-      </p>
+      {/* A repost's own `content` is just an optional caption — never show
+          an empty paragraph when the reposter didn't add one. */}
+      {post.content && (
+        <p className="text-fg-muted text-sm leading-relaxed line-clamp-3 mb-3">
+          {post.content}
+        </p>
+      )}
 
-      {post.tradeSnapshot && (
+      {/* Reposted original, shown compactly — this card intentionally
+          doesn't pull in the full feed PostCard (reactions/comments/share
+          menu) since this is a dense summary grid, not the feed, but a
+          repost must still say what it's reposting rather than reading as
+          a blank "Thought" post. */}
+      {post.repostOf && (
+        <div className="rounded-lg border border-border bg-elevated px-3 py-2 mb-3">
+          <p className="text-fg-dim text-[10px] uppercase tracking-wide mb-1">
+            🔁 Reposted from @{post.repostOf.author.handle}
+          </p>
+          {post.repostOf.content && (
+            <p className="text-fg-muted text-xs leading-relaxed line-clamp-2">
+              {post.repostOf.content}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Only SHARED_TRADE posts carry a real closed-trade snapshot (side/
+          netPnl) — TRADE_IDEA posts reuse the same JSON column for a
+          differently-shaped, not-yet-taken idea (direction/entry/stopLoss/
+          takeProfit instead), so this card is deliberately narrowed to the
+          type it actually knows how to render. */}
+      {post.type === "SHARED_TRADE" && post.tradeSnapshot && "side" in post.tradeSnapshot && (
         <div className="flex items-center gap-3 bg-elevated border border-border rounded-lg px-3 py-2 mb-3 text-xs">
           <span
             className={`font-semibold ${

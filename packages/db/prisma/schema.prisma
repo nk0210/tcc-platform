@@ -71,6 +71,21 @@ enum PostVisibility {
   PRIVATE
 }
 
+// TCC Social redesign: post reactions beyond a single like. Kept to
+// PostLike only (not CommentLike) — comments stay a simple like, matching
+// how most social platforms scope full reaction pickers to top-level
+// content, not every reply. Defaulting existing/unset rows to LIKE keeps
+// this migration additive and backward-compatible with the pre-existing
+// single-reaction behavior.
+enum ReactionType {
+  LIKE
+  INSIGHTFUL
+  BULLISH
+  BEARISH
+  CELEBRATE
+  INTERESTING
+}
+
 enum StrategyType {
   OFFICIAL
   EDUCATIONAL_TEMPLATE
@@ -482,6 +497,14 @@ model CommunityPost {
   symbol              String?
   tags                String[]   @default([])
 
+  // Share-as-repost: a repost is a normal CommunityPost (own id, own author,
+  // own optional caption in `content`) that also points at the post it
+  // reposts. SetNull on delete — if the original is removed, the repost
+  // simply reverts to a standalone post rather than leaving a dangling FK.
+  repostOfId String?
+  repostOf   CommunityPost?  @relation("PostReposts", fields: [repostOfId], references: [id], onDelete: SetNull)
+  reposts    CommunityPost[] @relation("PostReposts")
+
   likes    PostLike[]
   savedBy  SavedPost[]
   shares   PostShare[]           // ← NEW Day 3
@@ -494,6 +517,7 @@ model CommunityPost {
   @@index([authorId])
   @@index([visibility, isHiddenByAdmin, createdAt])
   @@index([symbol])
+  @@index([repostOfId])
 }
 
 // ─── NEW Day 3: Post Share tracking ───────────────────────────────────────
@@ -545,6 +569,7 @@ model PostLike {
   postId  String
   user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   post    CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  type    ReactionType  @default(LIKE)
   likedAt DateTime @default(now())
 
   @@id([userId, postId])
@@ -553,6 +578,9 @@ model PostLike {
   // is exactly that lookup. Without this, that count degrades to a full
   // table scan as PostLike grows.
   @@index([postId])
+  // Reaction-type breakdown (grouped counts per post) queries by postId
+  // filtered/grouped on type — same reasoning as the postId index above.
+  @@index([postId, type])
 }
 
 model CommentLike {

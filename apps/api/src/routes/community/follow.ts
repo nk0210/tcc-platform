@@ -177,6 +177,30 @@ router.get(
   }
 );
 
+// ── GET /suggestions ─ "People you may know" (auth required) ─────────────
+
+const SuggestionsSchema = z.object({
+  limit: z.coerce.number().int().positive().max(20).default(5),
+});
+
+router.get(
+  "/suggestions",
+  authenticate,
+  validate(SuggestionsSchema, "query"),
+  async (req, res) => {
+    const authReq = req as unknown as AuthRequest;
+    const query   = req.query as unknown as z.infer<typeof SuggestionsSchema>;
+
+    try {
+      const items = await communityFollowService.getSuggestions(authReq.userId, query.limit);
+      ok(res, { items });
+    } catch (err) {
+      console.error("[community/follow GET /suggestions]", err);
+      internalError(res);
+    }
+  }
+);
+
 // ── GET /users/:handle/posts ─ User profile feed ──────────────────────────
 
 router.get(

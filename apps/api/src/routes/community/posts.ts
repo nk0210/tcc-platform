@@ -26,6 +26,9 @@ const FeedSchema = z.object({
   pageSize: z.coerce.number().int().positive().max(50).default(20),
   type:     z.enum(["TEXT","TRADE_IDEA","SHARED_TRADE","ACADEMY_COMPLETION","STRATEGY_SHARE","COMPETITION_UPDATE"]).optional(),
   symbol:   z.string().optional(),
+  // Hashtag filter, without the leading #.
+  tag:      z.string().max(50).optional(),
+  sort:     z.enum(["latest", "trending"]).default("latest"),
 });
 
 const CreatePostSchema = z.object({
@@ -62,6 +65,14 @@ const HidePostSchema = z.object({
   reason: z.string().min(1).max(500).optional(),
 });
 
+const REACTION_TYPES = ["LIKE", "INSIGHTFUL", "BULLISH", "BEARISH", "CELEBRATE", "INTERESTING"] as const;
+
+const ReactionSchema = z.object({
+  // Optional, defaults to LIKE — the pre-reactions client just posts with
+  // no body at all, same endpoint, same default behavior as before.
+  type: z.enum(REACTION_TYPES).default("LIKE"),
+});
+
 // ── GET /posts?page=&pageSize=&type=&symbol= ─ Global feed ────────────────
 
 router.get(
@@ -75,7 +86,7 @@ router.get(
 
     try {
       const feed = await communityFeedService.getGlobalFeed(
-        { page: query.page, pageSize: query.pageSize, type: query.type as PostType | undefined, symbol: query.symbol },
+        { page: query.page, pageSize: query.pageSize, type: query.type as PostType | undefined, symbol: query.symbol, tag: query.tag, sort: query.sort },
         viewerId
       );
       ok(res, feed);
@@ -102,6 +113,8 @@ router.get(
         pageSize: query.pageSize,
         type:     query.type as PostType | undefined,
         symbol:   query.symbol,
+        tag:      query.tag,
+        sort:     query.sort,
       });
       ok(res, feed);
     } catch (err) {
@@ -125,10 +138,33 @@ router.get(
       const feed = await communityFeedService.getSavedFeed(authReq.userId, {
         page:     query.page,
         pageSize: query.pageSize,
+        type:     query.type as PostType | undefined,
       });
       ok(res, feed);
     } catch (err) {
       console.error("[community/posts GET /saved]", err);
+      internalError(res);
+    }
+  }
+);
+
+// ── GET /posts/trending/hashtags ─ Trending hashtags (public) ─────────────
+
+const TrendingHashtagsSchema = z.object({
+  limit: z.coerce.number().int().positive().max(20).default(8),
+});
+
+router.get(
+  "/trending/hashtags",
+  validate(TrendingHashtagsSchema, "query"),
+  async (req, res) => {
+    const query = req.query as unknown as z.infer<typeof TrendingHashtagsSchema>;
+
+    try {
+      const items = await communityFeedService.getTrendingHashtags(query.limit);
+      ok(res, { items });
+    } catch (err) {
+      console.error("[community/posts GET /trending/hashtags]", err);
       internalError(res);
     }
   }
@@ -362,18 +398,21 @@ router.post(
   }
 );
 
-// ── POST /posts/:postId/like ─ Toggle like ────────────────────────────────
+// ── POST /posts/:postId/like ─ Toggle/switch reaction (defaults to LIKE) ──
 
 router.post(
   "/:postId/like",
   authenticate,
+  validate(ReactionSchema),
   async (req, res) => {
     const authReq = req as unknown as AuthRequest;
+    const body    = req.body as z.infer<typeof ReactionSchema>;
 
     try {
       const result = await communityInteractionService.togglePostLike(
         req.params.postId,
-        authReq.userId
+        authReq.userId,
+        body.type
       );
       ok(res, result);
     } catch (err: unknown) {
@@ -432,6 +471,41 @@ router.post(
         return;
       }
       console.error("[community/posts POST /:postId/share]", err);
+      internalError(res);
+    }
+  }
+);
+
+// ── POST /posts/:postId/repost ─ Share-as-repost ───────────────────────────
+// Creates a real new post on the reposter's own feed that embeds the
+// original. Distinct from /share above, which only tracks a share count —
+// this one puts an actual post object into the feed.
+
+const RepostSchema = z.object({
+  caption: z.string().max(500).optional(),
+});
+
+router.post(
+  "/:postId/repost",
+  authenticate,
+  validate(RepostSchema),
+  async (req, res) => {
+    const authReq = req as unknown as AuthRequest;
+    const body    = req.body as z.infer<typeof RepostSchema>;
+
+    try {
+      const post = await communityPostService.createRepost(authReq.userId, req.params.postId, body.caption);
+      created(res, post, "Reposted");
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === "POST_NOT_FOUND") {
+        notFound(res, "Post not found");
+        return;
+      }
+      if (err instanceof Error && err.message === "REPOST_NOT_ALLOWED") {
+        badRequest(res, "Only public posts can be reposted");
+        return;
+      }
+      console.error("[community/posts POST /:postId/repost]", err);
       internalError(res);
     }
   }

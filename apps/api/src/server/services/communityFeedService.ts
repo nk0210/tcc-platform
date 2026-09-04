@@ -5,14 +5,23 @@
 import { communityPostRepository, type FeedParams } from "../repositories/communityPostRepository";
 import { communityFollowRepository }                from "../repositories/communityFollowRepository";
 import db from "../../lib/prisma";
+import type { ReactionType } from "@prisma/client";
 
-type RawPost = { likes?: { userId: string }[]; savedBy?: { userId: string }[]; [key: string]: unknown };
+export type RawPost = { likes?: { userId: string; type: ReactionType }[]; savedBy?: { userId: string }[]; [key: string]: unknown };
 
-function fmt(post: RawPost) {
+// Kept in sync with communityPostService.ts's fmt() — same viewer-filtered
+// likes/savedBy shape, same derived fields. Not shared as an import only
+// because these two services' RawPost/fmt were already independent before
+// this change; unifying them is a larger refactor than this reaction
+// addition calls for. Exported so communitySearchService.ts can reuse it
+// rather than adding a third near-duplicate.
+export function fmt(post: RawPost) {
   const { likes, savedBy, ...rest } = post;
+  const myReaction = Array.isArray(likes) && likes.length > 0 ? likes[0].type : null;
   return {
     ...rest,
-    isLiked:      Array.isArray(likes)   ? likes.length   > 0 : false,
+    isLiked:      myReaction !== null,
+    myReaction,
     isBookmarked: Array.isArray(savedBy) ? savedBy.length > 0 : false,
   };
 }
@@ -70,5 +79,11 @@ export const communityFeedService = {
   async getSavedFeed(userId: string, params: FeedParams) {
     const { items, total } = await communityPostRepository.findSavedByUser(userId, params);
     return { items: items.map((p) => fmt(p as RawPost)), ...paginate(total, params.page, params.pageSize) };
+  },
+
+  // ── Trending hashtags ─────────────────────────────────────────────────────
+
+  getTrendingHashtags(limit: number) {
+    return communityPostRepository.findTrendingHashtags(limit);
   },
 };

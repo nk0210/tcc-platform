@@ -128,6 +128,45 @@ export const communityFollowRepository = {
     });
   },
 
+  // ── Search ─────────────────────────────────────────────────────────────
+
+  searchUsers(query: string, limit: number) {
+    return db.user.findMany({
+      where: {
+        isActive: true,
+        status:   "ACTIVE",
+        OR: [
+          { handle:      { contains: query, mode: "insensitive" } },
+          { displayName: { contains: query, mode: "insensitive" } },
+        ],
+      },
+      orderBy: { followedBy: { _count: "desc" } },
+      take:    limit,
+      select:  USER_PROFILE_SELECT,
+    });
+  },
+
+  // ── Suggestions ("People you may know") ───────────────────────────────────
+  // Deliberately simple, real-data-only heuristic: active users the viewer
+  // doesn't already follow (and isn't themselves), ranked by follower count.
+  // No mutual-follow/interest-graph scoring — that's real future work, not
+  // something to fake with placeholder numbers now.
+
+  async findSuggestions(userId: string, limit: number) {
+    const alreadyFollowed = await db.follow.findMany({
+      where:  { sourceId: userId, status: "ACTIVE" },
+      select: { targetId: true },
+    });
+    const excludeIds = [userId, ...alreadyFollowed.map((f) => f.targetId)];
+
+    return db.user.findMany({
+      where: { id: { notIn: excludeIds }, isActive: true, status: "ACTIVE" },
+      orderBy: { followedBy: { _count: "desc" } },
+      take: limit,
+      select: USER_PROFILE_SELECT,
+    });
+  },
+
   // ── Follower counts ───────────────────────────────────────────────────────
 
   followersCount(userId: string) {

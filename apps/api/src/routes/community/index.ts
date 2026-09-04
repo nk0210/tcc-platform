@@ -11,11 +11,13 @@ import { Router } from "express";
 import postsRouter    from "./posts";
 import commentsRouter from "./comments";
 import followRouter   from "./follow";
+import searchRouter    from "./search";
 
 const router: ReturnType<typeof Router> = Router();
 
 router.use("/posts",    postsRouter);
 router.use("/comments", commentsRouter);
+router.use("/search",   searchRouter);
 router.use("/",         followRouter);
 
 export default router;

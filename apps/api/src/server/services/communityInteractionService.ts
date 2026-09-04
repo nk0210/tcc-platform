@@ -1,11 +1,12 @@
 /**
  * Community Interaction Service
- * Toggles for likes, bookmarks, and share tracking.
+ * Reactions, comment likes, bookmarks, and share tracking.
  */
 import { communityInteractionRepository } from "../repositories/communityInteractionRepository";
 import { communityPostRepository }        from "../repositories/communityPostRepository";
 import { communityCommentRepository }     from "../repositories/communityCommentRepository";
 import { createNotification }             from "../notifications/notificationService";
+import type { ReactionType } from "@prisma/client";
 
 export class PostNotFoundError extends Error {
   statusCode = 404;
@@ -17,35 +18,52 @@ export class CommentNotFoundError extends Error {
 }
 
 export const communityInteractionService = {
-  // ── Toggle post like ──────────────────────────────────────────────────────
+  // ── Post reactions ───────────────────────────────────────────────────────
+  // `type` defaults to LIKE so every pre-existing caller (the REST route's
+  // old no-body toggle, the Copilot toggle_post_like tool) keeps behaving
+  // exactly as it did before reactions existed — same single-heart toggle,
+  // just recorded with an explicit type now instead of an implicit one.
 
-  async togglePostLike(postId: string, userId: string) {
+  async togglePostLike(postId: string, userId: string, type: ReactionType = "LIKE") {
     const post = await communityPostRepository.findById(postId);
     if (!post || post.isHiddenByAdmin) throw new PostNotFoundError();
 
-    const already = await communityInteractionRepository.isPostLiked(userId, postId);
+    const existing = await communityInteractionRepository.getPostReaction(userId, postId);
+    const isSameReaction = existing?.type === type;
 
-    if (already) {
-      await communityInteractionRepository.unlikePost(userId, postId);
+    if (isSameReaction) {
+      // Clicking the reaction you already have removes it.
+      await communityInteractionRepository.removePostReaction(userId, postId);
     } else {
-      await communityInteractionRepository.likePost(userId, postId);
+      await communityInteractionRepository.setPostReaction(userId, postId, type);
 
-      // Notify post author (but not self-like)
-      if (post.authorId !== userId) {
+      // Notify the post author only the first time this user reacts to it —
+      // switching from one reaction type to another isn't a "new" reaction
+      // worth a fresh notification, same restraint the old boolean like had.
+      if (!existing && post.authorId !== userId) {
         await createNotification({
           userId:      post.authorId,
           type:        "COMMUNITY",
           priority:    "LOW",
-          title:       "Someone liked your post",
-          message:     "Your post received a new like.",
+          title:       "Someone reacted to your post",
+          message:     "Your post received a new reaction.",
           actionLabel: "View",
           actionPath:  `/community/posts/${postId}`,
         });
       }
     }
 
-    const count = await communityInteractionRepository.postLikeCount(postId);
-    return { liked: !already, likeCount: count };
+    const [count, reactions] = await Promise.all([
+      communityInteractionRepository.postLikeCount(postId),
+      communityInteractionRepository.postReactionBreakdown(postId),
+    ]);
+
+    return {
+      liked:     !isSameReaction,
+      reaction:  isSameReaction ? null : type,
+      likeCount: count,
+      reactions,
+    };
   },
 
   // ── Toggle comment like ───────────────────────────────────────────────────
